@@ -23,6 +23,7 @@ let usersBefore = 0;
 let a: User;
 let b: User;
 let c: User;
+let d: User;
 
 async function makeUser(label: string): Promise<User> {
   const email = `${label}-${randomUUID()}@example.test`;
@@ -72,6 +73,7 @@ beforeAll(async () => {
   a = await makeUser('a');
   b = await makeUser('b');
   c = await makeUser('c');
+  d = await makeUser('d');
 }, 60_000);
 
 afterAll(async () => {
@@ -282,7 +284,9 @@ describe('isolation between users end to end', () => {
   });
 
   it('B cannot read or change the case of A', async () => {
-    expect((await call(b, 'PATCH', `/cases/${caseId}`, { number: 'x' })).status).toBe(404);
+    const patch = await call(b, 'PATCH', `/cases/${caseId}`, { number: 'x' });
+    expect(patch.status).toBe(404);
+    expect(patch.json).toEqual(notFound);
     const get = await call(b, 'GET', `/cases/${caseId}`);
     expect(get.status).toBe(404);
     expect(get.json).toEqual(notFound);
@@ -293,6 +297,7 @@ describe('isolation between users end to end', () => {
   it('B cannot delete the holiday of A, which stays listed', async () => {
     const del = await call(b, 'DELETE', `/holidays/${holidayId}`);
     expect(del.status).toBe(404);
+    expect(del.json).toEqual(notFound);
     const list = await call(a, 'GET', '/holidays');
     expect(list.json.map((h: Json) => h.id)).toContain(holidayId);
   });
@@ -318,9 +323,15 @@ describe('isolation between users end to end', () => {
   });
 
   it('malformed ids are not found', async () => {
-    expect((await call(a, 'GET', '/tasks/abc')).status).toBe(404);
-    expect((await call(a, 'GET', '/cases/abc')).status).toBe(404);
-    expect((await call(a, 'DELETE', '/holidays/abc')).status).toBe(404);
+    for (const [method, path] of [
+      ['GET', '/tasks/abc'],
+      ['GET', '/cases/abc'],
+      ['DELETE', '/holidays/abc'],
+    ] as const) {
+      const res = await call(a, method, path);
+      expect(res.status).toBe(404);
+      expect(res.json).toEqual(notFound);
+    }
   });
 
   it('missing and garbage tokens are rejected with 401', async () => {
@@ -346,6 +357,70 @@ describe('CORS through the real app', () => {
       headers: { origin: 'https://evil.example', 'access-control-request-method': 'POST' },
     });
     expect(res.headers.get('access-control-allow-origin')).toBeNull();
+  });
+});
+
+describe('injected clock reaches every consumer (user D, early clock)', () => {
+  // Clock 2026-01-05T12:00:00Z, far before the real date, so a consumer wired to the
+  // real clock would behave differently on any day. 2026-01-06 is a Tuesday; Sao Paulo
+  // is UTC-3, so 08:00 local = 11:00Z and 09:00 local = 12:00Z.
+  const earlyApp = buildApp(
+    { supabaseUrl: env.url, serviceRoleKey: env.serviceRoleKey, port: 0, webOrigin: WEB_ORIGIN },
+    { clock: { now: () => new Date('2026-01-05T12:00:00.000Z') } },
+  );
+  const callEarly = async (method: string, path: string, body?: unknown) => {
+    const res = await earlyApp.request(path, {
+      method,
+      headers: {
+        authorization: `Bearer ${d.token}`,
+        ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    return { status: res.status, json: (await res.json()) as Json };
+  };
+  let dateOnlyId: string;
+  let timedId: string;
+
+  it('task use cases keep a future reminder and drop the one already past for the early clock', async () => {
+    const res = await callEarly('POST', '/tasks', { title: 'Cedo', dueDate: '2026-01-06' });
+    expect(res.status).toBe(201);
+    dateOnlyId = res.json.id;
+    // dia_anterior would be 2026-01-05T11:00Z, before the 12:00Z clock: must not exist.
+    expect(await reminders(dateOnlyId)).toEqual([
+      { kind: 'no_dia', at: '2026-01-06T11:00:00.000Z', status: 'pendente' },
+    ]);
+  });
+
+  it('settings sync uses the injected clock when rebuilding reminders', async () => {
+    const res = await callEarly('POST', '/tasks', {
+      title: 'Audiência cedo',
+      type: 'audiencia',
+      dueDate: '2026-01-06',
+      dueTime: '09:00',
+    });
+    expect(res.status).toBe(201);
+    timedId = res.json.id;
+    const s = await callEarly('PATCH', '/settings', { earlyReminderMinutes: 30 });
+    expect(s.status).toBe(200);
+    expect(s.json.remindersRebuilt).toBe(2);
+    // 12:00Z - 30 min. With the real clock this is in the past and would be dropped.
+    expect(await reminders(timedId)).toEqual([
+      { kind: 'antecipado', at: '2026-01-06T11:30:00.000Z', status: 'pendente' },
+      { kind: 'no_horario', at: '2026-01-06T12:00:00.000Z', status: 'pendente' },
+    ]);
+    expect(await reminders(dateOnlyId)).toEqual([
+      { kind: 'no_dia', at: '2026-01-06T11:00:00.000Z', status: 'pendente' },
+    ]);
+  });
+
+  it('briefing uses the injected clock for today', async () => {
+    const res = await callEarly('GET', '/briefing');
+    expect(res.status).toBe(200);
+    expect(res.json.today).toBe('2026-01-05');
+    const ids = res.json.nextTwoDays.map((t: Json) => t.id);
+    expect(ids).toContain(dateOnlyId);
+    expect(ids).toContain(timedId);
   });
 });
 
