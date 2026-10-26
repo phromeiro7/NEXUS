@@ -2,6 +2,16 @@ import type { CaseDto, IsoDate, TaskDto } from '@aj/shared';
 
 type Row = Record<string, unknown>;
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Forma textual canônica de uuid; ids malformados são tratados como "não encontrado". */
+export function isUuid(value: string): boolean {
+  return UUID_RE.test(value);
+}
+
+/** SQLSTATE `invalid_text_representation` (ex.: uuid malformado que passou pela guarda). */
+export const INVALID_TEXT_REPRESENTATION = '22P02';
+
 /** `HH:MM:SS` (Postgres `time`) -> `HH:mm`. */
 export function toHourMinute(value: unknown): string | null {
   return value === null || value === undefined ? null : (value as string).slice(0, 5);

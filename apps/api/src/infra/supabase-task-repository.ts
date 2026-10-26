@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { NewTask, TaskPatch, TaskRepository } from '../application/ports.js';
-import { TASK_COLUMNS, definedOnly, taskFromRow } from './mappers.js';
+import { INVALID_TEXT_REPRESENTATION, TASK_COLUMNS, definedOnly, isUuid, taskFromRow } from './mappers.js';
 
 function columnsOf(p: TaskPatch) {
   return definedOnly({
@@ -20,6 +20,7 @@ function columnsOf(p: TaskPatch) {
 
 export function createSupabaseTaskRepository(client: SupabaseClient): TaskRepository {
   const get: TaskRepository['get'] = async (userId, id) => {
+    if (!isUuid(id)) return null;
     const { data, error } = await client
       .from('tasks')
       .select(TASK_COLUMNS)
@@ -27,6 +28,7 @@ export function createSupabaseTaskRepository(client: SupabaseClient): TaskReposi
       .eq('id', id)
       .is('deleted_at', null)
       .maybeSingle();
+    if (error?.code === INVALID_TEXT_REPRESENTATION) return null;
     if (error) throw new Error(`Falha ao buscar tarefa: ${error.message}`);
     return data ? taskFromRow(data) : null;
   };
@@ -50,6 +52,7 @@ export function createSupabaseTaskRepository(client: SupabaseClient): TaskReposi
     get,
 
     async list(userId, query) {
+      if (query.caseId !== undefined && !isUuid(query.caseId)) return [];
       let q = client.from('tasks').select(TASK_COLUMNS).eq('user_id', userId).is('deleted_at', null);
       if (query.from !== undefined) q = q.gte('due_date', query.from);
       if (query.to !== undefined) q = q.lte('due_date', query.to);
@@ -66,6 +69,7 @@ export function createSupabaseTaskRepository(client: SupabaseClient): TaskReposi
     },
 
     async update(userId, id, patch) {
+      if (!isUuid(id)) return null;
       const values = columnsOf(patch);
       if (Object.keys(values).length === 0) return get(userId, id);
       const { data, error } = await client
@@ -76,11 +80,13 @@ export function createSupabaseTaskRepository(client: SupabaseClient): TaskReposi
         .is('deleted_at', null)
         .select(TASK_COLUMNS)
         .maybeSingle();
+      if (error?.code === INVALID_TEXT_REPRESENTATION) return null;
       if (error) throw new Error(`Falha ao atualizar tarefa: ${error.message}`);
       return data ? taskFromRow(data) : null;
     },
 
     async softDelete(userId, id, now) {
+      if (!isUuid(id)) return false;
       const { data, error } = await client
         .from('tasks')
         .update({ deleted_at: now.toISOString() })
@@ -88,6 +94,7 @@ export function createSupabaseTaskRepository(client: SupabaseClient): TaskReposi
         .eq('id', id)
         .is('deleted_at', null)
         .select('id');
+      if (error?.code === INVALID_TEXT_REPRESENTATION) return false;
       if (error) throw new Error(`Falha ao apagar tarefa: ${error.message}`);
       return (data ?? []).length > 0;
     },
