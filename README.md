@@ -52,4 +52,6 @@ portas 543xx. Os testes de banco usam por padrão
 `postgresql://postgres:postgres@127.0.0.1:55322/postgres` (sobrescreva com
 `DATABASE_URL`). Variáveis da API: veja `.env.example`.
 
+`apps/api/src/compose.ts` exporta `buildApp(config, { clock? })`, que monta a API real (usada por `server.ts`); `apps/api/test/db/api.db.test.ts` a exercita ponta a ponta com usuários e tokens reais e relógio fixo (`pnpm --filter @aj/api test:db`).
+
 > Atenção: nunca rode `db reset` contra uma stack que não é sua; ele apaga o banco.
