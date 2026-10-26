@@ -5,7 +5,7 @@ import { HoraInvalidaError } from '../domain/reminders.js';
 import { makeCalculateDeadline } from './calculate-deadline.js';
 import { InvalidTransitionError } from '../domain/task-status.js';
 import { ConflictError, InvalidInputError, NotFoundError } from './errors.js';
-import type { NewTask } from './ports.js';
+import type { NewTask, TaskPatch } from './ports.js';
 import { makeTaskUseCases } from './tasks.js';
 
 const U1 = 'user-1';
@@ -14,8 +14,13 @@ const U2 = 'user-2';
 function setup() {
   const fakes = createFakes({ now: new Date('2026-10-26T12:00:00Z') });
   const created: NewTask[] = [];
+  const updates: unknown[] = [];
   const tasks = {
     ...fakes.tasks,
+    update: async (userId: string, id: string, patch: TaskPatch) => {
+      updates.push(patch);
+      return fakes.tasks.update(userId, id, patch);
+    },
     create: async (userId: string, task: NewTask) => {
       created.push(task);
       return fakes.tasks.create(userId, task);
@@ -29,7 +34,7 @@ function setup() {
     calculateDeadline: makeCalculateDeadline({ holidays: fakes.holidays }),
     clock: fakes.clock,
   });
-  return { fakes, uc, created };
+  return { fakes, uc, created, updates };
 }
 
 const input = (p: Partial<CreateTaskInput> & { title: string }): CreateTaskInput => ({
@@ -109,11 +114,12 @@ describe('tasks.create', () => {
   });
 
   it("another user's case: NotFoundError('processo'), nothing stored", async () => {
-    const { fakes, uc } = setup();
+    const { fakes, uc, created } = setup();
     const other = await fakes.cases.create(U2, { number: '0001' } as never);
     await expect(uc.create(U1, input({ title: 'X', caseId: other.id }))).rejects.toEqual(
       new NotFoundError('processo'),
     );
+    expect(created).toEqual([]);
     expect(await uc.list(U1, {})).toEqual([]);
     expect(fakes.reminders.calls).toEqual([]);
   });
@@ -126,12 +132,13 @@ describe('tasks.create', () => {
   });
 
   it('nonexistent local time: HoraInvalidaError, nothing stored, no replace call', async () => {
-    const { fakes, uc } = setup();
+    const { fakes, uc, created } = setup();
     fakes.setNow(new Date('2026-03-01T12:00:00Z'));
     fakes.setProfile(U1, { timezone: 'America/New_York' });
     await expect(uc.create(U1, input({ title: 'X', dueDate: '2026-03-08', dueTime: '02:30' }))).rejects.toBeInstanceOf(
       HoraInvalidaError,
     );
+    expect(created).toEqual([]);
     expect(await uc.list(U1, {})).toEqual([]);
     expect(fakes.reminders.calls).toEqual([]);
   });
@@ -184,7 +191,7 @@ describe('tasks.update', () => {
     const after = iso(fakes.reminders.remindersFor(t.id, U1));
     expect(after.length).toBeGreaterThan(0);
     for (const i of before) expect(after).not.toContain(i);
-    expect(after).toContain('2026-11-04T11:00:00.000Z');
+    expect(after).toEqual(['2026-11-03T11:00:00.000Z', '2026-11-04T11:00:00.000Z']);
   });
 
   it('concluida sets completedAt and clears reminders; reopening restores them', async () => {
@@ -232,12 +239,14 @@ describe('tasks.update', () => {
   });
 
   it('dueDate: null clears dueTime and the rule', async () => {
-    const { uc } = setup();
+    const { fakes, uc } = setup();
     const t = await uc.create(
       U1,
       input({ title: 'X', dueTime: '09:00', deadline: { baseDate: '2026-10-26', days: 15, countType: 'uteis' } }),
     );
+    expect(fakes.reminders.remindersFor(t.id, U1).length).toBeGreaterThan(0);
     const u = await uc.update(U1, t.id, { dueDate: null });
+    expect(fakes.reminders.remindersFor(t.id, U1)).toEqual([]);
     expect(u).toMatchObject({ dueDate: null, dueTime: null, baseDate: null, periodDays: null, countType: null });
   });
 
@@ -250,14 +259,17 @@ describe('tasks.update', () => {
   });
 
   it('nonexistent local time: HoraInvalidaError and the task is unchanged', async () => {
-    const { fakes, uc } = setup();
+    const { fakes, uc, updates } = setup();
     fakes.setNow(new Date('2026-03-01T12:00:00Z'));
     fakes.setProfile(U1, { timezone: 'America/New_York' });
     const t = await uc.create(U1, input({ title: 'X', dueDate: '2026-03-10', dueTime: '09:00' }));
+    // o relógio avança: uma gravação (mesmo desfeita depois) alteraria `updatedAt`
+    fakes.setNow(new Date('2026-03-02T12:00:00Z'));
     const callsBefore = fakes.reminders.calls.length;
     await expect(uc.update(U1, t.id, { dueDate: '2026-03-08', dueTime: '02:30' })).rejects.toBeInstanceOf(
       HoraInvalidaError,
     );
+    expect(updates).toEqual([]);
     expect(await uc.get(U1, t.id)).toEqual(t);
     expect(fakes.reminders.calls.length).toBe(callsBefore);
   });
@@ -282,19 +294,23 @@ describe('tasks.update', () => {
   });
 
   it("another user's task: NotFoundError(tarefa), first user's task untouched", async () => {
-    const { uc } = setup();
+    const { fakes, uc, updates } = setup();
     const t = await uc.create(U1, input({ title: 'X', dueDate: '2026-10-30' }));
     await uc.create(U2, input({ title: 'Y' }));
+    const reminders = fakes.reminders.remindersFor(t.id, U1);
     await expect(uc.update(U2, t.id, { title: 'hack' })).rejects.toEqual(new NotFoundError('tarefa'));
     await expect(uc.remove(U2, t.id)).rejects.toEqual(new NotFoundError('tarefa'));
+    expect(updates).toEqual([]);
+    expect(fakes.reminders.remindersFor(t.id, U1)).toEqual(reminders);
     expect(await uc.get(U1, t.id)).toEqual(t);
   });
 
   it("another user's caseId: NotFoundError(processo), nothing written", async () => {
-    const { fakes, uc } = setup();
+    const { fakes, uc, updates } = setup();
     const t = await uc.create(U1, input({ title: 'X' }));
     const other = await fakes.cases.create(U2, { number: '0001' } as never);
     await expect(uc.update(U1, t.id, { caseId: other.id })).rejects.toEqual(new NotFoundError('processo'));
+    expect(updates).toEqual([]);
     expect((await uc.get(U1, t.id)).caseId).toBeNull();
   });
 
@@ -317,12 +333,13 @@ describe('tasks.update', () => {
   });
 
   it('dueTime on an undated task: hora_sem_data, nothing stored', async () => {
-    const { uc } = setup();
+    const { uc, updates } = setup();
     const t = await uc.create(U1, input({ title: 'X' }));
     await expect(uc.update(U1, t.id, { dueTime: '09:00' })).rejects.toEqual(new InvalidInputError('hora_sem_data'));
     await expect(uc.update(U1, t.id, { dueDate: null, dueTime: '09:00' })).rejects.toEqual(
       new InvalidInputError('hora_sem_data'),
     );
+    expect(updates).toEqual([]);
     expect(await uc.get(U1, t.id)).toEqual(t);
   });
 
@@ -337,7 +354,7 @@ describe('tasks.update', () => {
   });
 
   it('deadline recalculates dueDate and stores the rule', async () => {
-    const { uc } = setup();
+    const { fakes, uc } = setup();
     const t = await uc.create(U1, input({ title: 'X', dueDate: '2026-10-30' }));
     const u = await uc.update(U1, t.id, { deadline: { baseDate: '2026-10-26', days: 15, countType: 'uteis' } });
     expect(u).toMatchObject({
@@ -346,5 +363,69 @@ describe('tasks.update', () => {
       periodDays: 15,
       countType: 'uteis',
     });
+    expect(iso(fakes.reminders.remindersFor(t.id, U1))).toEqual([
+      '2026-11-16T11:00:00.000Z',
+      '2026-11-17T11:00:00.000Z',
+    ]);
+  });
+
+  it('dueTime alone on a dated task keeps the date and moves the reminders', async () => {
+    const { fakes, uc } = setup();
+    const t = await uc.create(U1, input({ title: 'X', dueDate: '2026-10-30' }));
+    const u = await uc.update(U1, t.id, { dueTime: '10:30' });
+    expect(u).toMatchObject({ dueDate: '2026-10-30', dueTime: '10:30' });
+    expect(iso(fakes.reminders.remindersFor(t.id, U1))).toEqual([
+      '2026-10-30T13:15:00.000Z',
+      '2026-10-30T13:30:00.000Z',
+    ]);
+  });
+
+  it('closed task: reopening together with another field is a conflict, task unchanged', async () => {
+    const { fakes, uc, updates } = setup();
+    const t = await uc.create(U1, input({ title: 'X', dueDate: '2026-10-30' }));
+    const done = await uc.update(U1, t.id, { status: 'concluida' });
+    const writes = updates.length;
+    const calls = fakes.reminders.calls.length;
+    await expect(uc.update(U1, t.id, { status: 'pendente', title: 'x' })).rejects.toEqual(
+      new ConflictError('tarefa_encerrada'),
+    );
+    expect(updates.length).toBe(writes);
+    expect(fakes.reminders.calls.length).toBe(calls);
+    expect(await uc.get(U1, t.id)).toEqual(done);
+  });
+
+  it('reopening uses the CURRENT profile', async () => {
+    const { fakes, uc } = setup();
+    const t = await uc.create(U1, input({ title: 'X', dueDate: '2026-10-30', dueTime: '09:00' }));
+    await uc.update(U1, t.id, { status: 'concluida' });
+    fakes.setProfile(U1, { earlyReminderMinutes: 30 });
+    await uc.update(U1, t.id, { status: 'pendente' });
+    expect(iso(fakes.reminders.remindersFor(t.id, U1))).toEqual([
+      '2026-10-30T11:30:00.000Z',
+      '2026-10-30T12:00:00.000Z',
+    ]);
+  });
+
+  it('remove of another user id: NotFound, first user task and reminders untouched', async () => {
+    const { fakes, uc } = setup();
+    const t = await uc.create(U1, input({ title: 'X', dueDate: '2026-10-30' }));
+    await uc.create(U2, input({ title: 'Y', dueDate: '2026-10-30' }));
+    const reminders = fakes.reminders.remindersFor(t.id, U1);
+    const calls = fakes.reminders.calls.length;
+    await expect(uc.remove(U2, t.id)).rejects.toEqual(new NotFoundError('tarefa'));
+    expect(fakes.reminders.calls.length).toBe(calls);
+    expect(fakes.reminders.remindersFor(t.id, U1)).toEqual(reminders);
+    expect(reminders.length).toBeGreaterThan(0);
+    expect(await uc.get(U1, t.id)).toEqual(t);
+  });
+
+  it('remove does not depend on the profile lookup', async () => {
+    const { fakes, uc } = setup();
+    const t = await uc.create(U1, input({ title: 'X', dueDate: '2026-10-30' }));
+    fakes.profiles.get = async () => {
+      throw new Error('profile failed');
+    };
+    await uc.remove(U1, t.id);
+    expect(fakes.reminders.remindersFor(t.id, U1)).toEqual([]);
   });
 });

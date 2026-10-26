@@ -181,13 +181,10 @@ export function makeTaskUseCases(deps: {
     },
 
     async remove(userId: string, id: string): Promise<void> {
-      const task = await deps.tasks.get(userId, id);
-      if (task === null) throw new NotFoundError('tarefa');
       if (!(await deps.tasks.softDelete(userId, id, deps.clock.now()))) throw new NotFoundError('tarefa');
       // Apaga primeiro, limpa depois. Se a limpeza falhar o erro sobe e a tarefa continua apagada:
       // o remetente (plano futuro) deve ignorar lembretes de tarefas apagadas/encerradas.
-      const profile = await deps.profiles.get(userId);
-      await syncReminders(userId, { ...task, status: 'cancelada' }, profile);
+      await deps.reminders.replacePending(userId, id, []);
     },
   };
 }
