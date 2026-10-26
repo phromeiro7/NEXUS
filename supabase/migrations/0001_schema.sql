@@ -47,7 +47,8 @@ create table public.cases (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint cases_status_check check (status in ('ativo', 'arquivado')),
-  constraint cases_user_number_key unique (user_id, number)
+  constraint cases_user_number_key unique (user_id, number),
+  constraint cases_id_user_id_key unique (id, user_id)
 );
 
 create trigger cases_set_updated_at
@@ -57,7 +58,7 @@ create trigger cases_set_updated_at
 create table public.tasks (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,
-  case_id uuid references public.cases(id) on delete set null,
+  case_id uuid,
   title text not null,
   type text not null default 'tarefa',
   status text not null default 'pendente',
@@ -73,6 +74,9 @@ create table public.tasks (
   deleted_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
+  constraint tasks_id_user_id_key unique (id, user_id),
+  constraint tasks_case_same_user_fkey foreign key (case_id, user_id)
+    references public.cases (id, user_id) on delete set null (case_id),
   constraint tasks_title_check check (char_length(title) between 1 and 200),
   constraint tasks_type_check check (type in ('prazo', 'tarefa', 'audiencia')),
   constraint tasks_status_check check (status in ('pendente', 'em_andamento', 'concluida', 'cancelada')),
@@ -92,7 +96,7 @@ create trigger tasks_set_updated_at
 create table public.reminders (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,
-  task_id uuid not null references public.tasks(id) on delete cascade,
+  task_id uuid not null,
   kind text not null,
   scheduled_at timestamptz not null,
   status text not null default 'pendente',
@@ -101,6 +105,8 @@ create table public.reminders (
   sent_at timestamptz,
   locked_at timestamptz,
   created_at timestamptz not null default now(),
+  constraint reminders_task_same_user_fkey foreign key (task_id, user_id)
+    references public.tasks (id, user_id) on delete cascade,
   constraint reminders_status_check check (status in ('pendente', 'enviando', 'enviado', 'falhou', 'cancelado'))
 );
 
