@@ -10,3 +10,4 @@ export * from './case-api.js';
 export * from './settings-api.js';
 export * from './holiday-api.js';
 export * from './briefing.js';
+export * from './responses.js';

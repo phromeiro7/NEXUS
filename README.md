@@ -36,6 +36,15 @@ exigem `Authorization: Bearer <token>`. Veja `.env.example` para as variáveis.
 | `GET/PATCH /settings` | Configurações (o `PATCH` reconstrói lembretes quando preciso) |
 | `GET /briefing` | Briefing diário |
 
+`PATCH /settings` responde `{ settings, remindersRebuilt, remindersSkipped, skipped }`
+(`UpdateSettingsResultDto` em `@aj/shared`). Sempre que o corpo traz `timezone` ou
+`earlyReminderMinutes`, os lembretes de todas as tarefas abertas com data são refeitos,
+mesmo que o valor não tenha mudado (reenviar o mesmo valor completa uma reconstrução
+que falhou). `skipped` lista as tarefas (`id`, `title`, `reason`: `hora_inexistente` ou
+`hora_ambigua`) cuja hora não existe ou é ambígua no novo fuso: essas tarefas **mantêm
+os lembretes calculados com o fuso/antecedência anteriores**, e o painel deve avisar o
+usuário usando `skipped`. `remindersSkipped` é `skipped.length`.
+
 ## Banco local (testes de banco)
 
 O Supabase CLI é devDependency de `apps/api`. Na raiz do repositório:
