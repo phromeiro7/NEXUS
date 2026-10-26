@@ -5,7 +5,8 @@ export type LocalToUtcResult =
   | { ok: false; reason: 'hora_inexistente' | 'hora_ambigua' };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_RE =/^([01]\d|2[0-3]):([0-5]\d)$/;
 
 /** Deslocamento (ms) do fuso em relação a UTC no instante dado: hora local - UTC. */
 function offsetAt(formatter: Intl.DateTimeFormat, instantMs: number): number {
@@ -25,9 +26,13 @@ function offsetAt(formatter: Intl.DateTimeFormat, instantMs: number): number {
 export function localToUtc(date: IsoDate, time: string, timeZone: string): LocalToUtcResult {
   const match = TIME_RE.exec(time);
   if (!match) throw new RangeError(`Invalid time (expected HH:mm): ${time}`);
+  if (!DATE_RE.test(date)) throw new RangeError(`Invalid date (expected YYYY-MM-DD): ${date}`);
   const [y, m, day] = date.split('-').map(Number) as [number, number, number];
   const localMs = Date.UTC(y, m - 1, day, Number(match[1]), Number(match[2]));
-  if (Number.isNaN(localMs)) throw new RangeError(`Invalid date: ${date}`);
+  const check = new Date(localMs);
+  if (check.getUTCFullYear() !== y || check.getUTCMonth() !== m - 1 || check.getUTCDate() !== day) {
+    throw new RangeError(`Invalid calendar date: ${date}`);
+  }
 
   // Lança RangeError se o fuso for desconhecido.
   const formatter = new Intl.DateTimeFormat('en-US', {
@@ -42,6 +47,7 @@ export function localToUtc(date: IsoDate, time: string, timeZone: string): Local
   });
 
   // Deslocamentos possíveis perto da hora local: um dia antes e um dia depois.
+  // Basta: em zonas IANA reais há no máximo uma transição em +-24h (inclusive Apia 2011).
   const offsets = new Set([
     offsetAt(formatter, localMs - DAY_MS),
     offsetAt(formatter, localMs + DAY_MS),
