@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { anon, buildApp, req } from '../../test/harness.js';
 
 const MISSING = '11111111-1111-4111-8111-111111111111';
@@ -64,10 +64,15 @@ describe('holiday routes', () => {
     expect(list.map((h) => h.id)).toEqual([created.id]);
   });
 
-  it('a non-UUID id is 404 nao_encontrado', async () => {
-    const res = await req(buildApp().app, 'DELETE', '/holidays/nao-e-uuid');
+  it('DELETE with a malformed id is 404 before the use case', async () => {
+    const boom = vi.fn(async () => {
+      throw new Error('nao deveria chegar');
+    });
+    const { app } = buildApp({ holidaysOverride: { remove: boom } });
+    const res = await req(app, 'DELETE', '/holidays/abc');
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: 'nao_encontrado' });
+    expect(boom).not.toHaveBeenCalled();
   });
 
   it('userId cannot be overridden by body or query', async () => {

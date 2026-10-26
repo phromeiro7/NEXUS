@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { anon, buildApp, req } from '../../test/harness.js';
 
 const MISSING = '11111111-1111-4111-8111-111111111111';
@@ -98,13 +98,20 @@ describe('case routes', () => {
     expect(await fakes.cases.get('u1', mine.id)).toEqual(mine);
   });
 
-  it('a non-UUID id is 404 nao_encontrado', async () => {
-    const { app } = buildApp();
-    for (const method of ['GET', 'PATCH']) {
-      const res = await req(app, method, '/cases/nao-e-uuid', method === 'PATCH' ? { status: 'arquivado' } : undefined);
-      expect(res.status).toBe(404);
-      expect(await res.json()).toEqual({ error: 'nao_encontrado' });
-    }
+  it.each([
+    ['GET', undefined],
+    ['PATCH', { status: 'arquivado' }],
+    // corpo inválido: sem o guard de UUID a validação responderia 400, não 404
+    ['PATCH', '{nope'],
+  ])('%s with a malformed id is 404 before the use case (body %j)', async (method, body) => {
+    const boom = vi.fn(async () => {
+      throw new Error('nao deveria chegar');
+    });
+    const { app } = buildApp({ casesOverride: { get: boom, update: boom } });
+    const res = await req(app, method, '/cases/abc', body);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: 'nao_encontrado' });
+    expect(boom).not.toHaveBeenCalled();
   });
 
   it('userId cannot be overridden by body or query', async () => {

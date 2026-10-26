@@ -16,6 +16,8 @@ export type HarnessOpts = {
   calcHolidays?: HolidayRepository;
   verifierThrows?: boolean;
   tasksOverride?: Partial<ReturnType<typeof makeTaskUseCases>>;
+  casesOverride?: Partial<ReturnType<typeof makeCaseUseCases>>;
+  holidaysOverride?: Partial<ReturnType<typeof makeHolidayUseCases>>;
   now?: Date;
 };
 
@@ -43,8 +45,8 @@ export function buildApp(opts: HarnessOpts = {}) {
     },
     calculateDeadline,
     tasks,
-    cases: makeCaseUseCases({ cases: fakes.cases }),
-    holidays: makeHolidayUseCases({ holidays: fakes.holidays }),
+    cases: { ...makeCaseUseCases({ cases: fakes.cases }), ...opts.casesOverride },
+    holidays: { ...makeHolidayUseCases({ holidays: fakes.holidays }), ...opts.holidaysOverride },
     settings: makeSettingsUseCases({
       profiles: fakes.profiles,
       tasks: fakes.tasks,
