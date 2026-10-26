@@ -2,19 +2,24 @@ import { Hono } from 'hono';
 import { calculateDeadlineInputSchema } from '@aj/shared';
 import { authMiddleware, type AuthVerifier } from './auth.js';
 import type { makeCalculateDeadline } from './application/calculate-deadline.js';
+import type { makeTaskUseCases } from './application/tasks.js';
+import { errorResponse } from './http-errors.js';
+import { tasksRoutes } from './routes/tasks.js';
 
 export type AppDeps = {
   verifyToken: AuthVerifier;
   calculateDeadline: ReturnType<typeof makeCalculateDeadline>;
+  tasks: ReturnType<typeof makeTaskUseCases>;
 };
 
 export function createApp(deps: AppDeps) {
   const app = new Hono<{ Variables: { userId: string } }>();
 
   app.onError((err, c) => {
-    // Só o erro: nunca headers, token ou config. O cliente recebe a resposta genérica.
-    console.error('[api] erro não tratado', err);
-    return c.json({ error: 'erro_interno' }, 500);
+    const { status, body } = errorResponse(err);
+    // Só o erro inesperado é logado: nunca headers, token ou config. O cliente recebe a resposta genérica.
+    if (status === 500) console.error('[api] erro não tratado', err);
+    return c.json(body as object, status);
   });
 
   app.get('/health', (c) => c.json({ status: 'ok' }));
@@ -37,6 +42,8 @@ export function createApp(deps: AppDeps) {
     // userId vem só do token verificado, nunca do corpo.
     return c.json(await deps.calculateDeadline(c.get('userId'), parsed.data));
   });
+
+  app.route('/tasks', tasksRoutes({ tasks: deps.tasks }, auth));
 
   return app;
 }

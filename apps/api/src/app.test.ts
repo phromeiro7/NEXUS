@@ -3,6 +3,8 @@ import type { Holiday, IsoDate } from '@aj/shared';
 import { createApp } from './app.js';
 import { makeCalculateDeadline } from './application/calculate-deadline.js';
 import type { HolidayRepository } from './application/ports.js';
+import { makeTaskUseCases } from './application/tasks.js';
+import { createFakes } from '../test/fakes.js';
 
 function build(opts: { rows?: Holiday[]; explode?: boolean; verifierThrows?: boolean } = {}) {
   const seen: string[] = [];
@@ -13,12 +15,22 @@ function build(opts: { rows?: Holiday[]; explode?: boolean; verifierThrows?: boo
       return (opts.rows ?? []).filter((h) => h.date >= from && h.date <= to);
     },
   };
+  const fakes = createFakes();
+  const calculateDeadline = makeCalculateDeadline({ holidays });
   const app = createApp({
     verifyToken: async (t) => {
       if (opts.verifierThrows) throw new Error('auth provider fora do ar');
       return t === 'token-ok' ? { userId: 'u1' } : null;
     },
-    calculateDeadline: makeCalculateDeadline({ holidays }),
+    calculateDeadline,
+    tasks: makeTaskUseCases({
+      tasks: fakes.tasks,
+      cases: fakes.cases,
+      profiles: fakes.profiles,
+      reminders: fakes.reminders,
+      calculateDeadline,
+      clock: fakes.clock,
+    }),
   });
   return { app, seen };
 }
