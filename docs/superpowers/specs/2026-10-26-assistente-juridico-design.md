@@ -62,6 +62,7 @@ Google Agenda; Google Sheets (importação com mapeamento de colunas); alertas d
 | R13 | Falha da IA **não cria tarefa**; avisa o usuário | Diverge do documento |
 | R14 | Lembretes atrasados enviados até 24h depois, marcados "(atrasado)" | Diverge da tolerância de 1h do documento |
 | R15 | Briefing por modelo de texto fixo, sem IA | Decisão de projeto |
+| R16 | Responder à confirmação do bot identifica a tarefa-alvo (`task_confirmations`), somado ao contexto da conversa | Mantido da spec de 22/10 |
 
 **Aproveitado do documento:** núcleo independente de canal; IA nunca executa ações diretamente; esclarecer só em ambiguidade real; idempotência de eventos; RLS; vínculo do Telegram por código de uso único; fuso configurável (`America/Sao_Paulo` por padrão); limite de 1.000 caracteres e 30 mensagens/hora por usuário.
 
@@ -113,6 +114,7 @@ Todas as tabelas de usuário têm `user_id` e RLS.
 | `inbound_events` | Idempotência | canal, id externo, status; único `(canal, id externo)` |
 | `chat_messages` | Contexto curto | usuário, canal, papel, texto, `expires_at` (24h) |
 | `link_codes` | Vínculo Telegram | código de uso único, `user_id`, validade de 10 min |
+| `task_confirmations` | Liga cada confirmação enviada pelo bot às tarefas criadas ou alteradas | `channel`, `chat_id`, `message_id`, `task_id`; único `(channel, chat_id, message_id)` |
 
 **Estados de tarefa:** `pendente`, `em_andamento`, `concluida`, `cancelada`. Exclusão é lógica (`deleted_at`).
 **Estados de lembrete:** `pendente`, `enviando`, `enviado`, `falhou`, `cancelado`.
@@ -128,16 +130,17 @@ Todas as tabelas de usuário têm `user_id` e RLS.
 Vale para Telegram e para a barra de comando.
 
 1. **Entrada.** Webhook do Telegram (segredo validado no cabeçalho) ou `POST /assistant/message` com token do usuário.
-2. **Identificação.** `chat_id` → usuário. Chat não vinculado: só orienta o vínculo, nada é criado.
+2. **Identificação.** `chat_id` → usuário. Chat não vinculado: só orienta o vínculo, nada é criado. Mensagem que não é texto (áudio, foto, documento): responde que por enquanto só entende texto e não chama a IA.
 3. **Idempotência.** Registra em `inbound_events`; evento repetido é ignorado.
 4. **Limites.** 1.000 caracteres e 30 mensagens/hora por usuário, antes de chamar a IA.
-5. **Contexto.** Salva a mensagem em `chat_messages`, carrega as últimas mensagens e injeta data e hora atuais no fuso do usuário. Datas relativas partem do momento em que a mensagem chegou.
+5. **Contexto.** Salva a mensagem em `chat_messages`, carrega as últimas mensagens e injeta data e hora atuais no fuso do usuário. Datas relativas partem do momento em que a mensagem chegou. **Se a mensagem é uma resposta (`reply_to_message`) a uma confirmação do bot**, o app localiza as tarefas em `task_confirmations` e as injeta no contexto como a tarefa-alvo, o que identifica a tarefa de forma determinística ("muda para 16h" altera aquela tarefa). Confirmação de tarefa já apagada: avisa que ela não existe mais. Cada confirmação enviada grava uma linha em `task_confirmations`.
 6. **Ciclo de ferramentas.** A IA escolhe entre `criar_tarefa`, `listar_tarefas`, `alterar_tarefa`, `concluir_tarefa`, `calcular_prazo` ou responde em texto. Para cada chamada: o app valida os argumentos com Zod, executa o caso de uso com `user_id` injetado pelo servidor e devolve o resultado à IA. Limite de 4 passos.
 7. **Regras determinísticas fora da IA.** Data inexistente é rejeitada. Horário explícito no passado devolve erro que leva a IA a perguntar; o app nunca move a data sozinho. Dias úteis só saem de `calcular_prazo`.
 8. **IDs reais.** Para alterar ou concluir, o ID vem de `listar_tarefas`; o app confere propriedade e que a tarefa não está apagada.
 9. **Resposta.** Informa o que foi entendido e as suposições ("manhã = 09h"). No painel, a API devolve também as tarefas afetadas para atualizar a tela.
 10. **Várias tarefas.** Permitido; confirmação por item. Item ambíguo gera pergunta só sobre ele.
 11. **Falhas.** IA indisponível: evento preservado, nenhuma tarefa criada, usuário avisado. Resposta inválida da IA não é aplicada. Falha do banco não gera confirmação falsa. Tentativa de prompt injection não executa comandos nem ultrapassa permissões.
+12. **Tempo.** O Telegram reenvia o webhook se a resposta demorar, então o processamento tem orçamento de tempo total (alvo de cerca de 20 s para todo o ciclo, com timeout por chamada à IA). Estourou o orçamento: nenhuma ação parcial é confirmada e o usuário recebe aviso. A idempotência do passo 3 impede duplicatas se o Telegram reenviar. Se a hospedagem escolhida encerrar a função ao responder, o processamento precisa terminar antes da resposta; ver verificação 3 na seção 12.
 
 ### Horários-padrão (a validar)
 Amanhã de manhã = 09:00; à tarde = 15:00; à noite = 20:00; dia da semana sem hora = 09:00; "semana que vem" sem dia = perguntar; sem data = tarefa sem prazo.
@@ -153,7 +156,7 @@ Ao criar, editar ou alterar o prazo, o caso de uso apaga os lembretes pendentes 
 - Se a tarefa é criada já dentro da janela de um aviso, esse aviso é pulado.
 
 ### Envio
-- `pg_cron` chama `POST /internal/reminders/run` a cada minuto, com segredo.
+- `pg_cron` (com `pg_net`) chama `POST /internal/reminders/run` a cada minuto, com segredo guardado no Vault do Supabase.
 - A API reserva lembretes vencidos com `FOR UPDATE SKIP LOCKED`, marca `enviando`, envia e marca `enviado`.
 - Falha temporária: nova tentativa com espera crescente, até 5 vezes. Erro permanente (bot bloqueado): registra e pausa o canal do usuário.
 - `enviando` há mais de 5 minutos volta a `pendente`.
@@ -172,7 +175,7 @@ Painel gera código de uso único (10 min) e link; `/start CODIGO` chega ao webh
 
 ## 8. Painel web
 
-**Telas:** login/cadastro/recuperação; Painel (briefing + barra de comando + seletor Dia/Semana/Mês); Processos; Histórico; Configurações (fuso, UF e cidade, feriados locais, lembretes, briefing, Telegram).
+**Telas:** login/cadastro/recuperação; Painel (briefing + barra de comando + seletor Dia/Semana/Mês); Processos; Histórico (concluídas agrupadas pelo dia da conclusão, filtro para incluir canceladas); Configurações (fuso, UF e cidade, feriados locais, lembretes, briefing, Telegram).
 
 - **Dia:** atrasadas em destaque, depois hoje por horário e sem data.
 - **Semana:** colunas por dia, fatais marcados.
@@ -200,6 +203,8 @@ Painel gera código de uso único (10 min) e link; `/start CODIGO` chega ao webh
 - **Domínio (TDD, maior cobertura):** calculadora de prazos (dias úteis, feriados, fim de semana, virada de mês), regras de status, geração de lembretes.
 - **Casos de uso e API:** isolamento entre usuários, idempotência, vínculo do Telegram.
 - **Lembretes:** concorrência, reenvio após falha, recuperação de `enviando` preso.
+- **Postgres local do Supabase** para as peças críticas: reserva atômica dos lembretes sob execução simultânea e RLS (usuário A nunca acessa dados do usuário B). Esses dois pontos não se validam bem com banco simulado.
+- **Webhook com payloads falsos:** segredo errado, duplicata, chat não vinculado, vínculo (código válido, vencido, reutilizado), resposta a confirmação, tarefa apagada, falha da IA, mensagem não textual, texto longo.
 - **IA:** conjunto de cerca de 50 frases reais em português do Brasil (abreviações, erros de digitação, datas ambíguas, várias tarefas, tentativas de injeção). Meta: zero datas inválidas gravadas e poucas perguntas desnecessárias.
 - **Ponta a ponta:** criar conta, conectar Telegram, criar tarefa por comando, concluir, receber lembrete.
 
@@ -236,7 +241,7 @@ Nenhum item abaixo deve ser tratado como confirmado sem consultar a documentaç�
 
 1. `pg_cron` e `pg_net` disponíveis no plano gratuito do Supabase.
 2. **Pausa de projetos gratuitos por inatividade** (derrubaria os lembretes; o piloto real provavelmente exige plano pago).
-3. Onde hospedar a API para suportar uma chamada por minuto (Vercel como projeto separado ou serviço como Render/Fly).
+3. Onde hospedar a API para suportar uma chamada por minuto e processar mensagens dentro do orçamento de tempo (Vercel como projeto separado ou serviço como Render/Fly). Se for Vercel, o endpoint do agendador precisa ficar acessível sem a proteção de implantação; a segurança vem do segredo.
 4. Limites e política de uso da Vercel.
 5. Preço, limites e suporte a saída estruturada e a ferramentas do modelo de IA escolhido.
 6. Limites de envio de e-mail do Supabase Auth.
@@ -247,7 +252,7 @@ Nenhum item abaixo deve ser tratado como confirmado sem consultar a documentaç�
 
 ## 13. Custos (ordem de grandeza, a confirmar)
 
-APIs do Google: sem custo. Hospedagem e banco: gratuito na demo, até cerca de R$ 150/mês num piloto real. IA: custo variável por uso (de poucos reais a algumas dezenas por usuário/mês), reduzido pelo briefing sem IA e pelos limites de mensagens. WhatsApp: evitado por cobrar por conversa.
+APIs do Google: sem custo. Hospedagem e banco: gratuito na demo, até cerca de R$ 150/mês num piloto real. IA: custo variável por uso (de poucos reais a algumas dezenas por usuário/mês), reduzido pelo briefing sem IA e pelos limites de mensagens; configurar também um teto de gasto mensal no painel do provedor da IA. WhatsApp: evitado por cobrar por conversa.
 
 ---
 
@@ -258,4 +263,4 @@ APIs do Google: sem custo. Hospedagem e banco: gratuito na demo, até cerca de R
 3. Tipos de prazo processual e regras de contagem a suportar na calculadora (CPC, prazos em dobro, suspensões, recesso forense).
 4. Chats privados versus grupos no Telegram (assumido: apenas privado).
 5. Identidade visual e layout definitivo do painel.
-6. Estratégia de publicação e custos de infraestrutura para outros usuários.
+6. Estratégia de publicação e custos de infraestrutura para outros usuários, incluindo serviço de envio de e-mail (o do Supabase Auth tem limite baixo).
