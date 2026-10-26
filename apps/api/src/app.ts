@@ -11,7 +11,11 @@ export type AppDeps = {
 export function createApp(deps: AppDeps) {
   const app = new Hono<{ Variables: { userId: string } }>();
 
-  app.onError((_err, c) => c.json({ error: 'erro_interno' }, 500));
+  app.onError((err, c) => {
+    // Só o erro: nunca headers, token ou config. O cliente recebe a resposta genérica.
+    console.error('[api] erro não tratado', err);
+    return c.json({ error: 'erro_interno' }, 500);
+  });
 
   app.get('/health', (c) => c.json({ status: 'ok' }));
 

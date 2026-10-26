@@ -67,3 +67,50 @@ describe('calculateDeadline corridos', () => {
     ).toEqual({ dueDate: '2026-11-02', prorrogado: true, feriadosDescontados: [] });
   });
 });
+
+describe('calculateDeadline days guard', () => {
+  it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 366])('throws RangeError for days=%s', (days) => {
+    expect(() =>
+      calculateDeadline({ baseDate: d('2026-10-26'), days, countType: 'uteis', holidays: none }),
+    ).toThrow(RangeError);
+    expect(() =>
+      calculateDeadline({ baseDate: d('2026-10-26'), days, countType: 'corridos', holidays: none }),
+    ).toThrow(RangeError);
+  });
+  it('accepts the bounds 1 and 365', () => {
+    expect(
+      calculateDeadline({ baseDate: d('2026-10-26'), days: 1, countType: 'uteis', holidays: none }).dueDate,
+    ).toBe('2026-10-27');
+    expect(
+      calculateDeadline({ baseDate: d('2026-10-26'), days: 365, countType: 'corridos', holidays: none }).dueDate,
+    ).toBe('2027-10-26');
+  });
+});
+
+describe('calculateDeadline with a non-business baseDate', () => {
+  // 2026-11-01 is a Sunday; 2026-11-02 (Finados) is a Monday.
+  it('uteis from a Sunday starts counting on the next business day', () => {
+    // Mon 02, Tue 03, Wed 04, Thu 05, Fri 06.
+    expect(
+      calculateDeadline({ baseDate: d('2026-11-01'), days: 5, countType: 'uteis', holidays: none }),
+    ).toEqual({ dueDate: '2026-11-06', prorrogado: false, feriadosDescontados: [] });
+  });
+  it('uteis from a Sunday also skips a Monday holiday', () => {
+    // 02 is Finados: Tue 03, Wed 04, Thu 05, Fri 06, Mon 09.
+    expect(
+      calculateDeadline({ baseDate: d('2026-11-01'), days: 5, countType: 'uteis', holidays: finados }),
+    ).toEqual({ dueDate: '2026-11-09', prorrogado: false, feriadosDescontados: ['2026-11-02'] });
+  });
+  it('uteis from a weekday holiday excludes the start day and does not list it', () => {
+    // Base is Finados itself: Tue 03, Wed 04, Thu 05, Fri 06, Mon 09.
+    expect(
+      calculateDeadline({ baseDate: d('2026-11-02'), days: 5, countType: 'uteis', holidays: finados }),
+    ).toEqual({ dueDate: '2026-11-09', prorrogado: false, feriadosDescontados: [] });
+  });
+  it('corridos from a weekday holiday counts from the next day and does not list it', () => {
+    // 02 + 3 = Thu 05, a business day.
+    expect(
+      calculateDeadline({ baseDate: d('2026-11-02'), days: 3, countType: 'corridos', holidays: finados }),
+    ).toEqual({ dueDate: '2026-11-05', prorrogado: false, feriadosDescontados: [] });
+  });
+});
