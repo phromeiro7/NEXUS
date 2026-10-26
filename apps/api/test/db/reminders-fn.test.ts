@@ -144,8 +144,24 @@ describe('public.replace_pending_reminders', () => {
       await q('savepoint wrong_pair');
       await expect(
         q(REPLACE, [b, task, drafts(['no_dia', '2030-02-04T10:00:00Z'])]),
-      ).rejects.toMatchObject({ code: '23503' });
+      ).rejects.toMatchObject({ code: '23503', constraint: 'reminders_task_same_user_fkey' });
       await q('rollback to savepoint wrong_pair');
+      expect(await list(q, task)).toEqual(before);
+    });
+  });
+
+  it("(e2) another user's id with this task and an empty list deletes nothing", async () => {
+    const a = await createUser();
+    const b = await createUser();
+    await asServiceRole(async (q) => {
+      const task = await insertTask(q, a);
+      await insertReminder(q, a, task, 'antecipado', 'pendente', '2030-01-01T10:00:00Z');
+      await insertReminder(q, a, task, 'no_dia', 'pendente', '2030-01-02T10:00:00Z');
+      await insertReminder(q, a, task, 'tres_dias', 'enviado', '2030-01-03T10:00:00Z');
+      const before = await list(q, task);
+      expect(before).toHaveLength(3);
+      // No savepoint rollback: the call must resolve and leave the rows in place.
+      await q(REPLACE, [b, task, '[]']);
       expect(await list(q, task)).toEqual(before);
     });
   });
@@ -156,7 +172,7 @@ describe('public.replace_pending_reminders', () => {
       const task = await insertTask(q, a);
       await expect(
         q(REPLACE, [a, task, drafts(['invalido', '2030-02-04T10:00:00Z'])]),
-      ).rejects.toMatchObject({ code: '23514' });
+      ).rejects.toMatchObject({ code: '23514', constraint: 'reminders_kind_check' });
     });
   });
 
