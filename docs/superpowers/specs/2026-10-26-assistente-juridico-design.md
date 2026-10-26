@@ -163,6 +163,14 @@ Ao criar, editar ou alterar o prazo, o caso de uso apaga os lembretes pendentes 
 - **Garantia:** pelo menos uma vez; duplicata rara é possível. Não se promete "exatamente uma vez".
 - **Atraso:** enviado até 24h após o horário previsto, com marca "(atrasado)". Precisão alvo de cerca de um minuto, sem prometer segundos.
 
+### Contrato do enviador de lembretes (Plano 5)
+Regras que o enviador precisa cumprir, porque a API do Plano 2 depende delas:
+1. **Tarefa ainda viva:** antes de enviar, o enviador junta `tasks` e só envia se `deleted_at is null` e o status é `pendente` ou `em_andamento`; caso contrário, marca o lembrete como `cancelado`.
+2. **Reagendamento durante o envio:** ao terminar um lembrete `enviando`, se a data, a hora ou o `fatal` da tarefa mudaram desde a reserva, o enviador roda de novo a substituição dos lembretes dessa tarefa. `replace_pending_reminders` pula o rascunho cujo tipo está `enviando`; sem esse passo, uma remarcação feita durante o envio deixaria a tarefa sem lembrete para o novo horário.
+3. **Passado não é recriado:** a reconstrução nunca recria lembretes cujo instante já passou. Um lembrete `pendente` vencido (enviador fora do ar) é responsabilidade do enviador: envia atrasado, com a marca "(atrasado)", dentro da regra de 24h acima.
+4. **Tarefa só com data criada no próprio dia:** criada depois das 08h do dia do prazo, não ganha lembrete `no_dia` (o instante já passou); quem a cobre é o briefing.
+5. **Questão de produto em aberto (decidir antes do Plano 5):** hoje uma tarefa `fatal` COM hora recebe só `antecipado` e `no_horario` (sem 3 dias antes nem dia anterior). Confirmar se é o comportamento desejado.
+
 ### Briefing
 - **Painel:** no topo, calculado ao abrir, sem custo de IA.
 - **Telegram:** na hora configurada (padrão 08h, fuso do usuário), uma vez por dia local, não enviado se vazio.
