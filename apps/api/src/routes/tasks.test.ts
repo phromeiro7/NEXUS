@@ -1,36 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from 'vitest';
-import { createApp } from '../app.js';
-import { makeCalculateDeadline } from '../application/calculate-deadline.js';
-import { makeTaskUseCases } from '../application/tasks.js';
-import { createFakes } from '../../test/fakes.js';
+import { buildApp } from '../../test/harness.js';
+import type { makeTaskUseCases } from '../application/tasks.js';
 
 const MISSING = '11111111-1111-4111-8111-111111111111';
 
 function build(opts: { verifierThrows?: boolean; tasksOverride?: Partial<ReturnType<typeof makeTaskUseCases>> } = {}) {
-  const fakes = createFakes();
-  const calculateDeadline = makeCalculateDeadline({ holidays: fakes.holidays });
-  const tasks = {
-    ...makeTaskUseCases({
-      tasks: fakes.tasks,
-      cases: fakes.cases,
-      profiles: fakes.profiles,
-      reminders: fakes.reminders,
-      calculateDeadline,
-      clock: fakes.clock,
-    }),
-    ...opts.tasksOverride,
-  };
-  const app = createApp({
-    verifyToken: async (t) => {
-      if (opts.verifierThrows) throw new Error('auth provider fora do ar');
-      if (t === 'token-ok') return { userId: 'u1' };
-      if (t === 'token-u2') return { userId: 'u2' };
-      return null;
-    },
-    calculateDeadline,
-    tasks,
-  });
-  return { app, fakes };
+  return buildApp(opts);
 }
 
 type App = ReturnType<typeof build>['app'];

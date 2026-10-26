@@ -13,8 +13,21 @@ describe('loadConfig', () => {
   it('treats empty strings as missing', () => {
     expect(() => loadConfig({ ...base, SUPABASE_URL: '' })).toThrow(/SUPABASE_URL/);
   });
-  it('defaults port to 3000', () => {
-    expect(loadConfig(base)).toEqual({ supabaseUrl: 'http://x', serviceRoleKey: 'k', port: 3000 });
+  it('defaults port to 3001 and webOrigin to the panel at localhost:3000', () => {
+    expect(loadConfig(base)).toEqual({
+      supabaseUrl: 'http://x',
+      serviceRoleKey: 'k',
+      port: 3001,
+      webOrigin: 'http://localhost:3000',
+    });
+  });
+  it('reads WEB_ORIGIN, trimmed', () => {
+    expect(loadConfig({ ...base, WEB_ORIGIN: '  https://painel.example.com ' }).webOrigin).toBe(
+      'https://painel.example.com',
+    );
+  });
+  it.each(['', '   '])('treats an empty WEB_ORIGIN %j as the default', (v) => {
+    expect(loadConfig({ ...base, WEB_ORIGIN: v }).webOrigin).toBe('http://localhost:3000');
   });
   it('parses PORT as integer', () => {
     expect(loadConfig({ ...base, PORT: '8080' }).port).toBe(8080);
