@@ -18,6 +18,24 @@ pnpm test        # testes unitários, sem Docker
 pnpm typecheck
 ```
 
+## API
+
+A API escuta na porta **3001** por padrão (`PORT`); o painel Next.js usará a 3000.
+`WEB_ORIGIN` define a única origem de navegador autorizada por CORS (padrão
+`http://localhost:3000`; vazio usa o padrão). Todas as rotas, exceto `/health`,
+exigem `Authorization: Bearer <token>`. Veja `.env.example` para as variáveis.
+
+| Rota | Descrição |
+| --- | --- |
+| `GET /health` | Verificação de saúde (pública) |
+| `GET /me` | Usuário autenticado |
+| `POST /deadlines/calculate` | Calcula um prazo |
+| `GET/POST /tasks`, `GET/PATCH/DELETE /tasks/:id` | Tarefas |
+| `GET/POST /cases`, `GET/PATCH /cases/:id` | Processos (`GET /cases?status=ativo\|arquivado`) |
+| `GET/POST /holidays`, `DELETE /holidays/:id` | Feriados do usuário |
+| `GET/PATCH /settings` | Configurações (o `PATCH` reconstrói lembretes quando preciso) |
+| `GET /briefing` | Briefing diário |
+
 ## Banco local (testes de banco)
 
 O Supabase CLI é devDependency de `apps/api`. Na raiz do repositório:

@@ -1,25 +1,8 @@
-import { Hono, type Context, type MiddlewareHandler } from 'hono';
+import { Hono, type MiddlewareHandler } from 'hono';
 import { createTaskInputSchema, listTasksQuerySchema, updateTaskInputSchema } from '@aj/shared';
 import type { makeTaskUseCases } from '../application/tasks.js';
-import { NotFoundError } from '../application/errors.js';
 import { ValidationError } from '../http-errors.js';
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-async function readJson(c: Context): Promise<unknown> {
-  try {
-    return await c.req.json();
-  } catch {
-    throw new ValidationError([{ code: 'custom', path: [], message: 'Corpo JSON inválido ou ausente' }]);
-  }
-}
-
-/** Um id malformado é tratado como tarefa inexistente (mesma resposta), antes do caso de uso. */
-function taskId(c: Context): string {
-  const id = c.req.param('id') ?? '';
-  if (!UUID.test(id)) throw new NotFoundError('tarefa');
-  return id;
-}
+import { idParam, readJson } from './request.js';
 
 export function tasksRoutes(
   deps: { tasks: ReturnType<typeof makeTaskUseCases> },
@@ -45,17 +28,17 @@ export function tasksRoutes(
     return c.json(await deps.tasks.create(c.get('userId'), parsed.data), 201);
   });
 
-  routes.get('/:id', async (c) => c.json(await deps.tasks.get(c.get('userId'), taskId(c))));
+  routes.get('/:id', async (c) => c.json(await deps.tasks.get(c.get('userId'), idParam(c, 'tarefa'))));
 
   routes.patch('/:id', async (c) => {
-    const id = taskId(c);
+    const id = idParam(c, 'tarefa');
     const parsed = updateTaskInputSchema.safeParse(await readJson(c));
     if (!parsed.success) throw new ValidationError(parsed.error.issues);
     return c.json(await deps.tasks.update(c.get('userId'), id, parsed.data));
   });
 
   routes.delete('/:id', async (c) => {
-    await deps.tasks.remove(c.get('userId'), taskId(c));
+    await deps.tasks.remove(c.get('userId'), idParam(c, 'tarefa'));
     return c.body(null, 204);
   });
 

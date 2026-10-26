@@ -6,6 +6,11 @@ import { createApp } from '../app.js';
 import { makeCalculateDeadline } from '../application/calculate-deadline.js';
 import { getSupabaseEnv } from '../../test/db/supabase-env.js';
 import { createSupabaseAuthVerifier } from './supabase-auth.js';
+import { makeGetBriefing } from '../application/briefing.js';
+import { makeCaseUseCases } from '../application/cases.js';
+import { makeHolidayUseCases } from '../application/holidays.js';
+import { makeSettingsUseCases } from '../application/settings.js';
+import { makeSyncReminders } from '../application/sync-reminders.js';
 import { makeTaskUseCases } from '../application/tasks.js';
 import { createSupabaseCaseRepository } from './supabase-case-repository.js';
 import { createSupabaseHolidayRepository } from './supabase-holiday-repository.js';
@@ -41,17 +46,31 @@ async function makeUser(label: string) {
 const verifyToken = createSupabaseAuthVerifier(admin);
 const holidays = createSupabaseHolidayRepository(admin);
 const calculateDeadline = makeCalculateDeadline({ holidays });
+const taskRepo = createSupabaseTaskRepository(admin);
+const caseRepo = createSupabaseCaseRepository(admin);
+const profileRepo = createSupabaseProfileRepository(admin);
+const reminderRepo = createSupabaseReminderRepository(admin);
+const clock = { now: () => new Date() };
 const app = createApp({
   verifyToken,
   calculateDeadline,
   tasks: makeTaskUseCases({
-    tasks: createSupabaseTaskRepository(admin),
-    cases: createSupabaseCaseRepository(admin),
-    profiles: createSupabaseProfileRepository(admin),
-    reminders: createSupabaseReminderRepository(admin),
+    tasks: taskRepo,
+    cases: caseRepo,
+    profiles: profileRepo,
+    reminders: reminderRepo,
     calculateDeadline,
-    clock: { now: () => new Date() },
+    clock,
   }),
+  cases: makeCaseUseCases({ cases: caseRepo }),
+  holidays: makeHolidayUseCases({ holidays }),
+  settings: makeSettingsUseCases({
+    profiles: profileRepo,
+    tasks: taskRepo,
+    syncReminders: makeSyncReminders({ reminders: reminderRepo, clock }),
+  }),
+  briefing: makeGetBriefing({ tasks: taskRepo, profiles: profileRepo, clock }),
+  webOrigin: 'http://localhost:3000',
 });
 
 const calc = (headers: Record<string, string>) =>
