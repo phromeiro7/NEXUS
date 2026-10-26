@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { cors } from 'hono/cors';
 import {
   calculateDeadlineInputSchema,
@@ -35,7 +36,9 @@ export function createApp(deps: AppDeps) {
   const app = new Hono<{ Variables: { userId: string } }>();
 
   // CORS no app pai, antes de qualquer rota: o preflight é respondido antes da autenticação por rota.
-  // `origin` como função: só devolve a origem quando é exatamente a permitida (uma string fixa seria enviada a qualquer origem).
+  // O Hono instalado já compara uma `origin` string com a origem da requisição; a forma de função é
+  // mantida porque deixa a lista de permissão explícita e independente da versão do Hono.
+  // `deps.webOrigin` já vem normalizada por `loadConfig` (sem barra final nem caminho).
   app.use(
     '*',
     cors({
@@ -43,6 +46,12 @@ export function createApp(deps: AppDeps) {
       allowHeaders: ['Authorization', 'Content-Type'],
       allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     }),
+  );
+
+  // Limite de corpo depois do CORS e antes de qualquer rota: roda antes da autenticação e da leitura do corpo.
+  app.use(
+    '*',
+    bodyLimit({ maxSize: 64 * 1024, onError: (c) => c.json({ error: 'corpo_muito_grande' }, 413) }),
   );
 
   app.notFound((c) => c.json({ error: 'nao_encontrado' }, 404));

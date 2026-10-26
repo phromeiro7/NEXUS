@@ -26,6 +26,22 @@ describe('loadConfig', () => {
       'https://painel.example.com',
     );
   });
+  it('normalizes WEB_ORIGIN with a trailing slash to the bare origin', () => {
+    expect(loadConfig({ ...base, WEB_ORIGIN: 'https://painel.example.com/' }).webOrigin).toBe(
+      'https://painel.example.com',
+    );
+  });
+  it('drops a path from WEB_ORIGIN and keeps a non-default port', () => {
+    expect(loadConfig({ ...base, WEB_ORIGIN: 'http://localhost:3000/painel' }).webOrigin).toBe(
+      'http://localhost:3000',
+    );
+    expect(loadConfig({ ...base, WEB_ORIGIN: 'HTTPS://Painel.Example.com:8443/' }).webOrigin).toBe(
+      'https://painel.example.com:8443',
+    );
+  });
+  it.each(['not a url', 'localhost:3000', 'painel.example.com'])('rejects a WEB_ORIGIN %j that is not an absolute URL', (v) => {
+    expect(() => loadConfig({ ...base, WEB_ORIGIN: v })).toThrow(/WEB_ORIGIN/);
+  });
   it.each(['', '   '])('treats an empty WEB_ORIGIN %j as the default', (v) => {
     expect(loadConfig({ ...base, WEB_ORIGIN: v }).webOrigin).toBe('http://localhost:3000');
   });

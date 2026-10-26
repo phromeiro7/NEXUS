@@ -14,8 +14,19 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     if (port < 1 || port > 65535) throw new Error('PORT inválida: esperado um inteiro entre 1 e 65535');
   }
 
-  // Origem do painel autorizada por CORS; vazio significa o padrão.
-  const webOrigin = env.WEB_ORIGIN?.trim() || 'http://localhost:3000';
+  // Origem do painel autorizada por CORS; vazio significa o padrão. Normalizada para a forma que o
+  // navegador envia no header Origin (sem barra final nem caminho), senão nenhuma origem casaria.
+  const rawOrigin = env.WEB_ORIGIN?.trim() || 'http://localhost:3000';
+  let webOrigin: string;
+  try {
+    webOrigin = new URL(rawOrigin).origin;
+  } catch {
+    throw new Error('WEB_ORIGIN inválida: esperada uma URL absoluta, como https://painel.example.com');
+  }
+  // 'localhost:3000' é aceito por URL como esquema "localhost:", mas a origem resultante é opaca ('null').
+  if (webOrigin === 'null') {
+    throw new Error('WEB_ORIGIN inválida: esperada uma URL absoluta, como https://painel.example.com');
+  }
 
   return {
     supabaseUrl: env.SUPABASE_URL as string,
