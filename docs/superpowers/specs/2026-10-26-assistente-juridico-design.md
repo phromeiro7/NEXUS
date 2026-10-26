@@ -233,6 +233,8 @@ Cada etapa funciona sozinha e pode ser demonstrada.
 6. **Lembretes e briefing no Telegram:** fila, agendador, recuperação de falhas.
 7. **Acabamento:** design, avaliação da IA, ajustes de custo, revisão de segurança.
 
+**Divisão em planos de implementação.** As etapas acima viram seis planos: 1) fundação e domínio (concluído); 2) API de tarefas, processos e configurações; 3) painel Next.js (login, visões, formulários); 4) assistente de IA e briefing em texto; 5) Telegram, envio de lembretes e agendador; 6) acabamento e avaliação da IA. O painel só conversa com a API (§4.2), por isso a API de tarefas precede o painel.
+
 ---
 
 ## 12. Verificações obrigatórias antes de implementar
