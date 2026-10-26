@@ -10,7 +10,10 @@ create table public.profiles (
   last_briefing_sent_on date,
   telegram_chat_id bigint unique,
   channel_paused boolean not null default false,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  constraint profiles_uf_check check (uf is null or char_length(uf) = 2),
+  constraint profiles_early_reminder_minutes_check
+    check (early_reminder_minutes is null or early_reminder_minutes >= 0)
 );
 
 create function public.handle_new_user() returns trigger
@@ -82,6 +85,7 @@ create table public.tasks (
   constraint tasks_status_check check (status in ('pendente', 'em_andamento', 'concluida', 'cancelada')),
   constraint tasks_source_check check (source in ('painel', 'telegram')),
   constraint tasks_count_type_check check (count_type is null or count_type in ('uteis', 'corridos')),
+  constraint tasks_period_days_check check (period_days is null or period_days > 0),
   constraint tasks_due_time_needs_date_check check (due_time is null or due_date is not null)
 );
 
@@ -107,10 +111,18 @@ create table public.reminders (
   created_at timestamptz not null default now(),
   constraint reminders_task_same_user_fkey foreign key (task_id, user_id)
     references public.tasks (id, user_id) on delete cascade,
+  -- Must equal REMINDER_KINDS in apps/api/src/domain/reminders.ts (unit test enforces it).
+  constraint reminders_kind_check check (kind in ('tres_dias', 'dia_anterior', 'no_dia', 'antecipado', 'no_horario')),
   constraint reminders_status_check check (status in ('pendente', 'enviando', 'enviado', 'falhou', 'cancelado'))
 );
 
 create index reminders_status_scheduled_idx on public.reminders (status, scheduled_at);
+
+-- At most one active reminder per (task, kind). Partial, so a kind can be
+-- regenerated after an earlier one was sent, failed or cancelled.
+create unique index reminders_task_kind_active_key
+  on public.reminders (task_id, kind)
+  where status in ('pendente', 'enviando');
 
 create table public.holidays (
   id uuid primary key default gen_random_uuid(),
@@ -128,12 +140,14 @@ create table public.inbound_events (
   channel text not null,
   external_id text not null,
   user_id uuid references public.profiles(id) on delete cascade,
-  status text not null default 'pendente',
+  status text not null default 'recebido',
   received_at timestamptz not null default now(),
   processed_at timestamptz,
   attempt_count int not null default 0,
   created_at timestamptz not null default now(),
-  constraint inbound_events_channel_external_id_key unique (channel, external_id)
+  constraint inbound_events_channel_external_id_key unique (channel, external_id),
+  constraint inbound_events_channel_check check (channel in ('telegram', 'painel')),
+  constraint inbound_events_status_check check (status in ('recebido', 'processando', 'processado', 'falhou'))
 );
 
 create table public.chat_messages (
@@ -144,6 +158,7 @@ create table public.chat_messages (
   content text not null,
   expires_at timestamptz not null default now() + interval '24 hours',
   created_at timestamptz not null default now(),
+  constraint chat_messages_channel_check check (channel in ('telegram', 'painel')),
   constraint chat_messages_role_check check (role in ('user', 'assistant'))
 );
 
@@ -160,5 +175,6 @@ create table public.task_confirmations (
   message_id bigint not null,
   task_id uuid not null references public.tasks(id) on delete cascade,
   created_at timestamptz not null default now(),
-  primary key (channel, chat_id, message_id, task_id)
+  primary key (channel, chat_id, message_id, task_id),
+  constraint task_confirmations_channel_check check (channel in ('telegram', 'painel'))
 );
