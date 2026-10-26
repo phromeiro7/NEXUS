@@ -60,6 +60,11 @@ que falhou). `skipped` lista as tarefas (`id`, `title`, `reason`: `hora_inexiste
 os lembretes calculados com o fuso/antecedência anteriores**, e o painel deve avisar o
 usuário usando `skipped`. `remindersSkipped` é `skipped.length`.
 
+A API só grava a fila de lembretes; o envio é do Plano 5. As regras que o enviador
+precisa cumprir (tarefa ainda viva, reagendamento durante o envio, lembretes vencidos,
+tarefa criada no próprio dia, `fatal` com hora) estão em "Contrato do enviador de
+lembretes (Plano 5)", §7 de `docs/superpowers/specs/2026-10-26-assistente-juridico-design.md`.
+
 ## Banco local (testes de banco)
 
 O Supabase CLI é devDependency de `apps/api`. Na raiz do repositório:
