@@ -1,3 +1,5 @@
+> **Substituída por** `docs/superpowers/specs/2026-10-26-assistente-juridico-design.md`. Mantida só como histórico.
+
 # Assistente pessoal de tarefas (Telegram + painel web) — Design
 
 Data: 2026-10-22
