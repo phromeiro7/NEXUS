@@ -4,5 +4,6 @@ export default defineConfig({
   test: {
     include: ['**/*.db.test.ts', 'test/db/**/*.test.ts'],
     exclude: ['**/node_modules/**', '**/dist/**'],
+    fileParallelism: false,
   },
 });
