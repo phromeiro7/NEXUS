@@ -22,8 +22,11 @@ pnpm typecheck
 
 A API escuta na porta **3001** por padrão (`PORT`); o painel Next.js usará a 3000.
 `WEB_ORIGIN` define a única origem de navegador autorizada por CORS (padrão
-`http://localhost:3000`; vazio usa o padrão). Todas as rotas, exceto `/health`,
-exigem `Authorization: Bearer <token>`. Veja `.env.example` para as variáveis.
+`http://localhost:3000`; vazio usa o padrão). O valor é normalizado para a origem
+(`https://painel.example.com/` vira `https://painel.example.com`; caminho é
+descartado) e a API não sobe se ele não for uma URL absoluta. Todas as rotas, exceto `/health`,
+exigem `Authorization: Bearer <token>`. Corpos acima de 64 KB são recusados antes da
+autenticação. Veja `.env.example` para as variáveis.
 
 | Rota | Descrição |
 | --- | --- |
@@ -35,6 +38,18 @@ exigem `Authorization: Bearer <token>`. Veja `.env.example` para as variáveis.
 | `GET/POST /holidays`, `DELETE /holidays/:id` | Feriados do usuário |
 | `GET/PATCH /settings` | Configurações (o `PATCH` reconstrói lembretes quando preciso) |
 | `GET /briefing` | Briefing diário |
+
+Erros respondem JSON `{ error: <código>, ... }`:
+
+| Código | Status | Quando |
+| --- | --- | --- |
+| `entrada_invalida` | 400 | Corpo, query ou parâmetro inválido |
+| `nao_autenticado` | 401 | Token ausente ou inválido |
+| `nao_encontrado` | 404 | Recurso inexistente ou de outro usuário |
+| `numero_ja_cadastrado`, `feriado_ja_cadastrado`, `tarefa_encerrada`, `transicao_invalida` | 409 | Conflito |
+| `corpo_muito_grande` | 413 | Corpo da requisição acima de 64 KB (verificado antes da autenticação) |
+| `hora_invalida` | 422 | Hora local inexistente ou ambígua no fuso do usuário (`reason`) |
+| `erro_interno` | 500 | Erro inesperado (detalhes só no log do servidor) |
 
 `PATCH /settings` responde `{ settings, remindersRebuilt, remindersSkipped, skipped }`
 (`UpdateSettingsResultDto` em `@aj/shared`). Sempre que o corpo traz `timezone` ou

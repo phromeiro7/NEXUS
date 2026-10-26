@@ -173,6 +173,61 @@ describe('app', () => {
     });
   });
 
+  describe('body limit (64 KB)', () => {
+    // ~70 KB de JSON válido, acima do limite.
+    const bigBody = JSON.stringify({ title: 'Grande', notes: 'x'.repeat(70 * 1024) });
+
+    it('a 70 KB body to POST /tasks with a valid token is 413 corpo_muito_grande and creates nothing', async () => {
+      const { app, fakes } = buildApp();
+      expect(bigBody.length).toBeGreaterThan(64 * 1024);
+      const res = await app.request('/tasks', { method: 'POST', headers: auth, body: bigBody });
+      expect(res.status).toBe(413);
+      expect(await res.json()).toEqual({ error: 'corpo_muito_grande' });
+      expect(await fakes.tasks.list('u1', {})).toEqual([]);
+    });
+
+    it('the limit runs before auth: the same body without a token is 413, not 401', async () => {
+      const { app, fakes } = buildApp();
+      const res = await app.request('/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: bigBody,
+      });
+      expect(res.status).toBe(413);
+      expect(await res.json()).toEqual({ error: 'corpo_muito_grande' });
+      expect(await fakes.tasks.list('u1', {})).toEqual([]);
+    });
+
+    it('a normal-size body still works', async () => {
+      const { app, fakes } = buildApp();
+      const res = await app.request('/tasks', {
+        method: 'POST',
+        headers: auth,
+        body: JSON.stringify({ title: 'Pequena', dueDate: '2026-10-30' }),
+      });
+      expect(res.status).toBe(201);
+      expect((await fakes.tasks.list('u1', {})).map((t) => t.title)).toEqual(['Pequena']);
+    });
+
+    it('GET requests are unaffected', async () => {
+      const res = await build().app.request('/tasks', { headers: auth });
+      expect(res.status).toBe(200);
+    });
+
+    it('a preflight is unaffected', async () => {
+      const res = await build().app.request('/tasks', {
+        method: 'OPTIONS',
+        headers: {
+          Origin: WEB_ORIGIN,
+          'Access-Control-Request-Method': 'POST',
+          'Access-Control-Request-Headers': 'authorization,content-type',
+        },
+      });
+      expect(res.status).toBe(204);
+      expect(res.headers.get('access-control-allow-origin')).toBe(WEB_ORIGIN);
+    });
+  });
+
   describe('notFound', () => {
     it('an unknown path returns JSON 404 with and without a token', async () => {
       const { app } = build();
