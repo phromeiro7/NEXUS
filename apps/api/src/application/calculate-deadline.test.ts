@@ -83,4 +83,17 @@ describe('makeCalculateDeadline', () => {
     expect(out.dueDate).toBe('2026-11-03');
     expect(out.prorrogado).toBe(true);
   });
+
+  // Callers other than the HTTP route (AI tools, bot, jobs) skip the zod schema;
+  // Infinity used to hang the year loop.
+  it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 366])(
+    'rejects days=%s with RangeError without calling the repository',
+    async (days) => {
+      const { repo, calls } = fakeRepo();
+      await expect(
+        makeCalculateDeadline({ holidays: repo })('u1', { baseDate: d('2026-10-26'), days, countType: 'uteis' }),
+      ).rejects.toThrow(RangeError);
+      expect(calls).toHaveLength(0);
+    },
+  );
 });

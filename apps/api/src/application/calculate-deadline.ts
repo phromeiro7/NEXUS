@@ -1,5 +1,5 @@
 import type { CalculateDeadlineInput, Holiday, IsoDate } from '@aj/shared';
-import { calculateDeadline } from '../domain/deadline.js';
+import { assertValidDeadlineDays, calculateDeadline } from '../domain/deadline.js';
 import { nationalHolidays } from '../domain/holidays.js';
 import type { HolidayRepository } from './ports.js';
 
@@ -11,6 +11,8 @@ export type CalculateDeadlineOutput = {
 
 export function makeCalculateDeadline(deps: { holidays: HolidayRepository }) {
   return async (userId: string, input: CalculateDeadlineInput): Promise<CalculateDeadlineOutput> => {
+    // Antes de calcular o intervalo de anos: Infinity aqui travaria o laço abaixo.
+    assertValidDeadlineDays(input.days);
     const firstYear = Number(input.baseDate.slice(0, 4));
     const lastYear = firstYear + Math.ceil(input.days / 200) + 1;
 
@@ -29,9 +31,12 @@ export function makeCalculateDeadline(deps: { holidays: HolidayRepository }) {
     return {
       dueDate: result.dueDate,
       prorrogado: result.prorrogado,
-      feriadosDescontados: result.feriadosDescontados.map(
-        (date) => byDate.get(date) ?? { date, name: 'Feriado' },
-      ),
+      feriadosDescontados: result.feriadosDescontados.map((date) => {
+        const holiday = byDate.get(date);
+        // O domínio só devolve datas do conjunto montado a partir de byDate.
+        if (!holiday) throw new Error(`invariante violada: holiday date missing from byDate (${date})`);
+        return holiday;
+      }),
     };
   };
 }

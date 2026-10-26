@@ -16,8 +16,24 @@ export interface DeadlineResult {
   feriadosDescontados: IsoDate[];
 }
 
+export const MIN_DEADLINE_DAYS = 1;
+export const MAX_DEADLINE_DAYS = 365;
+
+/**
+ * Lança `RangeError` se `days` não for inteiro em 1..365. Protege quem chama sem
+ * passar pelo schema HTTP (NaN/Infinity travariam os laços de contagem).
+ */
+export function assertValidDeadlineDays(days: number): void {
+  if (!Number.isInteger(days) || days < MIN_DEADLINE_DAYS || days > MAX_DEADLINE_DAYS) {
+    throw new RangeError(
+      `days deve ser inteiro entre ${MIN_DEADLINE_DAYS} e ${MAX_DEADLINE_DAYS}; recebido: ${days}`,
+    );
+  }
+}
+
 export function calculateDeadline(input: DeadlineInput): DeadlineResult {
   const { baseDate, days, countType, holidays } = input;
+  assertValidDeadlineDays(days);
   let dueDate: IsoDate;
   let prorrogado = false;
 
