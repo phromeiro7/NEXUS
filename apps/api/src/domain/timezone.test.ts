@@ -101,6 +101,29 @@ describe('localToUtc', () => {
     }
   });
 
+  it('throws RangeError for calendar-invalid or malformed dates', () => {
+    for (const dt of ['2026-02-31', '2027-02-29', '2026-1-5', '2026-13-01', '2026-00-10', '']) {
+      expect(() => localToUtc(d(dt), '09:00', 'America/Sao_Paulo')).toThrow(RangeError);
+    }
+  });
+
+  it('still converts a valid leap day', () => {
+    expect(iso(localToUtc(d('2028-02-29'), '09:00', 'America/Sao_Paulo'))).toBe(
+      '2028-02-29T12:00:00.000Z',
+    );
+  });
+
+  it('flags the last minute of the gap and of the overlap', () => {
+    expect(localToUtc(d('2026-03-08'), '02:59', 'America/New_York')).toEqual({
+      ok: false,
+      reason: 'hora_inexistente',
+    });
+    expect(localToUtc(d('2026-11-01'), '01:59', 'America/New_York')).toEqual({
+      ok: false,
+      reason: 'hora_ambigua',
+    });
+  });
+
   it('throws RangeError for an unknown time zone', () => {
     expect(() => localToUtc(d('2026-10-27'), '09:00', 'Mars/Olympus')).toThrow(RangeError);
   });
