@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Holiday, HolidayDto, IsoDate } from '@aj/shared';
 import { ConflictError } from '../application/errors.js';
 import type { HolidayAdminRepository, HolidayRepository } from '../application/ports.js';
+import { INVALID_TEXT_REPRESENTATION, isUuid } from './mappers.js';
 
 const UNIQUE_VIOLATION = '23505';
 
@@ -54,12 +55,14 @@ export function createSupabaseHolidayRepository(
     },
 
     async remove(userId, id) {
+      if (!isUuid(id)) return false;
       const { data, error } = await client
         .from('holidays')
         .delete()
         .eq('user_id', userId)
         .eq('id', id)
         .select('id');
+      if (error?.code === INVALID_TEXT_REPRESENTATION) return false;
       if (error) throw new Error(`Falha ao remover feriado: ${error.message}`);
       return (data ?? []).length > 0;
     },

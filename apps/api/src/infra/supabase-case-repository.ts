@@ -1,18 +1,20 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { ConflictError } from '../application/errors.js';
 import type { CaseRepository } from '../application/ports.js';
-import { CASE_COLUMNS, caseFromRow, definedOnly } from './mappers.js';
+import { CASE_COLUMNS, INVALID_TEXT_REPRESENTATION, caseFromRow, definedOnly, isUuid } from './mappers.js';
 
 const UNIQUE_VIOLATION = '23505';
 
 export function createSupabaseCaseRepository(client: SupabaseClient): CaseRepository {
   const get: CaseRepository['get'] = async (userId, id) => {
+    if (!isUuid(id)) return null;
     const { data, error } = await client
       .from('cases')
       .select(CASE_COLUMNS)
       .eq('user_id', userId)
       .eq('id', id)
       .maybeSingle();
+    if (error?.code === INVALID_TEXT_REPRESENTATION) return null;
     if (error) throw new Error(`Falha ao buscar processo: ${error.message}`);
     return data ? caseFromRow(data) : null;
   };
@@ -47,6 +49,7 @@ export function createSupabaseCaseRepository(client: SupabaseClient): CaseReposi
     },
 
     async update(userId, id, patch) {
+      if (!isUuid(id)) return null;
       const values = definedOnly({
         number: patch.number,
         client_name: patch.clientName,
@@ -62,6 +65,7 @@ export function createSupabaseCaseRepository(client: SupabaseClient): CaseReposi
         .select(CASE_COLUMNS)
         .maybeSingle();
       if (error) {
+        if (error.code === INVALID_TEXT_REPRESENTATION) return null;
         if (error.code === UNIQUE_VIOLATION) throw new ConflictError('numero_ja_cadastrado');
         throw new Error(`Falha ao atualizar processo: ${error.message}`);
       }

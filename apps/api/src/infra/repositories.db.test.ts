@@ -313,3 +313,23 @@ describe('reminder repository', () => {
     expect(await stored(B, bTask.id)).toHaveLength(1);
   });
 });
+
+describe('malformed and unknown ids are "not found"', () => {
+  it.each([['malformed', 'abc'], ['well-formed but nonexistent', randomUUID()]])(
+    '%s id: null/false/[] without throwing',
+    async (_label, bad) => {
+      await tasks.create(A, newTask({ title: 'presente' }));
+      await tasks.create(B, newTask({ title: 'presente B' }));
+      await cases.create(B, { number: `X-${randomUUID()}` });
+      const now = new Date();
+
+      expect(await tasks.get(A, bad)).toBeNull();
+      expect(await tasks.update(A, bad, { title: 'x' })).toBeNull();
+      expect(await tasks.softDelete(A, bad, now)).toBe(false);
+      expect(await cases.get(A, bad)).toBeNull();
+      expect(await cases.update(A, bad, { clientName: 'x' })).toBeNull();
+      expect(await holidays.remove(A, bad)).toBe(false);
+      expect(await tasks.list(A, { caseId: bad })).toEqual([]);
+    },
+  );
+});
