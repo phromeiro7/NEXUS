@@ -110,18 +110,18 @@ Todas as tabelas de usuário têm `user_id` e RLS.
 | `cases` | Processos | número, cliente (texto), descrição, status |
 | `tasks` | Prazos e tarefas | título, tipo (`prazo`, `tarefa`, `audiencia`), status, `due_date`, `due_time` (nulo), fatal, `case_id` (nulo), origem, regra de cálculo (data base, dias, úteis/corridos), `completed_at`, `deleted_at` |
 | `reminders` | Fila de lembretes | `task_id`, tipo, `scheduled_at` (timestamptz), status, tentativas, último erro, enviado em |
-| `holidays` | Feriados | data, escopo (nacional/estadual/municipal), UF, cidade, nome |
+| `holidays` | Feriados locais cadastrados pelo usuário | `user_id`, data, escopo (estadual/municipal), nome |
 | `inbound_events` | Idempotência | canal, id externo, status; único `(canal, id externo)` |
 | `chat_messages` | Contexto curto | usuário, canal, papel, texto, `expires_at` (24h) |
 | `link_codes` | Vínculo Telegram | código de uso único, `user_id`, validade de 10 min |
-| `task_confirmations` | Liga cada confirmação enviada pelo bot às tarefas criadas ou alteradas | `channel`, `chat_id`, `message_id`, `task_id`; único `(channel, chat_id, message_id)` |
+| `task_confirmations` | Liga cada confirmação enviada pelo bot às tarefas criadas ou alteradas | `channel`, `chat_id`, `message_id`, `task_id`; chave `(channel, chat_id, message_id, task_id)`, pois uma confirmação pode cobrir várias tarefas |
 
 **Estados de tarefa:** `pendente`, `em_andamento`, `concluida`, `cancelada`. Exclusão é lógica (`deleted_at`).
 **Estados de lembrete:** `pendente`, `enviando`, `enviado`, `falhou`, `cancelado`.
 
 **Datas:** prazos jurídicos são datas ("até o dia X"), por isso `due_date` + `due_time` opcional, evitando erros de fuso e horário de verão. Lembretes guardam o instante absoluto, calculado a partir do fuso do usuário. Se uma hora local não existir ou ocorrer duas vezes, o sistema pergunta e não converte silenciosamente.
 
-**Feriados:** tabela populada com os nacionais; estaduais e municipais são completados pelo usuário.
+**Feriados:** os nacionais são **calculados no código** (alguns, como a Sexta-feira Santa, dependem da Páscoa) e não ficam na tabela; a tabela guarda só os estaduais e municipais que o usuário cadastra. Carnaval e Corpus Christi são ponto facultativo e entram como feriado local quando o tribunal os adota.
 
 ---
 
