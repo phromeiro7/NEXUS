@@ -169,6 +169,7 @@ describe('tasks with a time and settings changes (user A)', () => {
     expect(res.status).toBe(200);
     expect(res.json.settings.earlyReminderMinutes).toBe(30);
     expect(res.json.remindersSkipped).toBe(0);
+    expect(res.json.skipped).toEqual([]);
     expect(count).toBeGreaterThanOrEqual(1);
     expect(res.json.remindersRebuilt).toBe(count);
     expect(await reminders(hearingId)).toEqual([
@@ -206,6 +207,7 @@ describe('impossible local time (user C)', () => {
   it('rejects a nonexistent local time with 422 and creates nothing', async () => {
     const s = await call(c, 'PATCH', '/settings', { timezone: 'America/New_York' });
     expect(s.status).toBe(200);
+    expect(s.json).toMatchObject({ remindersRebuilt: 0, remindersSkipped: 0, skipped: [] });
     // 2027-03-01 is a Monday (2027-01-01 is a Friday + 59 days), so the Sundays of
     // March 2027 are 7 and 14: DST starts on the 14th and 02:00-03:00 does not exist.
     // The date is after the fixed clock (2026-10-26).
@@ -404,6 +406,7 @@ describe('injected clock reaches every consumer (user D, early clock)', () => {
     const s = await callEarly('PATCH', '/settings', { earlyReminderMinutes: 30 });
     expect(s.status).toBe(200);
     expect(s.json.remindersRebuilt).toBe(2);
+    expect(s.json.skipped).toEqual([]);
     // 12:00Z - 30 min. With the real clock this is in the past and would be dropped.
     expect(await reminders(timedId)).toEqual([
       { kind: 'antecipado', at: '2026-01-06T11:30:00.000Z', status: 'pendente' },

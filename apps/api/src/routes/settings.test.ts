@@ -38,12 +38,27 @@ describe('settings routes', () => {
       settings: { ...defaults, earlyReminderMinutes: 30 },
       remindersRebuilt: 1,
       remindersSkipped: 0,
+      skipped: [],
     });
     // 10:00 em Sao Paulo (UTC-3) = 13:00Z; 30 min antes = 12:30Z
     expect(fakes.reminders.remindersFor(t.id, 'u1')).toEqual([
       { kind: 'antecipado', scheduledAt: new Date('2026-10-30T12:30:00.000Z') },
       { kind: 'no_horario', scheduledAt: new Date('2026-10-30T13:00:00.000Z') },
     ]);
+  });
+
+  it('PATCH lists the tasks whose time is invalid in the new zone under skipped', async () => {
+    const { app, fakes } = buildApp({ now: new Date('2026-03-01T12:00:00Z') });
+    const gap = await fakes.tasks.create('u1', newTask('Reuniao', { dueDate: '2026-03-08', dueTime: '02:30' }));
+
+    const res = await req(app, 'PATCH', '/settings', { timezone: 'America/New_York' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      settings: { ...defaults, timezone: 'America/New_York' },
+      remindersRebuilt: 0,
+      remindersSkipped: 1,
+      skipped: [{ id: gap.id, title: 'Reuniao', reason: 'hora_inexistente' }],
+    });
   });
 
   it('PATCH changes only the caller settings', async () => {

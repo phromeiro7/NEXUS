@@ -83,13 +83,60 @@ describe('settings.update', () => {
     ]);
   });
 
-  it('saving the same values again rebuilds nothing', async () => {
-    const { fakes, uc, seed } = setup();
-    await seed(U1, task('t', { dueDate: '2026-10-27', dueTime: '09:00' }));
+  it('re-sending the same earlyReminderMinutes after a failed rebuild completes the rebuild', async () => {
+    const { fakes, uc, seed, instants } = setup();
+    const a = await seed(U1, task('a', { dueDate: '2026-10-27', dueTime: '09:00' }));
+    const b = await seed(U1, task('b', { dueDate: '2026-10-30', fatal: true }));
+
+    // 1ª chamada: o perfil é gravado com 30, mas a reconstrução falha no primeiro replacePending.
+    fakes.reminders.failNextReplace();
+    await expect(uc.update(U1, { earlyReminderMinutes: 30 })).rejects.toThrow('replace failed');
+    expect((await uc.get(U1)).earlyReminderMinutes).toBe(30);
+    expect(instants(a.id, U1)).toEqual([
+      'antecipado 2026-10-27T11:45:00.000Z',
+      'no_horario 2026-10-27T12:00:00.000Z',
+    ]);
     const before = fakes.reminders.calls.length;
-    const result = await uc.update(U1, { earlyReminderMinutes: 15, timezone: 'America/Sao_Paulo' });
-    expect(result).toMatchObject({ remindersRebuilt: 0, remindersSkipped: 0 });
-    expect(fakes.reminders.calls.length).toBe(before);
+
+    // 2ª chamada com o MESMO valor: precisa reconstruir tudo.
+    const result = await uc.update(U1, { earlyReminderMinutes: 30 });
+
+    expect(result).toEqual({
+      settings: expect.objectContaining({ earlyReminderMinutes: 30 }),
+      remindersRebuilt: 2,
+      remindersSkipped: 0,
+      skipped: [],
+    });
+    expect(fakes.reminders.calls.slice(before).map((c) => c.taskId)).toEqual([a.id, b.id]);
+    expect(instants(a.id, U1)).toEqual([
+      'antecipado 2026-10-27T11:30:00.000Z',
+      'no_horario 2026-10-27T12:00:00.000Z',
+    ]);
+    expect(instants(b.id, U1)).toEqual([
+      'tres_dias 2026-10-27T11:00:00.000Z',
+      'dia_anterior 2026-10-29T11:00:00.000Z',
+      'no_dia 2026-10-30T11:00:00.000Z',
+    ]);
+  });
+
+  it('re-sending the same value on a healthy account is harmless: it rebuilds again, with identical instants and the same counts', async () => {
+    const { fakes, uc, seed, instants } = setup();
+    const a = await seed(U1, task('a', { dueDate: '2026-10-27', dueTime: '09:00' }));
+    const b = await seed(U1, task('b', { dueDate: '2026-10-30' }));
+    const first = await uc.update(U1, { earlyReminderMinutes: 15, timezone: 'America/Sao_Paulo' });
+    const snapshot = [instants(a.id, U1), instants(b.id, U1)];
+    const before = fakes.reminders.calls.length;
+
+    const second = await uc.update(U1, { earlyReminderMinutes: 15, timezone: 'America/Sao_Paulo' });
+
+    expect(first).toMatchObject({ remindersRebuilt: 2, remindersSkipped: 0, skipped: [] });
+    expect(second).toEqual(first);
+    expect(fakes.reminders.calls.length).toBe(before + 2);
+    expect([instants(a.id, U1), instants(b.id, U1)]).toEqual(snapshot);
+    expect(instants(a.id, U1)).toEqual([
+      'antecipado 2026-10-27T11:45:00.000Z',
+      'no_horario 2026-10-27T12:00:00.000Z',
+    ]);
   });
 
   it('changing only city, uf or briefingTime makes no replacePending call', async () => {
@@ -98,7 +145,7 @@ describe('settings.update', () => {
     const before = fakes.reminders.calls.length;
     const result = await uc.update(U1, { city: 'Recife', uf: 'PE', briefingTime: '07:30' });
     expect(result.settings).toMatchObject({ city: 'Recife', uf: 'PE', briefingTime: '07:30' });
-    expect(result).toMatchObject({ remindersRebuilt: 0, remindersSkipped: 0 });
+    expect(result).toMatchObject({ remindersRebuilt: 0, remindersSkipped: 0, skipped: [] });
     expect(fakes.reminders.calls.length).toBe(before);
   });
 
@@ -118,6 +165,7 @@ describe('settings.update', () => {
 
     expect(result.settings.timezone).toBe('America/New_York');
     expect(result.remindersSkipped).toBe(1);
+    expect(result.skipped).toEqual([{ id: gap.id, title: 'gap', reason: 'hora_inexistente' }]);
     expect(result.remindersRebuilt).toBe(1);
     expect(fakes.reminders.calls.length).toBe(before + 1);
     expect(instants(normal.id, U1)).toEqual([

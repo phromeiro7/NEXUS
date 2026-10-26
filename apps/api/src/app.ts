@@ -1,6 +1,11 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { calculateDeadlineInputSchema, type BriefingDto } from '@aj/shared';
+import {
+  calculateDeadlineInputSchema,
+  type BriefingDto,
+  type CalculateDeadlineResultDto,
+  type MeDto,
+} from '@aj/shared';
 import { authMiddleware, type AuthVerifier } from './auth.js';
 import type { makeCalculateDeadline } from './application/calculate-deadline.js';
 import type { makeCaseUseCases } from './application/cases.js';
@@ -53,7 +58,10 @@ export function createApp(deps: AppDeps) {
 
   const auth = authMiddleware(deps.verifyToken);
 
-  app.get('/me', auth, (c) => c.json({ userId: c.get('userId') }));
+  app.get('/me', auth, (c) => {
+    const me: MeDto = { userId: c.get('userId') };
+    return c.json(me);
+  });
 
   app.post('/deadlines/calculate', auth, async (c) => {
     let body: unknown;
@@ -67,7 +75,8 @@ export function createApp(deps: AppDeps) {
       return c.json({ error: 'entrada_invalida', issues: parsed.error.issues }, 400);
     }
     // userId vem só do token verificado, nunca do corpo.
-    return c.json(await deps.calculateDeadline(c.get('userId'), parsed.data));
+    const result: CalculateDeadlineResultDto = await deps.calculateDeadline(c.get('userId'), parsed.data);
+    return c.json(result);
   });
 
   app.route('/tasks', tasksRoutes({ tasks: deps.tasks }, auth));
