@@ -9,7 +9,9 @@ export class HoraInvalidaError extends Error {
   }
 }
 
-export type ReminderKind = 'tres_dias' | 'dia_anterior' | 'no_dia' | 'antecipado' | 'no_horario';
+/** Fonte única dos tipos de lembrete; `reminders_kind_check` na migration deve listar exatamente estes. */
+export const REMINDER_KINDS = ['tres_dias', 'dia_anterior', 'no_dia', 'antecipado', 'no_horario'] as const;
+export type ReminderKind = (typeof REMINDER_KINDS)[number];
 export type ReminderDraft = { kind: ReminderKind; scheduledAt: Date };
 
 const DEFAULT_TIME = '08:00';
