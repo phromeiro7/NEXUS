@@ -18,7 +18,11 @@ export type AuthClient = {
     };
     signInWithPassword(c: { email: string; password: string }): Promise<AuthResponse>;
     signUp(c: { email: string; password: string }): Promise<AuthResponse>;
-    resetPasswordForEmail(email: string): Promise<{ error: AuthApiError | null }>;
+    resetPasswordForEmail(
+      email: string,
+      o?: { redirectTo?: string },
+    ): Promise<{ error: AuthApiError | null }>;
+    updateUser(attrs: { password: string }): Promise<{ error: AuthApiError | null }>;
     signOut(o?: { scope: "local" | "global" | "others" }): Promise<{ error: AuthApiError | null }>;
   };
 };
