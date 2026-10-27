@@ -34,6 +34,8 @@ export function DeadlineCalculator() {
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (busy.current) return;
+    setShown(null);
+    setCreating(false);
     const parsed = calculateDeadlineInputSchema.safeParse({
       baseDate,
       days: days.trim() === "" ? Number.NaN : Number(days),
@@ -46,7 +48,6 @@ export function DeadlineCalculator() {
     busy.current = true;
     setPending(true);
     setError(null);
-    setCreating(false);
     try {
       const result = await api.calculateDeadline(parsed.data);
       setShown({ rule: parsed.data, result });
@@ -58,6 +59,12 @@ export function DeadlineCalculator() {
       setPending(false);
     }
   }
+
+  /** Qualquer edição invalida o resultado exibido e fecha o painel de criação. */
+  const edited = () => {
+    setShown(null);
+    setCreating(false);
+  };
 
   const id = (name: string) => `${uid}-${name}`;
 
@@ -73,7 +80,10 @@ export function DeadlineCalculator() {
               id={id("base")}
               type="date"
               value={baseDate}
-              onChange={(e) => setBaseDate(e.target.value)}
+              onChange={(e) => {
+                setBaseDate(e.target.value);
+                edited();
+              }}
               aria-invalid={error === RANGE_ERROR ? true : undefined}
               className={inputClass}
             />
@@ -88,7 +98,10 @@ export function DeadlineCalculator() {
               min={1}
               max={365}
               value={days}
-              onChange={(e) => setDays(e.target.value)}
+              onChange={(e) => {
+                setDays(e.target.value);
+                edited();
+              }}
               aria-invalid={error === RANGE_ERROR ? true : undefined}
               aria-describedby={error ? id("erro") : undefined}
               className={inputClass}
@@ -101,7 +114,10 @@ export function DeadlineCalculator() {
             <select
               id={id("count")}
               value={countType}
-              onChange={(e) => setCountType(e.target.value as CountType)}
+              onChange={(e) => {
+                setCountType(e.target.value as CountType);
+                edited();
+              }}
               className={inputClass}
             >
               <option value="uteis">Dias úteis</option>
@@ -166,7 +182,7 @@ export function DeadlineCalculator() {
           <h2 className="mb-2 font-semibold">Nova tarefa com prazo</h2>
           <TaskForm
             key={`${shown.rule.baseDate}|${shown.rule.days}|${shown.rule.countType}`}
-            initial={{ deadline: shown.rule }}
+            initial={{ deadline: shown.rule, calculated: { rule: shown.rule, result: shown.result } }}
             onDone={() => setCreating(false)}
           />
         </section>
