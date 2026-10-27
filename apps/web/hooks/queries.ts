@@ -6,7 +6,14 @@ import {
   useQueryClient,
   type UseMutationOptions,
 } from "@tanstack/react-query";
-import type { CreateTaskInput, ListTasksQuery, TaskDto, UpdateTaskInput } from "@aj/shared";
+import type {
+  CreateHolidayInput,
+  CreateTaskInput,
+  ListTasksQuery,
+  TaskDto,
+  UpdateSettingsInput,
+  UpdateTaskInput,
+} from "@aj/shared";
 import { useApi } from "@/components/auth-provider";
 
 export const queryKeys = {
@@ -89,5 +96,37 @@ export function useDeleteTask() {
   return useMutation({
     mutationFn: (id: string) => api.deleteTask(id),
     onSuccess: invalidate,
+  });
+}
+
+/** Trocar o fuso muda o "hoje" e a hora das tarefas: tarefas e briefing também são invalidados. */
+export function useUpdateSettings() {
+  const api = useApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: UpdateSettingsInput) => api.updateSettings(input),
+    onSuccess: async (_data, input) => {
+      const keys: Array<readonly unknown[]> = [queryKeys.settings];
+      if (input.timezone !== undefined) keys.push(["tasks"], queryKeys.briefing);
+      await Promise.all(keys.map((queryKey) => client.invalidateQueries({ queryKey })));
+    },
+  });
+}
+
+export function useCreateHoliday() {
+  const api = useApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateHolidayInput) => api.createHoliday(input),
+    onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.holidays }),
+  });
+}
+
+export function useDeleteHoliday() {
+  const api = useApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteHoliday(id),
+    onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.holidays }),
   });
 }
