@@ -56,6 +56,17 @@ function timeZones(current: string): string[] {
   return [...set].sort((a, b) => a.localeCompare(b));
 }
 
+/** Valores do servidor na mesma representação dos campos de entrada (strings). */
+function baselineOf(s: SettingsDto) {
+  return {
+    timezone: s.timezone,
+    uf: s.uf ?? "",
+    city: s.city ?? "",
+    minutes: String(s.earlyReminderMinutes),
+    briefingTime: s.briefingTime,
+  };
+}
+
 function plural(n: number, one: string, many: string): string {
   return n === 1 ? one : many;
 }
@@ -93,11 +104,26 @@ export function SettingsForm({ settings }: { settings: SettingsDto }) {
   const busy = useRef(false);
 
   const zones = useMemo(() => timeZones(settings.timezone), [settings.timezone]);
-  const [timezone, setTimezone] = useState(settings.timezone);
-  const [uf, setUf] = useState(settings.uf ?? "");
-  const [city, setCity] = useState(settings.city ?? "");
-  const [minutes, setMinutes] = useState(String(settings.earlyReminderMinutes));
-  const [briefingTime, setBriefingTime] = useState(settings.briefingTime);
+  const [base, setBase] = useState(() => baselineOf(settings));
+  const [seen, setSeen] = useState(settings);
+  const [timezone, setTimezone] = useState(base.timezone);
+  const [uf, setUf] = useState(base.uf);
+  const [city, setCity] = useState(base.city);
+  const [minutes, setMinutes] = useState(base.minutes);
+  const [briefingTime, setBriefingTime] = useState(base.briefingTime);
+
+  // Novos valores do servidor (refetch): campos não editados adotam o valor novo; os editados
+  // mantêm o digitado. A linha de base sempre passa a ser o valor do servidor.
+  if (seen !== settings) {
+    const next = baselineOf(settings);
+    if (timezone === base.timezone) setTimezone(next.timezone);
+    if (uf === base.uf) setUf(next.uf);
+    if (city === base.city) setCity(next.city);
+    if (minutes === base.minutes) setMinutes(next.minutes);
+    if (briefingTime === base.briefingTime) setBriefingTime(next.briefingTime);
+    setBase(next);
+    setSeen(settings);
+  }
   const [errors, setErrors] = useState<Errors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [result, setResult] = useState<UpdateSettingsResultDto | null>(null);
@@ -111,12 +137,12 @@ export function SettingsForm({ settings }: { settings: SettingsDto }) {
 
   function buildPatch(): Record<string, unknown> {
     const patch: Record<string, unknown> = {};
-    if (timezone !== settings.timezone) patch.timezone = timezone;
-    if ((uf || null) !== settings.uf) patch.uf = uf || null;
-    if ((city.trim() || null) !== settings.city) patch.city = city.trim() || null;
+    if (timezone !== base.timezone) patch.timezone = timezone;
+    if (uf !== base.uf) patch.uf = uf || null;
+    if (city.trim() !== base.city.trim()) patch.city = city.trim() || null;
     const n = minutes.trim() === "" ? Number.NaN : Number(minutes);
-    if (minutes.trim() === "" || n !== settings.earlyReminderMinutes) patch.earlyReminderMinutes = n;
-    if (briefingTime !== settings.briefingTime) patch.briefingTime = briefingTime;
+    if (minutes.trim() === "" || n !== Number(base.minutes)) patch.earlyReminderMinutes = n;
+    if (briefingTime !== base.briefingTime) patch.briefingTime = briefingTime;
     return patch;
   }
 
@@ -142,7 +168,16 @@ export function SettingsForm({ settings }: { settings: SettingsDto }) {
 
     busy.current = true;
     try {
-      setResult(await update.mutateAsync(parsed.data));
+      const saved = await update.mutateAsync(parsed.data);
+      // Re-baseline: o que foi enviado passa a ser o valor sincronizado com o servidor.
+      setBase((b) => ({
+        timezone: patch.timezone !== undefined ? timezone : b.timezone,
+        uf: patch.uf !== undefined ? uf : b.uf,
+        city: patch.city !== undefined ? city : b.city,
+        minutes: patch.earlyReminderMinutes !== undefined ? minutes : b.minutes,
+        briefingTime: patch.briefingTime !== undefined ? briefingTime : b.briefingTime,
+      }));
+      setResult(saved);
     } catch (error) {
       if (error instanceof ApiError && error.code === "entrada_invalida") {
         const found = errorsFromIssues((error.body as { issues?: unknown } | null)?.issues);

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { HolidayDto } from "@aj/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -26,6 +26,9 @@ function fill(date: string, name: string, scope = "estadual") {
 }
 
 const add = () => fireEvent.click(screen.getByRole("button", { name: "Adicionar feriado" }));
+
+/** Deixa microtarefas e timers pendentes rodarem (mutateAsync chama a API numa microtarefa). */
+const flush = () => act(() => new Promise<void>((r) => setTimeout(r, 0)));
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -84,16 +87,23 @@ describe("HolidaysList", () => {
     setup();
     fireEvent.click(await screen.findByRole("button", { name: "Remover Aniversário da cidade" }));
     expect(screen.getByRole("dialog", { name: "Remover feriado?" })).toBeInTheDocument();
+    await flush();
     expect(api.deleteHoliday).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Sim, remover" }));
     await waitFor(() => expect(api.deleteHoliday).toHaveBeenCalledWith("h1"));
+    expect(api.deleteHoliday).toHaveBeenCalledTimes(1);
   });
 
-  it("cancelar a remoção não chama a API", async () => {
+  it("cancelar a remoção não chama a API e mantém o item listado", async () => {
     setup();
     fireEvent.click(await screen.findByRole("button", { name: "Remover Aniversário da cidade" }));
-    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    await flush();
     expect(api.deleteHoliday).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    await flush();
+    expect(api.deleteHoliday).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByText("Aniversário da cidade")).toBeInTheDocument();
   });
 
   it("falha ao remover mostra a mensagem", async () => {
