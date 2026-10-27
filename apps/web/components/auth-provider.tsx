@@ -73,6 +73,9 @@ export function AuthProvider({ children, client: injected, apiFetch, apiBaseUrl 
   const clientRef = useRef<AuthClient | null>(injected ?? null);
   const redirected = useRef(false);
   const pathRef = useRef(pathname);
+  // Nova rota: libera o redirecionamento. Feito na renderização para valer antes
+  // dos efeitos dos filhos (ex.: AuthGuard remontado ao voltar no histórico).
+  if (pathRef.current !== pathname) redirected.current = false;
   pathRef.current = pathname;
   const routerRef = useRef(router);
   routerRef.current = router;
