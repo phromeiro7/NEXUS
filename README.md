@@ -65,6 +65,14 @@ precisa cumprir (tarefa ainda viva, reagendamento durante o envio, lembretes ven
 tarefa criada no próprio dia, `fatal` com hora) estão em "Contrato do enviador de
 lembretes (Plano 5)", §7 de `docs/superpowers/specs/2026-10-26-assistente-juridico-design.md`.
 
+## Painel
+
+`apps/web` é o painel Next.js (porta **3000**): `pnpm --filter @aj/web dev`. Ele não
+acessa o banco; usa só `supabase.auth` e a API. Variáveis públicas (nomes em
+`.env.example`, valores no `.env` local): `NEXT_PUBLIC_API_URL` (padrão
+`http://localhost:3001`), `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+Nunca use a service role no painel.
+
 ## Banco local (testes de banco)
 
 O Supabase CLI é devDependency de `apps/api`. Na raiz do repositório:
