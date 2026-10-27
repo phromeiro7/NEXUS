@@ -24,6 +24,8 @@ export type AuthContextValue = {
   signIn(email: string, password: string): Promise<AuthResult>;
   signUp(email: string, password: string): Promise<SignUpResult>;
   sendReset(email: string): Promise<AuthResult>;
+  /** Define a nova senha da sessão atual (a de recuperação, vinda do link do e-mail). */
+  updatePassword(password: string): Promise<AuthResult>;
   signOut(): Promise<void>;
   getToken(): Promise<string | null>;
   /** Redireciona para /entrar?next=<rota atual>, no máximo uma vez por sessão deslogada. */
@@ -55,6 +57,18 @@ function signUpMessage(e: AuthApiError): string {
     return "Muitas tentativas. Aguarde um pouco e tente novamente.";
   }
   return "Não foi possível criar a conta com esses dados.";
+}
+
+function passwordMessage(e: AuthApiError): string {
+  if (e.code === "weak_password") return "A senha deve ter pelo menos 8 caracteres.";
+  if (e.code === "same_password") return "A nova senha deve ser diferente da atual.";
+  if (e.status === 401 || e.code === "session_not_found" || e.code === "session_expired") {
+    return "O link de recuperação expirou. Peça um novo link.";
+  }
+  if (e.status === 429 || e.code === "over_request_rate_limit") {
+    return "Muitas tentativas. Aguarde um pouco e tente novamente.";
+  }
+  return GENERIC;
 }
 
 type ProviderProps = {
@@ -121,7 +135,7 @@ export function AuthProvider({ children, client: injected, apiFetch, apiBaseUrl 
     redirected.current = true;
     const path = pathRef.current ?? "/";
     const here = typeof window === "undefined" ? "" : window.location.search;
-    const onAuthPage = /^\/(entrar|cadastro|recuperar)(\/|$)/.test(path);
+    const onAuthPage = /^\/(entrar|cadastro|recuperar|nova-senha)(\/|$)/.test(path);
     routerRef.current.replace(
       onAuthPage ? "/entrar" : `/entrar?next=${encodeURIComponent(path + here)}`,
     );
@@ -182,7 +196,9 @@ export function AuthProvider({ children, client: injected, apiFetch, apiBaseUrl 
     const client = clientRef.current;
     if (!client) return { error: GENERIC };
     try {
-      const { error } = await client.auth.resetPasswordForEmail(email);
+      const { error } = await client.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/nova-senha`,
+      });
       if (error && (error.status === 429 || error.code === "over_request_rate_limit")) {
         return { error: "Muitas tentativas. Aguarde um pouco e tente novamente." };
       }
@@ -193,9 +209,31 @@ export function AuthProvider({ children, client: injected, apiFetch, apiBaseUrl 
     }
   }, []);
 
+  const updatePassword = useCallback(async (password: string): Promise<AuthResult> => {
+    const client = clientRef.current;
+    if (!client) return { error: GENERIC };
+    try {
+      const { error } = await client.auth.updateUser({ password });
+      return { error: error ? passwordMessage(error) : null };
+    } catch {
+      return { error: "Sem conexão. Verifique sua internet e tente novamente." };
+    }
+  }, []);
+
   const value = useMemo<AuthContextValue>(
-    () => ({ status, signIn, signUp, sendReset, signOut, getToken, redirectToLogin, api, configError }),
-    [status, signIn, signUp, sendReset, signOut, getToken, redirectToLogin, api, configError],
+    () => ({
+      status,
+      signIn,
+      signUp,
+      sendReset,
+      updatePassword,
+      signOut,
+      getToken,
+      redirectToLogin,
+      api,
+      configError,
+    }),
+    [status, signIn, signUp, sendReset, updatePassword, signOut, getToken, redirectToLogin, api, configError],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
