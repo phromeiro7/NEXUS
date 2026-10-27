@@ -24,12 +24,13 @@ function result(over: Partial<UpdateSettingsResultDto> = {}): UpdateSettingsResu
 function setup(settings: SettingsDto = SETTINGS) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const spy = vi.spyOn(client, "invalidateQueries");
-  render(
+  const ui = (s: SettingsDto) => (
     <QueryClientProvider client={client}>
-      <SettingsForm settings={settings} />
-    </QueryClientProvider>,
+      <SettingsForm settings={s} />
+    </QueryClientProvider>
   );
-  return { spy };
+  const view = render(ui(settings));
+  return { spy, rerender: (s: SettingsDto) => view.rerender(ui(s)) };
 }
 
 const save = () => fireEvent.click(screen.getByRole("button", { name: "Salvar configurações" }));
@@ -186,6 +187,53 @@ describe("SettingsForm", () => {
     save();
     await waitFor(() => expect(spy).toHaveBeenCalledWith({ queryKey: ["settings"] }));
     expect(spy).not.toHaveBeenCalledWith({ queryKey: ["tasks"] });
+  });
+
+  it("após salvar, um segundo salvamento envia só a nova alteração", async () => {
+    const { rerender } = setup();
+    fireEvent.change(screen.getByLabelText("Cidade"), { target: { value: "Campinas" } });
+    save();
+    await waitFor(() => expect(api.updateSettings).toHaveBeenCalledTimes(1));
+    await screen.findByRole("status");
+    // Sem o refetch (props antigas) e com ele (props novas) o resultado é o mesmo.
+    rerender({ ...SETTINGS, city: "Campinas" });
+    fireEvent.change(screen.getByLabelText(/Antecedência/), { target: { value: "30" } });
+    save();
+    await waitFor(() => expect(api.updateSettings).toHaveBeenCalledTimes(2));
+    expect(api.updateSettings).toHaveBeenLastCalledWith({ earlyReminderMinutes: 30 });
+  });
+
+  it("segundo salvamento sem refetch também não reenvia o campo já salvo", async () => {
+    setup();
+    fireEvent.change(screen.getByLabelText("Cidade"), { target: { value: "Campinas" } });
+    save();
+    await screen.findByRole("status");
+    fireEvent.change(screen.getByLabelText(/Antecedência/), { target: { value: "30" } });
+    save();
+    await waitFor(() => expect(api.updateSettings).toHaveBeenCalledTimes(2));
+    expect(api.updateSettings).toHaveBeenLastCalledWith({ earlyReminderMinutes: 30 });
+  });
+
+  it("novas props para campo não editado atualizam o input e não são reenviadas", async () => {
+    const { rerender } = setup();
+    rerender({ ...SETTINGS, city: "Santos", briefingTime: "09:30" });
+    expect(screen.getByLabelText("Cidade")).toHaveValue("Santos");
+    expect(screen.getByLabelText("Hora do briefing")).toHaveValue("09:30");
+    fireEvent.change(screen.getByLabelText(/Antecedência/), { target: { value: "15" } });
+    save();
+    await waitFor(() => expect(api.updateSettings).toHaveBeenCalledTimes(1));
+    expect(api.updateSettings).toHaveBeenCalledWith({ earlyReminderMinutes: 15 });
+  });
+
+  it("campo editado mantém o valor digitado quando as props mudam", async () => {
+    const { rerender } = setup();
+    fireEvent.change(screen.getByLabelText("Cidade"), { target: { value: "Campinas" } });
+    rerender({ ...SETTINGS, city: "Santos", uf: "RJ" });
+    expect(screen.getByLabelText("Cidade")).toHaveValue("Campinas");
+    expect(screen.getByLabelText("UF")).toHaveValue("RJ");
+    save();
+    await waitFor(() => expect(api.updateSettings).toHaveBeenCalledTimes(1));
+    expect(api.updateSettings).toHaveBeenCalledWith({ city: "Campinas" });
   });
 
   it("seção Telegram mostra o estado e o aviso, sem botão", () => {
