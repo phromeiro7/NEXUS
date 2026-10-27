@@ -75,6 +75,28 @@ describe("AuthGuard", () => {
   });
 });
 
+describe("AuthGuard após mudança de rota", () => {
+  it("redireciona de novo ao voltar para uma rota protegida", async () => {
+    pathname = "/semana";
+    const { client } = fakeSupabase({ session: null });
+    const tree = (key: string) => (
+      <AuthProvider client={client}>
+        <AuthGuard key={key}>
+          <p>segredo</p>
+        </AuthGuard>
+      </AuthProvider>
+    );
+    const { rerender } = render(tree("a"));
+    await waitFor(() => expect(router.replace).toHaveBeenCalledTimes(1));
+    pathname = "/entrar";
+    rerender(tree("a"));
+    pathname = "/";
+    rerender(tree("b")); // o layout (app) remonta ao voltar
+    await waitFor(() => expect(router.replace).toHaveBeenCalledTimes(2));
+    expect(router.replace).toHaveBeenLastCalledWith("/entrar?next=%2F");
+  });
+});
+
 describe("useApi / onUnauthorized", () => {
   function Probe({ onReady }: { onReady: (api: ReturnType<typeof createApiClient>) => void }) {
     const api = useApi();
