@@ -1,9 +1,7 @@
 "use client";
 
 import type { FormEvent, ReactNode } from "react";
-
-export const inputClass =
-  "w-full rounded border border-[var(--color-borda)] bg-[var(--color-superficie)] px-3 py-2 text-[var(--color-texto)]";
+import { inputClass } from "./field";
 
 export function AuthCard({ title, children }: { title: string; children: ReactNode }) {
   return (

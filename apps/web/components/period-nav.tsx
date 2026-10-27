@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
-const BTN = "rounded border border-[var(--color-borda)] px-3 py-1 text-sm";
+const BTN = "min-h-10 rounded border border-[var(--color-borda)] px-3 py-1 text-sm";
 
 /** Navegação de período pela URL: `?d=` é a data âncora; sem ela vale "hoje". */
 export function usePeriodNav() {

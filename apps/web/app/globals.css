@@ -1,10 +1,14 @@
 @import "tailwindcss";
 
-/* Paleta provisória: trocar apenas estes tokens. Contraste mínimo AA. */
+/*
+ * Paleta provisória: trocar apenas estes tokens. Contraste mínimo AA (4.5:1) contra
+ * --color-fundo e --color-superficie. --color-texto-suave é o texto secundário.
+ */
 :root {
   --color-fundo: #f7f7f5;
   --color-superficie: #ffffff;
   --color-texto: #1c1c1a;
+  --color-texto-suave: #5c5c57;
   --color-borda: #d4d4cf;
   --color-destaque: #1d4ed8;
   --color-atraso: #b45309;
@@ -17,6 +21,7 @@
     --color-fundo: #121211;
     --color-superficie: #1c1c1a;
     --color-texto: #ecece8;
+    --color-texto-suave: #a8a8a2;
     --color-borda: #3a3a36;
     --color-destaque: #7aa2ff;
     --color-atraso: #f0a94b;
@@ -29,5 +34,4 @@ body {
   background: var(--color-fundo);
   color: var(--color-texto);
   min-width: 360px;
-  overflow-x: hidden;
 }

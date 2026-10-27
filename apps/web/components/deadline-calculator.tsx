@@ -10,7 +10,7 @@ import {
 import { useApi } from "@/components/auth-provider";
 import { formatLongDate } from "@/lib/dates";
 import { messageFor } from "@/lib/messages";
-import { inputClass } from "./auth-form";
+import { inputClass } from "./field";
 import { TaskForm } from "./task-form";
 
 const RANGE_ERROR = "Informe a data da publicação e os dias (inteiro de 1 a 365).";

@@ -23,6 +23,12 @@ beforeEach(() => {
 });
 
 describe("TaskRowActions", () => {
+  it("Editar e Excluir têm alvo de toque de 40 px (min-h-10)", () => {
+    setup();
+    expect(screen.getByRole("button", { name: "Editar Minuta" }).className).toContain("min-h-10");
+    expect(screen.getByRole("button", { name: "Excluir Minuta" }).className).toContain("min-h-10");
+  });
+
   it("excluir só chama a API após confirmar", async () => {
     api.deleteTask.mockResolvedValue(undefined);
     setup();

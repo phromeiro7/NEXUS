@@ -23,8 +23,8 @@ function Painel() {
         <ViewSwitcher view={view} />
       </div>
       <QuickAdd />
-      <div className="grid gap-4 md:grid-cols-[1fr_16rem]">
-        <div>
+      <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_16rem]">
+        <div className="min-w-0">
           {view === "dia" && <DayView date={anchor} />}
           {view === "semana" && <WeekView anchor={anchor} />}
           {view === "mes" && (

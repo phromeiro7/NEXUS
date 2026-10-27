@@ -43,7 +43,7 @@ export function TaskRow({
         {task.dueTime !== null ? (
           <span className="font-mono font-semibold">{task.dueTime}</span>
         ) : (
-          <span className="italic text-[var(--color-texto)] opacity-80">Dia inteiro</span>
+          <span className="italic text-[var(--color-texto-suave)]">Dia inteiro</span>
         )}
         <span className={overdue ? "font-semibold text-[var(--color-atraso)]" : undefined}>
           {urgencyLabel(task, today)}

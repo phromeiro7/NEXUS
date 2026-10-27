@@ -27,15 +27,15 @@ function Summary({ briefing }: { briefing: BriefingDto }) {
   return (
     <dl className="flex flex-col gap-2">
       <div>
-        <dt className="opacity-80">Prazo mais urgente</dt>
+        <dt className="text-[var(--color-texto-suave)]">Prazo mais urgente</dt>
         <dd>{urgent ? `${urgent.title} (${when(urgent)})` : "Nenhum"}</dd>
       </div>
       <div>
-        <dt className="opacity-80">Próxima audiência</dt>
+        <dt className="text-[var(--color-texto-suave)]">Próxima audiência</dt>
         <dd>{hearing ? `${hearing.title} (${when(hearing)})` : "Nenhuma"}</dd>
       </div>
       <div>
-        <dt className="opacity-80">Atrasadas</dt>
+        <dt className="text-[var(--color-texto-suave)]">Atrasadas</dt>
         <dd className={briefing.overdue.length > 0 ? "font-semibold text-[var(--color-atraso)]" : undefined}>
           {briefing.overdue.length}
         </dd>

@@ -34,7 +34,7 @@ export function ViewSwitcher({ view }: { view: ViewId }) {
           type="button"
           aria-pressed={view === id}
           onClick={() => select(id)}
-          className={`rounded border border-[var(--color-borda)] px-3 py-1 text-sm ${
+          className={`min-h-10 rounded border border-[var(--color-borda)] px-3 py-1 text-sm ${
             view === id ? "bg-[var(--color-destaque)] font-semibold text-[var(--color-superficie)]" : ""
           }`}
         >

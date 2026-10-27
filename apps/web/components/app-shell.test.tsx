@@ -12,6 +12,16 @@ beforeEach(() => {
   signOut.mockReset();
 });
 
+describe("AppShell alvos de toque", () => {
+  it("links de navegação e Sair têm pelo menos 40 px de altura (min-h-10)", () => {
+    render(<AppShell>x</AppShell>);
+    for (const name of ["Painel", "Calculadora", "Histórico", "Configurações"]) {
+      expect(screen.getByRole("link", { name }).className).toContain("min-h-10");
+    }
+    expect(screen.getByRole("button", { name: "Sair" }).className).toContain("min-h-10");
+  });
+});
+
 describe("AppShell", () => {
   it("marca o link ativo com aria-current", () => {
     pathname = "/historico";

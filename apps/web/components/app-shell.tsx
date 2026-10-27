@@ -32,7 +32,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                   key={href}
                   href={href}
                   aria-current={active ? "page" : undefined}
-                  className={`whitespace-nowrap rounded px-3 py-1 text-sm ${
+                  className={`inline-flex min-h-10 items-center whitespace-nowrap rounded px-3 py-1 text-sm ${
                     active
                       ? "bg-[var(--color-destaque)] font-semibold text-[var(--color-superficie)]"
                       : "text-[var(--color-texto)] hover:underline"
@@ -46,7 +46,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <button
             type="button"
             onClick={() => void signOut()}
-            className="rounded border border-[var(--color-borda)] px-3 py-1 text-sm"
+            className="min-h-10 rounded border border-[var(--color-borda)] px-3 py-1 text-sm"
           >
             Sair
           </button>
