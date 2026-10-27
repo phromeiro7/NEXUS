@@ -87,9 +87,15 @@ Next lê a partir da pasta do app; `.env.example` na raiz lista os nomes):
    da API (`http://127.0.0.1:55321`) e a anon key que o comando imprime para
    `apps/web/.env.local`.
 2. API, na porta 3001, autorizando o painel por CORS:
-   `WEB_ORIGIN=http://localhost:3000 pnpm --filter @aj/api dev` (com as variáveis da API do
-   `.env.example` no ambiente).
+   `WEB_ORIGIN=http://localhost:3000 pnpm --filter @aj/api exec tsx watch --env-file=.env src/server.ts`.
+   O `tsx watch` (e portanto `pnpm --filter @aj/api dev`) não lê `.env` sozinho: o
+   `--env-file=.env` carrega `apps/api/.env` (crie-o a partir do `.env.example` da raiz; o
+   arquivo precisa existir) e uma variável já definida no ambiente, como `WEB_ORIGIN` acima,
+   tem precedência sobre o arquivo.
 3. Painel: `pnpm --filter @aj/web dev` e abra `http://localhost:3000`.
+
+Reabrir uma tarefa concluída ou cancelada (status volta para pendente) é permitido por
+projeto: é o botão "Reabrir" do Histórico.
 
 `dev` e `build` usam `--webpack`: o Turbopack não resolve os imports `./x.js` que apontam para
 `.ts` dentro de `@aj/shared`. O motivo e como reverter estão em `apps/web/next.config.ts`.
