@@ -1,4 +1,4 @@
-import type { TaskStatus } from '@aj/shared';
+import { canTransition, type TaskStatus } from '@aj/shared';
 
 export class InvalidTransitionError extends Error {
   constructor(
@@ -10,16 +10,7 @@ export class InvalidTransitionError extends Error {
   }
 }
 
-const ALLOWED: Record<TaskStatus, readonly TaskStatus[]> = {
-  pendente: ['em_andamento', 'concluida', 'cancelada'],
-  em_andamento: ['pendente', 'concluida', 'cancelada'],
-  concluida: ['pendente'],
-  cancelada: ['pendente'],
-};
-
-export function canTransition(from: TaskStatus, to: TaskStatus): boolean {
-  return ALLOWED[from].includes(to);
-}
+export { canTransition };
 
 /** Retorna o novo estado sem mutar a entrada. `completedAt` acompanha a entrada/saída de `concluida`. */
 export function applyStatusChange(
