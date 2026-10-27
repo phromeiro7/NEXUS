@@ -72,3 +72,10 @@ export function formatShort(date: IsoDate): string {
 export function daysBetween(a: IsoDate, b: IsoDate): number {
   return Math.round((parse(b) - parse(a)) / MS_PER_DAY);
 }
+
+/** `?d=` válido (YYYY-MM-DD de uma data real) ou null. */
+export function parseAnchor(value: string | null): IsoDate | null {
+  if (value === null || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const date = value as IsoDate;
+  return format(parse(date)) === date ? date : null;
+}

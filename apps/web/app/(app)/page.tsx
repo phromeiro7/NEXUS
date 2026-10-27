@@ -3,11 +3,16 @@
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { DayView } from "@/components/day-view";
+import { MonthView } from "@/components/month-view";
 import { SummaryAside } from "@/components/summary-aside";
 import { parseView, ViewSwitcher } from "@/components/view-switcher";
+import { WeekView } from "@/components/week-view";
+import { parseAnchor } from "@/lib/dates";
 
 function Painel() {
-  const view = parseView(useSearchParams()?.get("v") ?? null);
+  const params = useSearchParams();
+  const view = parseView(params?.get("v") ?? null);
+  const anchor = parseAnchor(params?.get("d") ?? null);
   return (
     <main className="mx-auto max-w-5xl p-4">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
@@ -16,10 +21,13 @@ function Painel() {
       </div>
       <div className="grid gap-4 md:grid-cols-[1fr_16rem]">
         <div>
-          {view === "dia" ? (
-            <DayView />
-          ) : (
-            <p role="status">A visão {view === "semana" ? "Semana" : "Mês"} está em construção.</p>
+          {view === "dia" && <DayView date={anchor} />}
+          {view === "semana" && <WeekView anchor={anchor} />}
+          {view === "mes" && (
+            <MonthView
+              year={anchor ? Number(anchor.slice(0, 4)) : undefined}
+              month={anchor ? Number(anchor.slice(5, 7)) : undefined}
+            />
           )}
         </div>
         <SummaryAside />

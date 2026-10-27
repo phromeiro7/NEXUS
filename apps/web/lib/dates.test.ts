@@ -6,6 +6,7 @@ import {
   formatShort,
   monthGrid,
   monthRange,
+  parseAnchor,
   todayIn,
   weekRange,
 } from './dates';
@@ -99,5 +100,14 @@ describe('daysBetween', () => {
   it('is unaffected by DST dates', () => {
     expect(daysBetween('2026-10-01', '2026-11-01')).toBe(31);
     expect(daysBetween('2026-03-01', '2026-04-01')).toBe(31);
+  });
+});
+
+describe('parseAnchor', () => {
+  it('aceita datas reais e rejeita o resto', () => {
+    expect(parseAnchor('2026-02-11')).toBe('2026-02-11');
+    expect(parseAnchor('2026-02-30')).toBeNull();
+    expect(parseAnchor('2026-2-1')).toBeNull();
+    expect(parseAnchor(null)).toBeNull();
   });
 });
