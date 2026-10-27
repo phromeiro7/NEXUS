@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 
-export type AuthSession = { access_token: string };
+export type AuthSession = { access_token: string; user?: { id: string } };
 
 export type AuthApiError = { code?: string; status?: number; message?: string };
 

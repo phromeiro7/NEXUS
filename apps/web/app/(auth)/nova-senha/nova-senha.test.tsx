@@ -13,7 +13,7 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(""),
 }));
 
-const SESSION = { access_token: "t" };
+const SESSION = { access_token: "t", user: { id: "user-A" } };
 
 beforeEach(() => {
   router.replace.mockReset();
@@ -75,9 +75,20 @@ describe("Nova senha: acesso só pela sessão de recuperação", () => {
 
   it("SIGNED_IN (outra conta, sem sair) encerra a recuperação: o formulário some", async () => {
     const f = await renderRecovery();
-    act(() => f.emit("SIGNED_IN", { access_token: "outra" }));
+    act(() => f.emit("SIGNED_IN", { access_token: "outra", user: { id: "user-B" } }));
     expect(await screen.findByText("Este link só funciona a partir do e-mail de recuperação.")).toBeInTheDocument();
     expect(screen.queryByLabelText("Nova senha")).toBeNull();
+  });
+
+  it("SIGNED_IN do mesmo usuário (volta à aba, outra aba) mantém o formulário e o que foi digitado", async () => {
+    const f = await renderRecovery();
+    const user = userEvent.setup();
+    await fill(user, "senha1234", "senha12");
+    act(() => f.emit("SIGNED_IN", { access_token: "renovado", user: { id: "user-A" } }));
+    act(() => f.emit("SIGNED_IN", SESSION));
+    expect(screen.getByLabelText("Nova senha")).toHaveValue("senha1234");
+    expect(screen.getByLabelText("Confirmar senha")).toHaveValue("senha12");
+    expect(screen.queryByText("Este link só funciona a partir do e-mail de recuperação.")).toBeNull();
   });
 
   it("com o evento PASSWORD_RECOVERY mostra o formulário", async () => {

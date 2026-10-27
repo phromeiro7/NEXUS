@@ -88,6 +88,7 @@ export function AuthProvider({ children, client: injected, apiFetch, apiBaseUrl 
   const [configError, setConfigError] = useState<string | null>(null);
   // Verdadeiro só entre o evento PASSWORD_RECOVERY e o fim da redefinição (ou a saída).
   const [recovery, setRecovery] = useState(false);
+  const recoveryUser = useRef<string | null>(null);
   const clientRef = useRef<AuthClient | null>(injected ?? null);
   const redirected = useRef(false);
   const pathRef = useRef(pathname);
@@ -120,8 +121,16 @@ export function AuthProvider({ children, client: injected, apiFetch, apiBaseUrl 
     // inicialização do cliente e getSession só resolve depois dela.
     const { data } = client.auth.onAuthStateChange((event, session) => {
       if (active) {
-        if (event === "PASSWORD_RECOVERY") setRecovery(true);
-        else if (event === "SIGNED_OUT" || event === "SIGNED_IN") setRecovery(false);
+        if (event === "PASSWORD_RECOVERY") {
+          recoveryUser.current = session?.user?.id ?? null;
+          setRecovery(true);
+        } else if (event === "SIGNED_OUT") {
+          setRecovery(false);
+        } else if (event === "SIGNED_IN" && (session?.user?.id ?? null) !== recoveryUser.current) {
+          // Outra conta entrou sem sair. O mesmo usuário reanunciado (volta à aba, outra aba)
+          // não encerra a recuperação.
+          setRecovery(false);
+        }
       }
       apply(session !== null);
     });
