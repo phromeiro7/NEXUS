@@ -14,6 +14,11 @@ const api = {
   updateTask: vi.fn(),
 };
 vi.mock("@/components/auth-provider", () => ({ useApi: () => api }));
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => new URLSearchParams(),
+  usePathname: () => "/",
+  useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
+}));
 
 const TODAY = "2026-10-27";
 let data: { overdue: TaskDto[]; today: TaskDto[]; undated: TaskDto[] };
@@ -108,5 +113,21 @@ describe("DayView", () => {
     fireEvent.click(button);
     await waitFor(() => expect(api.updateTask).toHaveBeenCalled());
     expect(api.updateTask).toHaveBeenCalledTimes(1);
+  });
+
+  it("com date, as seções do dia usam a data escolhida e atrasadas seguem o hoje real", async () => {
+    data.overdue = [makeTask({ id: "a", title: "Velha", dueDate: "2026-10-20" })];
+    data.today = [makeTask({ id: "b", title: "Do dia", dueDate: "2026-11-05" })];
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <DayView date="2026-11-05" />
+      </QueryClientProvider>,
+    );
+    await screen.findByText("Do dia");
+    expect(api.listTasks).toHaveBeenCalledWith({ status: ["pendente", "em_andamento"], from: "2026-11-05", to: "2026-11-05" });
+    expect(api.listTasks).toHaveBeenCalledWith({ status: ["pendente", "em_andamento"], to: "2026-10-26" });
+    const headings = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+    expect(headings).toEqual(["Atrasadas", "Demais do dia"]);
   });
 });
