@@ -6,7 +6,10 @@ import { AuthProvider } from "@/components/auth-provider";
 
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(
-    () => new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: true } } }),
+    () =>
+      new QueryClient({
+        defaultOptions: { queries: { retry: false, refetchOnWindowFocus: true, staleTime: 30_000 } },
+      }),
   );
   return (
     <QueryClientProvider client={queryClient}>
