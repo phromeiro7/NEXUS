@@ -1,5 +1,6 @@
 "use client";
 
+import type { QueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter } from "next/navigation";
 import {
   createContext,
@@ -79,9 +80,37 @@ type ProviderProps = {
   client?: AuthClient;
   apiFetch?: typeof fetch;
   apiBaseUrl?: string;
+  /** Cache de consultas: esvaziado ao sair, em 401 e quando o usuário da sessão muda. */
+  queryClient?: QueryClient;
 };
 
-export function AuthProvider({ children, client: injected, apiFetch, apiBaseUrl }: ProviderProps) {
+export function AuthProvider({
+  children,
+  client: injected,
+  apiFetch,
+  apiBaseUrl,
+  queryClient,
+}: ProviderProps) {
+  const queryClientRef = useRef(queryClient);
+  queryClientRef.current = queryClient;
+  // Dados de um usuário nunca podem aparecer para o próximo (dados sigilosos).
+  const clearCache = useCallback(() => {
+    const qc = queryClientRef.current;
+    if (!qc) return;
+    void qc.cancelQueries();
+    qc.clear();
+  }, []);
+  const lastUser = useRef<string | null>(null);
+  // Chamado a cada sessão anunciada; só uma troca real de usuário esvazia o cache.
+  const noteUser = useCallback(
+    (session: { user?: { id: string } } | null) => {
+      const id = session?.user?.id ?? null;
+      if (id === null) return;
+      if (lastUser.current !== null && lastUser.current !== id) clearCache();
+      lastUser.current = id;
+    },
+    [clearCache],
+  );
   const router = useRouter();
   const pathname = usePathname();
   const [status, setStatus] = useState<AuthStatus>("loading");
@@ -126,23 +155,29 @@ export function AuthProvider({ children, client: injected, apiFetch, apiBaseUrl 
           setRecovery(true);
         } else if (event === "SIGNED_OUT") {
           setRecovery(false);
+          lastUser.current = null;
+          clearCache();
         } else if (event === "SIGNED_IN" && (session?.user?.id ?? null) !== recoveryUser.current) {
           // Outra conta entrou sem sair. O mesmo usuário reanunciado (volta à aba, outra aba)
           // não encerra a recuperação.
           setRecovery(false);
         }
       }
+      if (active && (event === "SIGNED_IN" || event === "INITIAL_SESSION")) noteUser(session);
       apply(session !== null);
     });
     void client.auth
       .getSession()
-      .then(({ data }) => apply(data.session !== null))
+      .then(({ data }) => {
+        if (active) noteUser(data.session);
+        apply(data.session !== null);
+      })
       .catch(() => apply(false));
     return () => {
       active = false;
       data.subscription.unsubscribe();
     };
-  }, [injected]);
+  }, [injected, clearCache, noteUser]);
 
   const getToken = useCallback(async () => {
     const client = clientRef.current;
@@ -165,12 +200,14 @@ export function AuthProvider({ children, client: injected, apiFetch, apiBaseUrl 
   const signOut = useCallback(async () => {
     setStatus("signedOut");
     setRecovery(false);
+    lastUser.current = null;
+    clearCache();
     try {
       await clientRef.current?.auth.signOut({ scope: "local" });
     } catch {
       // sessão local já descartada na interface
     }
-  }, []);
+  }, [clearCache]);
 
   const onUnauthorized = useCallback(() => {
     void signOut();
