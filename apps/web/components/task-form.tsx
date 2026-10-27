@@ -28,6 +28,8 @@ export type TaskFormInitial = {
   dueTime?: string | null;
   fatal?: boolean;
   deadline?: DeadlineRule;
+  /** Resultado já calculado para `rule`; semeia o formulário para salvar sem recalcular. */
+  calculated?: { rule: DeadlineRule; result: CalculateDeadlineResultDto };
 };
 
 type Field = "title" | "type" | "caseId" | "dueDate" | "dueTime" | "deadline";
@@ -121,7 +123,12 @@ export function TaskForm({
   const [baseDate, setBaseDate] = useState<string>(rule0?.baseDate ?? "");
   const [days, setDays] = useState(rule0 ? String(rule0.days) : "");
   const [countType, setCountType] = useState<CountType>(rule0?.countType ?? "uteis");
-  const [calc, setCalc] = useState<{ key: string; result: CalculateDeadlineResultDto } | null>(null);
+  const [calc, setCalc] = useState<{ key: string; result: CalculateDeadlineResultDto } | null>(() => {
+    const c = !task ? initial?.calculated : undefined;
+    return c
+      ? { key: `${c.rule.baseDate}|${c.rule.days}|${c.rule.countType}`, result: c.result }
+      : null;
+  });
   const [calcPending, setCalcPending] = useState(false);
   const [calcError, setCalcError] = useState<string | null>(null);
   const [errors, setErrors] = useState<Errors>({});

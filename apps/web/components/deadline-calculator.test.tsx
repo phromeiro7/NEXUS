@@ -117,6 +117,83 @@ describe("DeadlineCalculator", () => {
     expect(screen.getByRole("button", { name: "Calculando…" })).toBeDisabled();
   });
 
+  it.each([
+    ["data", () => fireEvent.change(screen.getByLabelText("Data da publicação"), { target: { value: "2026-12-01" } })],
+    ["dias", () => fireEvent.change(screen.getByLabelText("Quantidade de dias"), { target: { value: "20" } })],
+    ["contagem", () => fireEvent.change(screen.getByLabelText("Tipo de contagem"), { target: { value: "corridos" } })],
+  ])("editar %s esconde o resultado, o botão e o painel", async (_n, edit) => {
+    api.calculateDeadline.mockResolvedValue(result());
+    setup();
+    fill();
+    submit();
+    fireEvent.click(await screen.findByRole("button", { name: "Criar tarefa com este prazo" }));
+    expect(screen.getByRole("region", { name: "Nova tarefa com prazo" })).toBeInTheDocument();
+    edit();
+    expect(screen.queryByText(/Vence em/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Criar tarefa com este prazo" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Nova tarefa com prazo" })).not.toBeInTheDocument();
+  });
+
+  it("validação falha após um resultado: limpa resultado e painel", async () => {
+    api.calculateDeadline.mockResolvedValue(result());
+    setup();
+    fill();
+    submit();
+    fireEvent.click(await screen.findByRole("button", { name: "Criar tarefa com este prazo" }));
+    fireEvent.change(screen.getByLabelText("Quantidade de dias"), { target: { value: "0" } });
+    submit();
+    await screen.findByRole("alert");
+    expect(screen.queryByText(/Vence em/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Nova tarefa com prazo" })).not.toBeInTheDocument();
+  });
+
+  it("erro da API após um resultado: limpa resultado e painel", async () => {
+    api.calculateDeadline.mockResolvedValueOnce(result());
+    setup();
+    fill();
+    submit();
+    fireEvent.click(await screen.findByRole("button", { name: "Criar tarefa com este prazo" }));
+    api.calculateDeadline.mockRejectedValueOnce(new ApiError(0, "rede", null));
+    fireEvent.submit(screen.getByLabelText("Data da publicação").closest("form")!);
+    await screen.findByRole("alert");
+    expect(screen.queryByText(/Vence em/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Nova tarefa com prazo" })).not.toBeInTheDocument();
+  });
+
+  it("salva a tarefa a partir da calculadora sem recalcular", async () => {
+    api.calculateDeadline.mockResolvedValue(result());
+    api.createTask.mockResolvedValue({});
+    setup();
+    fill("10", "corridos");
+    submit();
+    fireEvent.click(await screen.findByRole("button", { name: "Criar tarefa com este prazo" }));
+    const panel = screen.getByRole("region", { name: "Nova tarefa com prazo" });
+    fireEvent.change(within(panel).getByLabelText("Título"), { target: { value: "Contestação" } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Salvar" }));
+    await waitFor(() => expect(api.createTask).toHaveBeenCalledTimes(1));
+    const body = api.createTask.mock.calls[0]![0];
+    expect(body.deadline).toEqual({ baseDate: "2026-11-02", days: 10, countType: "corridos" });
+    expect("dueDate" in body).toBe(false);
+    expect(api.calculateDeadline).toHaveBeenCalledTimes(1);
+    await waitFor(() =>
+      expect(screen.queryByRole("region", { name: "Nova tarefa com prazo" })).not.toBeInTheDocument(),
+    );
+  });
+
+  it("editar a regra dentro do formulário volta a exigir o cálculo", async () => {
+    api.calculateDeadline.mockResolvedValue(result());
+    setup();
+    fill();
+    submit();
+    fireEvent.click(await screen.findByRole("button", { name: "Criar tarefa com este prazo" }));
+    const panel = screen.getByRole("region", { name: "Nova tarefa com prazo" });
+    fireEvent.change(within(panel).getByLabelText("Título"), { target: { value: "X" } });
+    fireEvent.change(within(panel).getByLabelText("Dias"), { target: { value: "20" } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Salvar" }));
+    expect(await within(panel).findByText("Calcule o prazo antes de salvar.")).toBeInTheDocument();
+    expect(api.createTask).not.toHaveBeenCalled();
+  });
+
   it("'Criar tarefa' só existe após o resultado e abre o formulário com a regra", async () => {
     api.calculateDeadline.mockResolvedValue(result());
     setup();
