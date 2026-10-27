@@ -7,6 +7,7 @@ import { useAuth } from "./auth-provider";
 
 const NAV = [
   { href: "/", label: "Painel" },
+  { href: "/calculadora", label: "Calculadora" },
   { href: "/historico", label: "Histórico" },
   { href: "/configuracoes", label: "Configurações" },
 ] as const;

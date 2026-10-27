@@ -26,6 +26,15 @@ describe("AppShell", () => {
     expect(screen.getByText("conteúdo")).toBeInTheDocument();
   });
 
+  it("Calculadora aponta para /calculadora e fica ativa nela", () => {
+    pathname = "/calculadora";
+    render(<AppShell>x</AppShell>);
+    const link = screen.getByRole("link", { name: "Calculadora" });
+    expect(link).toHaveAttribute("href", "/calculadora");
+    expect(link).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Painel" })).not.toHaveAttribute("aria-current");
+  });
+
   it("Painel ativo em /", () => {
     render(<AppShell>x</AppShell>);
     expect(screen.getByRole("link", { name: "Painel" })).toHaveAttribute("aria-current", "page");
