@@ -17,7 +17,9 @@ function Painel() {
   return (
     <main className="mx-auto max-w-5xl p-4">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-2xl font-semibold">Painel</h1>
+        <h1 data-after-delete-focus tabIndex={-1} className="text-2xl font-semibold outline-none">
+          Painel
+        </h1>
         <ViewSwitcher view={view} />
       </div>
       <QuickAdd />

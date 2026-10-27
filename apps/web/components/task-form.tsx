@@ -67,7 +67,7 @@ const TYPE_OPTIONS: Array<{ value: TaskType; label: string }> = [
 function FieldError({ id, message }: { id: string; message?: string }) {
   if (!message) return null;
   return (
-    <p id={id} className="text-sm text-[var(--color-fatal)]">
+    <p id={id} role="alert" className="text-sm text-[var(--color-fatal)]">
       {message}
     </p>
   );
@@ -269,6 +269,7 @@ export function TaskForm({
             id={id("type")}
             value={type}
             onChange={(e) => setType(e.target.value as TaskType | "")}
+            aria-invalid={errors.type ? true : undefined}
             aria-describedby={describe("type")}
             className={inputClass}
           >
@@ -289,6 +290,7 @@ export function TaskForm({
             id={id("case")}
             value={caseId}
             onChange={(e) => setCaseId(e.target.value)}
+            aria-invalid={errors.caseId ? true : undefined}
             aria-describedby={describe("caseId")}
             className={inputClass}
           >
@@ -400,6 +402,8 @@ export function TaskForm({
                 id={id("count")}
                 value={countType}
                 onChange={(e) => setCountType(e.target.value as CountType)}
+                aria-invalid={errors.deadline ? true : undefined}
+                aria-describedby={describe("deadline")}
                 className={inputClass}
               >
                 <option value="uteis">Dias úteis</option>
