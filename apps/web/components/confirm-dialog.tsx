@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, type RefObject } from "react";
 
 /**
  * Diálogo de confirmação sobre o <dialog> nativo (showModal: foco preso e fundo inerte).
@@ -12,9 +12,12 @@ export function ConfirmDialog({
   message,
   confirmLabel,
   pending = false,
+  returnFocusRef,
   onConfirm,
   onCancel,
 }: {
+  /** Elemento que recebe o foco ao fechar (gatilho, ou outro alvo estável). */
+  returnFocusRef?: RefObject<HTMLElement | null>;
   open: boolean;
   title: string;
   message: string;
@@ -31,14 +34,16 @@ export function ConfirmDialog({
     const dialog = ref.current;
     if (!dialog) return;
     if (open && !dialog.open) {
-      const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       dialog.showModal();
       return () => {
         if (dialog.open) dialog.close();
-        opener?.focus();
+        // O alvo vem do chamador (não de document.activeElement, que em Safari/Firefox no macOS
+        // não é o botão clicado) e é lido ao fechar, para que ele possa trocá-lo (ex.: após excluir).
+        const target = returnFocusRef?.current;
+        if (target?.isConnected) target.focus();
       };
     }
-  }, [open]);
+  }, [open, returnFocusRef]);
 
   return (
     <dialog

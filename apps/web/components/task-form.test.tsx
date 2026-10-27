@@ -79,6 +79,115 @@ describe("TaskForm", () => {
     expect(screen.getByLabelText("Título")).toHaveValue("Algo");
   });
 
+  it("erros de campo são anunciados como alerta e marcam os campos inválidos", async () => {
+    api.createTask.mockRejectedValue(
+      new ApiError(400, "entrada_invalida", {
+        error: "entrada_invalida",
+        issues: [{ path: ["type"] }, { path: ["caseId"] }, { path: ["dueTime"] }],
+      }),
+    );
+    setup();
+    type("Título", "Algo");
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+    const alerts = await screen.findAllByRole("alert");
+    expect(alerts.map((a) => a.textContent)).toEqual(
+      expect.arrayContaining(["Tipo inválido.", "Processo inválido."]),
+    );
+    expect(screen.getByLabelText("Tipo")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByLabelText("Processo")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByLabelText("Hora")).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("400 entrada_invalida mapeia prazo e hora", async () => {
+    api.calculateDeadline.mockResolvedValue({ dueDate: "2026-10-22", prorrogado: false, feriadosDescontados: [] });
+    api.createTask.mockRejectedValue(
+      new ApiError(400, "entrada_invalida", {
+        error: "entrada_invalida",
+        issues: [{ path: ["deadline", "baseDate"] }, { path: ["deadline", "days"] }, { path: ["dueTime"] }],
+      }),
+    );
+    setup();
+    type("Título", "Algo");
+    fireEvent.click(screen.getByLabelText("Calcular prazo"));
+    type("Data base", "2026-10-01");
+    type("Dias", "15");
+    fireEvent.click(screen.getByRole("button", { name: "Calcular" }));
+    await screen.findByText(/22 de outubro de 2026/);
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+    expect(await screen.findByText("Confira a data base, os dias (1 a 365) e a contagem.")).toBeInTheDocument();
+    expect(screen.getByText("Hora inválida (use HH:mm) e informe uma data.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Data base")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByLabelText("Dias")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByLabelText("Data base")).toHaveValue("2026-10-01");
+  });
+
+  it("M1: data digitada e depois modo prazo envia deadline e não dueDate", async () => {
+    api.calculateDeadline.mockResolvedValue({ dueDate: "2026-10-22", prorrogado: false, feriadosDescontados: [] });
+    api.createTask.mockResolvedValue(makeTask());
+    setup();
+    type("Título", "Contestação");
+    type("Data", "2026-11-05");
+    fireEvent.click(screen.getByLabelText("Calcular prazo"));
+    type("Data base", "2026-10-01");
+    type("Dias", "15");
+    fireEvent.click(screen.getByRole("button", { name: "Calcular" }));
+    await screen.findByText(/22 de outubro de 2026/);
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+    await waitFor(() => expect(api.createTask).toHaveBeenCalledTimes(1));
+    const body = api.createTask.mock.calls[0]![0];
+    expect(body.deadline).toEqual({ baseDate: "2026-10-01", days: 15, countType: "uteis" });
+    expect(body.dueDate).toBeUndefined();
+  });
+
+  it("M9: mudar a regra depois de calcular invalida o resultado e bloqueia salvar", async () => {
+    api.calculateDeadline.mockResolvedValue({ dueDate: "2026-10-22", prorrogado: false, feriadosDescontados: [] });
+    setup();
+    type("Título", "Contestação");
+    fireEvent.click(screen.getByLabelText("Calcular prazo"));
+    type("Data base", "2026-10-01");
+    type("Dias", "15");
+    fireEvent.click(screen.getByRole("button", { name: "Calcular" }));
+    await screen.findByText(/22 de outubro de 2026/);
+    for (const change of [
+      () => type("Data base", "2026-10-02"),
+      () => type("Dias", "20"),
+      () => type("Contagem", "corridos"),
+    ]) {
+      change();
+      expect(screen.queryByText(/22 de outubro de 2026/)).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+      expect(await screen.findByText("Calcule o prazo antes de salvar.")).toBeInTheDocument();
+      // Recalcula, para que o próximo campo seja testado isoladamente.
+      fireEvent.click(screen.getByRole("button", { name: "Calcular" }));
+      await screen.findByText(/22 de outubro de 2026/);
+    }
+    expect(api.createTask).not.toHaveBeenCalled();
+  });
+
+  it("M11: editar limpando a data envia dueDate e dueTime nulos", async () => {
+    api.updateTask.mockResolvedValue(makeTask());
+    setup({ task: makeTask({ id: "t1", dueDate: "2026-10-27", dueTime: "09:00" }) });
+    type("Data", "");
+    expect(screen.getByLabelText("Hora")).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+    await waitFor(() => expect(api.updateTask).toHaveBeenCalledWith("t1", { dueDate: null, dueTime: null }));
+  });
+
+  it("M15: com a hora desabilitada (data apagada) nenhuma hora é enviada na criação", async () => {
+    api.createTask.mockResolvedValue(makeTask());
+    setup();
+    type("Título", "Algo");
+    type("Data", "2026-11-05");
+    type("Hora", "10:00");
+    type("Data", "");
+    expect(screen.getByLabelText("Hora")).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
+    await waitFor(() => expect(api.createTask).toHaveBeenCalledTimes(1));
+    const body = api.createTask.mock.calls[0]![0];
+    expect(body.dueTime == null).toBe(true);
+    expect(body.dueDate == null).toBe(true);
+  });
+
   it("outro erro aparece em região de alerta sem limpar os campos", async () => {
     api.createTask.mockRejectedValue(new ApiError(0, "rede", null));
     setup();

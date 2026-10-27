@@ -35,15 +35,40 @@ describe("TaskRowActions", () => {
     await waitFor(() => expect(api.deleteTask).toHaveBeenCalledWith("t1"));
   });
 
-  it("cancelar não chama a API e devolve o foco ao gatilho", () => {
+  it("cancelar não chama a API e devolve o foco ao gatilho (mesmo sem ele ter foco ao clicar)", () => {
     setup();
     const trigger = screen.getByRole("button", { name: "Excluir Minuta" });
-    trigger.focus();
+    // Safari/Firefox no macOS não focam o botão ao clicar: nenhum trigger.focus() aqui.
     fireEvent.click(trigger);
+    expect(screen.getByRole("button", { name: "Cancelar" })).toHaveFocus();
     fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(api.deleteTask).not.toHaveBeenCalled();
     expect(trigger).toHaveFocus();
+  });
+
+  it("Escape também devolve o foco ao gatilho", () => {
+    setup();
+    const trigger = screen.getByRole("button", { name: "Excluir Minuta" });
+    fireEvent.click(trigger);
+    fireEvent(screen.getByRole("dialog"), new Event("cancel", { cancelable: true }));
+    expect(trigger).toHaveFocus();
+  });
+
+  it("após excluir, o foco vai para um alvo estável do Painel", async () => {
+    api.deleteTask.mockResolvedValue(undefined);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <h1 data-after-delete-focus tabIndex={-1}>
+          Painel
+        </h1>
+        <TaskRowActions task={makeTask({ id: "t1", title: "Minuta" })} />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Excluir Minuta" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sim, excluir" }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Painel" })).toHaveFocus());
   });
 
   it("Escape cancela", () => {

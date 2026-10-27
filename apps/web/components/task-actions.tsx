@@ -13,6 +13,7 @@ const btn = "rounded border border-[var(--color-borda)] px-2 py-1 text-sm";
 export function TaskRowActions({ task }: { task: TaskDto }) {
   const del = useDeleteTask();
   const editRef = useRef<HTMLButtonElement>(null);
+  const returnRef = useRef<HTMLElement | null>(null);
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -21,6 +22,8 @@ export function TaskRowActions({ task }: { task: TaskDto }) {
     setError(null);
     try {
       await del.mutateAsync(task.id);
+      // A linha some: o foco vai para um alvo estável (título do Painel), não para o corpo da página.
+      returnRef.current = document.querySelector<HTMLElement>("[data-after-delete-focus]");
     } catch (err) {
       setError(messageFor(err));
     } finally {
@@ -44,7 +47,8 @@ export function TaskRowActions({ task }: { task: TaskDto }) {
           type="button"
           className={btn}
           aria-label={`Excluir ${task.title}`}
-          onClick={() => {
+          onClick={(e) => {
+            returnRef.current = e.currentTarget;
             setError(null);
             setConfirming(true);
           }}
@@ -72,6 +76,7 @@ export function TaskRowActions({ task }: { task: TaskDto }) {
         message={`“${task.title}” será excluída. Esta ação não pode ser desfeita.`}
         confirmLabel="Sim, excluir"
         pending={del.isPending}
+        returnFocusRef={returnRef}
         onConfirm={() => void confirmDelete()}
         onCancel={() => setConfirming(false)}
       />
