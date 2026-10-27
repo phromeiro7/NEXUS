@@ -121,7 +121,7 @@ export function AuthProvider({ children, client: injected, apiFetch, apiBaseUrl 
     const { data } = client.auth.onAuthStateChange((event, session) => {
       if (active) {
         if (event === "PASSWORD_RECOVERY") setRecovery(true);
-        else if (event === "SIGNED_OUT") setRecovery(false);
+        else if (event === "SIGNED_OUT" || event === "SIGNED_IN") setRecovery(false);
       }
       apply(session !== null);
     });

@@ -62,6 +62,24 @@ describe("Nova senha: acesso só pela sessão de recuperação", () => {
     expect(f.auth.updateUser).not.toHaveBeenCalled();
   });
 
+  it("INITIAL_SESSION, SIGNED_IN e TOKEN_REFRESHED com sessão não liberam o formulário", async () => {
+    const f = fakeSupabase({ session: SESSION });
+    renderPage(f);
+    await waitFor(() => expect(f.auth.onAuthStateChange).toHaveBeenCalled());
+    for (const event of ["INITIAL_SESSION", "SIGNED_IN", "TOKEN_REFRESHED"]) {
+      act(() => f.emit(event, SESSION));
+    }
+    expect(await screen.findByText("Este link só funciona a partir do e-mail de recuperação.")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Nova senha")).toBeNull();
+  });
+
+  it("SIGNED_IN (outra conta, sem sair) encerra a recuperação: o formulário some", async () => {
+    const f = await renderRecovery();
+    act(() => f.emit("SIGNED_IN", { access_token: "outra" }));
+    expect(await screen.findByText("Este link só funciona a partir do e-mail de recuperação.")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Nova senha")).toBeNull();
+  });
+
   it("com o evento PASSWORD_RECOVERY mostra o formulário", async () => {
     await renderRecovery();
     expect(screen.getByLabelText("Confirmar senha")).toBeInTheDocument();
