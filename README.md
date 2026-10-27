@@ -68,10 +68,50 @@ lembretes (Plano 5)", §7 de `docs/superpowers/specs/2026-10-26-assistente-jurid
 ## Painel
 
 `apps/web` é o painel Next.js (porta **3000**): `pnpm --filter @aj/web dev`. Ele não
-acessa o banco; usa só `supabase.auth` e a API. Variáveis públicas (nomes em
-`.env.example`, valores no `.env` local): `NEXT_PUBLIC_API_URL` (padrão
-`http://localhost:3001`), `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
-Nunca use a service role no painel.
+acessa o banco; usa só `supabase.auth` e a API (um teste de contrato varre `apps/web`
+contra `.from(`/`.rpc(` e `service_role`). Nunca use a service role no painel.
+
+**Variáveis** (só nomes; os valores ficam fora do Git, em `apps/web/.env.local`, que o
+Next lê a partir da pasta do app; `.env.example` na raiz lista os nomes):
+
+- `NEXT_PUBLIC_API_URL`: URL da API (padrão `http://localhost:3001`).
+- `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY`: obrigatórias; se faltarem,
+  a criação do cliente lança um erro que nomeia a variável, sem imprimir valores (a validação
+  é feita ao criar o cliente, não na importação, para `next build` e os testes funcionarem
+  sem ambiente).
+
+**Ordem para subir tudo localmente** (três terminais, na raiz):
+
+1. Supabase local (projeto `assistente-juridico`, portas 553xx):
+   `./apps/api/node_modules/.bin/supabase start --workdir .` (veja "Banco local"). Copie a URL
+   da API (`http://127.0.0.1:55321`) e a anon key que o comando imprime para
+   `apps/web/.env.local`.
+2. API, na porta 3001, autorizando o painel por CORS:
+   `WEB_ORIGIN=http://localhost:3000 pnpm --filter @aj/api dev` (com as variáveis da API do
+   `.env.example` no ambiente).
+3. Painel: `pnpm --filter @aj/web dev` e abra `http://localhost:3000`.
+
+`dev` e `build` usam `--webpack`: o Turbopack não resolve os imports `./x.js` que apontam para
+`.ts` dentro de `@aj/shared`. O motivo e como reverter estão em `apps/web/next.config.ts`.
+
+**Auth local.** Em `supabase/config.toml`, `[auth.email]` está com `enable_confirmations = false`:
+o cadastro entra direto, sem confirmar e-mail. Se você ligar a confirmação, o painel avisa para
+confirmar e os e-mails de teste aparecem na interface web do servidor de e-mail local (porta 55324). A recuperação de senha envia o
+link para `/nova-senha`; essa URL está em `additional_redirect_urls` do mesmo arquivo (reinicie
+o Supabase local depois de alterar o `config.toml`).
+
+**O que está implementado:** entrar, cadastro, recuperação e redefinição de senha; Painel com
+adição rápida e visões Dia, Semana e Mês (hoje no fuso das configurações), resumo lateral,
+troca de status otimista, criação, edição e exclusão de tarefas (prazo, audiência, vínculo a
+processo existente); calculadora de prazos com criação de tarefa a partir do resultado;
+histórico de tarefas concluídas (com canceladas opcionais); configurações (fuso, UF, cidade,
+antecedência do lembrete, horário do resumo, aviso de tarefas que mantiveram lembretes antigos
+quando a API devolve `skipped`) e feriados locais.
+
+**O que não está:** barra de comando e IA (Plano 4; há um espaço reservado no cabeçalho),
+vínculo e envio pelo Telegram (Plano 5; a tela mostra "Vínculo disponível em breve"), tela de
+Processos (fora do escopo; o processo só aparece como referência na tarefa). A paleta de cores
+é provisória e está isolada em tokens CSS em `apps/web/app/globals.css` para troca posterior.
 
 ## Banco local (testes de banco)
 
