@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AuthCard, AuthForm, Field } from "@/components/auth-form";
 import { useAuth } from "@/components/auth-provider";
 
@@ -14,7 +14,17 @@ const MIN_PASSWORD = 8;
  * O token nunca é lido, exibido nem registrado por este código.
  */
 export default function NovaSenhaPage() {
-  const { status, updatePassword } = useAuth();
+  const { status, recovery, updatePassword } = useAuth();
+  const [hashChecked, setHashChecked] = useState(false);
+  const [hashError, setHashError] = useState(false);
+
+  // Erro de link na URL (link expirado/usado): só a presença importa; o conteúdo nunca é
+  // exibido nem registrado. Lido após a montagem para não divergir da renderização no servidor.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    setHashError(params.has("error") || params.has("error_code") || params.has("error_description"));
+    setHashChecked(true);
+  }, []);
   const router = useRouter();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -47,7 +57,8 @@ export default function NovaSenhaPage() {
     router.replace("/");
   }
 
-  if (status === "loading") {
+  // Espera a sessão inicial e a leitura do fragmento antes de decidir (sem piscar "inválido").
+  if (status === "loading" || !hashChecked) {
     return (
       <AuthCard title="Nova senha">
         <p role="status">Verificando o link…</p>
@@ -55,13 +66,30 @@ export default function NovaSenhaPage() {
     );
   }
 
-  if (status === "signedOut" && !done) {
+  if (!done && (hashError || status === "signedOut")) {
     return (
       <AuthCard title="Nova senha">
         <p role="alert" className="text-sm text-[var(--color-fatal)]">
           O link de recuperação é inválido ou expirou. Peça um novo link.
         </p>
         <p className="mt-4 text-sm">
+          <Link href="/recuperar" className="inline-flex min-h-10 items-center underline">
+            Pedir novo link
+          </Link>
+        </p>
+      </AuthCard>
+    );
+  }
+
+  // Sessão normal (sem o evento de recuperação): nunca oferece trocar a senha sem a atual.
+  if (!done && !recovery) {
+    return (
+      <AuthCard title="Nova senha">
+        <p className="text-sm">Este link só funciona a partir do e-mail de recuperação.</p>
+        <p className="mt-4 flex flex-wrap gap-x-4 text-sm">
+          <Link href="/configuracoes" className="inline-flex min-h-10 items-center underline">
+            Configurações
+          </Link>
           <Link href="/recuperar" className="inline-flex min-h-10 items-center underline">
             Pedir novo link
           </Link>

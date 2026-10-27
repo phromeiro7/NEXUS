@@ -21,6 +21,8 @@ export type SignUpResult = AuthResult & { needsConfirmation: boolean };
 
 export type AuthContextValue = {
   status: AuthStatus;
+  /** Sessão aberta pelo link de recuperação de senha (evento PASSWORD_RECOVERY). */
+  recovery: boolean;
   signIn(email: string, password: string): Promise<AuthResult>;
   signUp(email: string, password: string): Promise<SignUpResult>;
   sendReset(email: string): Promise<AuthResult>;
@@ -84,6 +86,8 @@ export function AuthProvider({ children, client: injected, apiFetch, apiBaseUrl 
   const pathname = usePathname();
   const [status, setStatus] = useState<AuthStatus>("loading");
   const [configError, setConfigError] = useState<string | null>(null);
+  // Verdadeiro só entre o evento PASSWORD_RECOVERY e o fim da redefinição (ou a saída).
+  const [recovery, setRecovery] = useState(false);
   const clientRef = useRef<AuthClient | null>(injected ?? null);
   const redirected = useRef(false);
   const pathRef = useRef(pathname);
@@ -112,11 +116,19 @@ export function AuthProvider({ children, client: injected, apiFetch, apiBaseUrl 
       if (hasSession) redirected.current = false;
       setStatus(hasSession ? "signedIn" : "signedOut");
     };
+    // Assina antes de pedir a sessão: o evento PASSWORD_RECOVERY é emitido durante a
+    // inicialização do cliente e getSession só resolve depois dela.
+    const { data } = client.auth.onAuthStateChange((event, session) => {
+      if (active) {
+        if (event === "PASSWORD_RECOVERY") setRecovery(true);
+        else if (event === "SIGNED_OUT") setRecovery(false);
+      }
+      apply(session !== null);
+    });
     void client.auth
       .getSession()
       .then(({ data }) => apply(data.session !== null))
       .catch(() => apply(false));
-    const { data } = client.auth.onAuthStateChange((_event, session) => apply(session !== null));
     return () => {
       active = false;
       data.subscription.unsubscribe();
@@ -143,6 +155,7 @@ export function AuthProvider({ children, client: injected, apiFetch, apiBaseUrl 
 
   const signOut = useCallback(async () => {
     setStatus("signedOut");
+    setRecovery(false);
     try {
       await clientRef.current?.auth.signOut({ scope: "local" });
     } catch {
@@ -214,6 +227,7 @@ export function AuthProvider({ children, client: injected, apiFetch, apiBaseUrl 
     if (!client) return { error: GENERIC };
     try {
       const { error } = await client.auth.updateUser({ password });
+      if (!error) setRecovery(false);
       return { error: error ? passwordMessage(error) : null };
     } catch {
       return { error: "Sem conexão. Verifique sua internet e tente novamente." };
@@ -223,6 +237,7 @@ export function AuthProvider({ children, client: injected, apiFetch, apiBaseUrl 
   const value = useMemo<AuthContextValue>(
     () => ({
       status,
+      recovery,
       signIn,
       signUp,
       sendReset,
@@ -233,7 +248,7 @@ export function AuthProvider({ children, client: injected, apiFetch, apiBaseUrl 
       api,
       configError,
     }),
-    [status, signIn, signUp, sendReset, updatePassword, signOut, getToken, redirectToLogin, api, configError],
+    [status, recovery, signIn, signUp, sendReset, updatePassword, signOut, getToken, redirectToLogin, api, configError],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
