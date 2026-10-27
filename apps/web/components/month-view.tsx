@@ -72,10 +72,10 @@ function MonthContent({ today, year, month }: { today: IsoDate; year: number; mo
                       type="button"
                       data-outside={outside ? "true" : undefined}
                       aria-current={isToday ? "date" : undefined}
-                      aria-label={`${formatLongDate(date)}${label ? `, ${label}` : ""}`}
+                      aria-label={`${formatLongDate(date)}${isToday ? " (hoje)" : ""}${label ? `, ${label}` : ""}`}
                       onClick={() => nav.openDay(date)}
                       className={`flex min-h-16 w-full flex-col items-start gap-0.5 p-1 text-left text-xs ${
-                        outside ? "opacity-50" : ""
+                        outside ? "text-[var(--color-texto-suave)]" : ""
                       } ${isToday ? "outline outline-2 -outline-offset-2 outline-[var(--color-destaque)]" : ""}`}
                     >
                       <span className="font-semibold">

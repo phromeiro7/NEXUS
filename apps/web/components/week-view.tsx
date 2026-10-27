@@ -46,7 +46,7 @@ function WeekContent({ today, anchor }: { today: IsoDate; anchor: IsoDate }) {
       {tasksQ.isError && <p role="alert">Não foi possível carregar as tarefas.</p>}
       {tasksQ.isPending && <p role="status">Carregando…</p>}
       {!tasksQ.isPending && !tasksQ.isError && (
-        <div className="grid grid-cols-1 gap-2 lg:grid-cols-7">
+        <div className="grid grid-cols-1 gap-2 xl:grid-cols-7">
           {days.map((day, i) => {
             const isToday = day.date === today;
             const name = `${WEEKDAYS[i]} ${formatShort(day.date)}`;
@@ -64,7 +64,7 @@ function WeekContent({ today, anchor }: { today: IsoDate; anchor: IsoDate }) {
                   {isToday && <span className="ml-1 font-normal">(hoje)</span>}
                 </h3>
                 {day.tasks.length === 0 ? (
-                  <p className="text-sm opacity-80">Sem tarefas</p>
+                  <p className="text-sm text-[var(--color-texto-suave)]">Sem tarefas</p>
                 ) : (
                   <ul className="flex flex-col gap-2">
                     {day.tasks.map((t) => (

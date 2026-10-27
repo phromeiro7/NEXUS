@@ -73,8 +73,10 @@ function HistoryContent({ timeZone }: { timeZone: string }) {
         <p>{includeCancelled ? "Nenhuma tarefa concluída ou cancelada ainda." : "Nenhuma tarefa concluída ainda."}</p>
       )}
       {groups.map((g) => (
-        <section key={g.day} aria-label={formatLongDate(g.day)}>
-          <h2 className="mb-2 text-lg font-semibold">{formatLongDate(g.day)}</h2>
+        <section key={g.day} aria-labelledby={`${checkId}-${g.day}`}>
+          <h2 id={`${checkId}-${g.day}`} className="mb-2 text-lg font-semibold">
+            {formatLongDate(g.day)}
+          </h2>
           <ul className="flex flex-col gap-2">
             {g.tasks.map((t) => {
               const time = completionTime(t, timeZone);
@@ -87,7 +89,8 @@ function HistoryContent({ timeZone }: { timeZone: string }) {
                   <span className="rounded border border-[var(--color-borda)] px-1.5 text-xs">{TYPE_LABEL[t.type]}</span>
                   {t.status === "cancelada" && <span className="text-xs font-semibold">Cancelada</span>}
                   {time && (
-                    <span className="font-mono text-sm" title="Horário da conclusão">
+                    <span className="font-mono text-sm">
+                      <span className="sr-only">concluída às </span>
                       {time}
                     </span>
                   )}
@@ -95,7 +98,7 @@ function HistoryContent({ timeZone }: { timeZone: string }) {
                     type="button"
                     aria-label={`Reabrir ${t.title}`}
                     onClick={() => void change(t.id, "pendente")}
-                    className="ml-auto rounded border border-[var(--color-borda)] px-3 py-1 text-sm"
+                    className="ml-auto min-h-10 rounded border border-[var(--color-borda)] px-3 py-1 text-sm"
                   >
                     Reabrir
                   </button>

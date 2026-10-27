@@ -34,6 +34,16 @@ beforeEach(() => {
   api.listTasks.mockImplementation(async () => data);
 });
 
+describe("WeekView layout", () => {
+  it("a grade só vira 7 colunas em telas xl (com a lateral, 1024 px não cabe)", async () => {
+    setup("2026-12-28");
+    const [first] = await screen.findAllByRole("region");
+    const grid = first!.parentElement!;
+    expect(grid.className).toContain("xl:grid-cols-7");
+    expect(grid.className).not.toMatch(/(^|\s)lg:grid-cols-7/);
+  });
+});
+
 describe("WeekView", () => {
   it("semana de 2026-12-28: 7 colunas até 2027-01-03, tarefa de 2027-01-01 na coluna certa", async () => {
     data = [makeTask({ id: "a", title: "Ano novo", dueDate: "2027-01-01" })];

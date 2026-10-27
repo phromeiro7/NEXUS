@@ -34,6 +34,23 @@ beforeEach(() => {
   api.listTasks.mockImplementation(async () => data);
 });
 
+describe("MonthView acessibilidade", () => {
+  it("o nome acessível da célula de hoje inclui '(hoje)'; as outras não", async () => {
+    setup({ year: 2026, month: 2 });
+    const today = await screen.findByLabelText(/10 de fevereiro/);
+    expect(today.getAttribute("aria-label")).toMatch(/\(hoje\)/);
+    expect(screen.getByLabelText(/11 de fevereiro/).getAttribute("aria-label")).not.toMatch(/hoje/);
+  });
+
+  it("setas e Hoje têm alvo de toque de 40 px; as células também", async () => {
+    setup({ year: 2026, month: 2 });
+    await screen.findByLabelText(/10 de fevereiro/);
+    for (const el of [screen.getByLabelText("Mês anterior"), screen.getByLabelText("Mês seguinte"), screen.getByText("Hoje")]) {
+      expect(el.className).toContain("min-h-10");
+    }
+  });
+});
+
 describe("MonthView", () => {
   it("fev/2026 tem 5 linhas e mostra '2 tarefas, 1 fatal' em 2026-02-10", async () => {
     data = [

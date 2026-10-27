@@ -9,8 +9,7 @@ import {
 import { useUpdateSettings } from "@/hooks/queries";
 import { ApiError } from "@/lib/api";
 import { messageFor } from "@/lib/messages";
-import { inputClass } from "./auth-form";
-import { FieldError } from "./task-form";
+import { FieldError, inputClass } from "./field";
 
 const DEFAULT_TIMEZONE = "America/Sao_Paulo";
 
@@ -333,7 +332,7 @@ export function SettingsForm({ settings }: { settings: SettingsDto }) {
           Telegram
         </h2>
         <p className="text-sm">{settings.telegramLinked ? "Telegram vinculado" : "Telegram não vinculado"}</p>
-        <p className="text-sm text-[var(--color-texto-suave,inherit)]">Vínculo disponível em breve</p>
+        <p className="text-sm text-[var(--color-texto-suave)]">Vínculo disponível em breve</p>
       </section>
     </div>
   );

@@ -17,7 +17,7 @@ import { useCases, useCreateTask, useUpdateTask } from "@/hooks/queries";
 import { ApiError } from "@/lib/api";
 import { formatLongDate } from "@/lib/dates";
 import { messageFor } from "@/lib/messages";
-import { inputClass } from "./auth-form";
+import { FieldError, inputClass } from "./field";
 
 /** Pré-preenchimento (ex.: calculadora da Tarefa 10); `deadline` abre o formulário em "calcular prazo". */
 export type TaskFormInitial = {
@@ -65,15 +65,6 @@ const TYPE_OPTIONS: Array<{ value: TaskType; label: string }> = [
   { value: "tarefa", label: "Tarefa" },
   { value: "audiencia", label: "Audiência" },
 ];
-
-export function FieldError({ id, message }: { id: string; message?: string }) {
-  if (!message) return null;
-  return (
-    <p id={id} role="alert" className="text-sm text-[var(--color-fatal)]">
-      {message}
-    </p>
-  );
-}
 
 /**
  * Cria (sem `task`) ou edita (com `task`, enviando só os campos alterados) uma tarefa.

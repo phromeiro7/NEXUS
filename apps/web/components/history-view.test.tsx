@@ -35,6 +35,28 @@ beforeEach(() => {
   );
 });
 
+describe("HistoryView acessibilidade", () => {
+  it("horário tem texto acessível 'concluída às' e a seção usa aria-labelledby do título", async () => {
+    data = [makeTask({ id: "a", title: "Tarde", status: "concluida", completedAt: "2026-10-26T18:00:00Z" })];
+    setup();
+    await screen.findByText("Tarde");
+    const item = screen.getByText("Tarde").closest("li")!;
+    expect(item.textContent).toMatch(/concluída às\s*15:00/);
+    const heading = screen.getByRole("heading", { level: 2 });
+    const section = heading.closest("section")!;
+    expect(section).not.toHaveAttribute("aria-label");
+    expect(section.getAttribute("aria-labelledby")).toBe(heading.id);
+    expect(heading.id).not.toBe("");
+    expect(screen.getByRole("region", { name: heading.textContent! })).toBe(section);
+  });
+
+  it("Reabrir tem alvo de toque de 40 px", async () => {
+    data = [makeTask({ id: "a", title: "Tarde", status: "concluida", completedAt: "2026-10-26T18:00:00Z" })];
+    setup();
+    expect((await screen.findByRole("button", { name: "Reabrir Tarde" })).className).toContain("min-h-10");
+  });
+});
+
 describe("HistoryView", () => {
   it("agrupa pelo dia da conclusão no fuso do usuário, mais recente primeiro", async () => {
     data = [

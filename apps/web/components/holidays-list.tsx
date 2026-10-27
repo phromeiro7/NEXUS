@@ -4,9 +4,8 @@ import { useId, useRef, useState, type FormEvent } from "react";
 import { createHolidayInputSchema, type HolidayDto, type HolidayScope } from "@aj/shared";
 import { useCreateHoliday, useDeleteHoliday, useHolidays } from "@/hooks/queries";
 import { messageFor } from "@/lib/messages";
-import { inputClass } from "./auth-form";
 import { ConfirmDialog } from "./confirm-dialog";
-import { FieldError } from "./task-form";
+import { FieldError, inputClass } from "./field";
 
 type Field = "date" | "scope" | "name";
 type Errors = Partial<Record<Field, string>>;
@@ -105,7 +104,7 @@ export function HolidaysList() {
               <button
                 type="button"
                 aria-label={`Remover ${h.name}`}
-                className="rounded border border-[var(--color-borda)] px-2 py-1 text-sm"
+                className="min-h-10 rounded border border-[var(--color-borda)] px-3 py-1 text-sm"
                 onClick={(e) => {
                   returnRef.current = e.currentTarget;
                   setListError(null);

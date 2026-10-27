@@ -4,7 +4,7 @@ import { useRef, useState, type FormEvent } from "react";
 import { createTaskInputSchema } from "@aj/shared";
 import { useCreateTask } from "@/hooks/queries";
 import { messageFor } from "@/lib/messages";
-import { inputClass } from "./auth-form";
+import { inputClass } from "./field";
 
 /** Adição rápida: título + data opcional, cria uma `tarefa` e devolve o foco ao campo. */
 export function QuickAdd() {

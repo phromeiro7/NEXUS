@@ -7,7 +7,7 @@ import { messageFor } from "@/lib/messages";
 import { ConfirmDialog } from "./confirm-dialog";
 import { TaskForm } from "./task-form";
 
-const btn = "rounded border border-[var(--color-borda)] px-2 py-1 text-sm";
+const btn = "min-h-10 rounded border border-[var(--color-borda)] px-2 py-1 text-sm";
 
 /** "Editar" (formulário na própria linha) e "Excluir" (com confirmação) de uma tarefa. */
 export function TaskRowActions({ task }: { task: TaskDto }) {
