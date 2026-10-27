@@ -79,3 +79,83 @@ export interface ReminderRepository {
 export interface Clock {
   now(): Date;
 }
+
+export type ChatChannel = 'painel' | 'telegram';
+export type ChatRole = 'user' | 'assistant';
+
+export interface ChatRepository {
+  /** Guarda a mensagem com `created_at = now` e validade de 24 h a partir de `now`. */
+  append(userId: string, channel: ChatChannel, role: ChatRole, content: string, now: Date): Promise<void>;
+  /** Até `limit` mensagens não expiradas (`expires_at > now`) do usuário no canal, em ordem cronológica. */
+  recent(
+    userId: string,
+    channel: ChatChannel,
+    limit: number,
+    now: Date,
+  ): Promise<Array<{ role: ChatRole; content: string }>>;
+}
+
+export type InboundEventStatus = 'recebido' | 'processando' | 'processado' | 'falhou';
+
+export interface InboundEventRepository {
+  /**
+   * Registro atômico (único `(channel, externalId)`). `firstTime: true` para evento novo ou
+   * `falhou` (reiniciado como `recebido`); `false` para qualquer outro estado, com o `reply`
+   * guardado. Lança `ForeignEventError` se o evento pertence a outro usuário. `userId` nulo
+   * (Telegram sem vínculo) é adotado pelo primeiro usuário que o registrar.
+   */
+  register(
+    userId: string | null,
+    channel: ChatChannel,
+    externalId: string,
+    now: Date,
+  ): Promise<{ firstTime: boolean; status: InboundEventStatus; reply: unknown | null }>;
+  /** status -> 'processando' e `attempt_count + 1` (a chamada ao modelo vai começar). */
+  beginModelCall(channel: ChatChannel, externalId: string, now: Date): Promise<void>;
+  /** status -> 'processado', `processed_at = now`, guarda `reply` (jsonb, < 64 KB). */
+  markProcessed(channel: ChatChannel, externalId: string, reply: unknown, now: Date): Promise<void>;
+  /** status -> 'falhou' (pode ser reprocessado por `register`). */
+  markFailed(channel: ChatChannel, externalId: string, now: Date): Promise<void>;
+  /**
+   * Eventos do usuário no canal com `received_at >= since` e `attempt_count >= 1` (só os que
+   * chegaram a chamar o modelo contam para o limite horário; Ruling 7).
+   */
+  countSince(userId: string, channel: ChatChannel, since: Date): Promise<number>;
+}
+
+/*
+ * Modelo de IA. `ModelMessage` é o histórico do ciclo de ferramentas: texto simples, ou blocos.
+ * O assistente responde com `text` e `tool_use`; o servidor devolve cada resultado como um
+ * bloco `tool_result` (mensagem `user`) cujo `tool_use_id` é o `id` do `tool_use` respondido.
+ */
+export type ContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'tool_use'; id: string; name: string; input: unknown }
+  | { type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean };
+
+export type ModelMessage = { role: 'user' | 'assistant'; content: string | Array<ContentBlock> };
+
+/** Trecho do prompt de sistema; `cache: true` marca o fim do trecho cacheável. */
+export type SystemBlock = { type: 'text'; text: string; cache?: boolean };
+
+export type ToolDefinition = {
+  name: string;
+  description: string;
+  /** JSON Schema do input da ferramenta. */
+  inputSchema: Record<string, unknown>;
+};
+
+export type ModelStep = {
+  stopReason: 'end_turn' | 'tool_use' | 'max_tokens' | 'refusal';
+  blocks: Array<{ type: 'text'; text: string } | { type: 'tool_use'; id: string; name: string; input: unknown }>;
+  usage: { inputTokens: number; outputTokens: number; cacheReadTokens: number };
+};
+
+export interface AssistantModel {
+  step(input: {
+    system: SystemBlock[];
+    messages: ModelMessage[];
+    tools: ToolDefinition[];
+    signal: AbortSignal;
+  }): Promise<ModelStep>;
+}
