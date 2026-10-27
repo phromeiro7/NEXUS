@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { IsoDate } from '@aj/shared';
-import { ConflictError } from '../src/application/errors.js';
+import { ConflictError, ForeignEventError } from '../src/application/errors.js';
 import type { NewTask } from '../src/application/ports.js';
 import { createFakes } from './fakes.js';
 
@@ -190,6 +190,68 @@ describe('fakes: reminders', () => {
     expect(f.reminders.remindersFor('t1')).toHaveLength(1);
     await expect(f.reminders.replacePending('A', 't1', [])).resolves.toBeUndefined();
     expect(f.reminders.remindersFor('t1')).toEqual([]);
+  });
+});
+
+describe('fakes: chat', () => {
+  const t = (m: number) => new Date(Date.UTC(2026, 9, 27, 12, m));
+
+  it('returns chronological, limited, unexpired messages of the user and channel', async () => {
+    const f = createFakes();
+    await f.chat.append('A', 'painel', 'user', 'velha', new Date('2026-10-25T00:00:00Z'));
+    await f.chat.append('A', 'painel', 'user', 'um', t(1));
+    await f.chat.append('A', 'painel', 'assistant', 'dois', t(1));
+    await f.chat.append('A', 'telegram', 'user', 'outro canal', t(2));
+    await f.chat.append('B', 'painel', 'user', 'de B', t(2));
+    expect(await f.chat.recent('A', 'painel', 10, t(5))).toEqual([
+      { role: 'user', content: 'um' },
+      { role: 'assistant', content: 'dois' },
+    ]);
+    expect(await f.chat.recent('A', 'painel', 1, t(5))).toEqual([{ role: 'assistant', content: 'dois' }]);
+  });
+});
+
+describe('fakes: inbound events', () => {
+  const now = new Date('2026-10-27T12:00:00Z');
+
+  it('registers once, reprocesses failed, replays the stored reply', async () => {
+    const f = createFakes();
+    const e = f.inboundEvents;
+    expect(await e.register('A', 'painel', 'x', now)).toEqual({ firstTime: true, status: 'recebido', reply: null });
+    expect((await e.register('A', 'painel', 'x', now)).firstTime).toBe(false);
+    await e.beginModelCall('painel', 'x', now);
+    await e.markFailed('painel', 'x', now);
+    expect(await e.register('A', 'painel', 'x', now)).toEqual({ firstTime: true, status: 'recebido', reply: null });
+    await e.markProcessed('painel', 'x', { a: { b: 1 } }, now);
+    expect(await e.register('A', 'painel', 'x', now)).toEqual({
+      firstTime: false,
+      status: 'processado',
+      reply: { a: { b: 1 } },
+    });
+  });
+
+  it('refuses another user, adopts null-user events and keeps channels apart', async () => {
+    const f = createFakes();
+    const e = f.inboundEvents;
+    await e.register(null, 'telegram', 'y', now);
+    expect((await e.register('A', 'telegram', 'y', now)).firstTime).toBe(false);
+    await expect(e.register('B', 'telegram', 'y', now)).rejects.toBeInstanceOf(ForeignEventError);
+    expect((await e.register('A', 'painel', 'y', now)).firstTime).toBe(true);
+  });
+
+  it('countSince counts only attempt_count >= 1 of the user, channel and window', async () => {
+    const f = createFakes();
+    const e = f.inboundEvents;
+    const since = new Date('2026-10-27T11:00:00Z');
+    await e.register('A', 'painel', '1', now);
+    await e.beginModelCall('painel', '1', now);
+    await e.register('A', 'painel', '2', now); // refused: no model call
+    await e.register('A', 'painel', '3', new Date('2026-10-27T10:00:00Z'));
+    await e.beginModelCall('painel', '3', now);
+    await e.register('B', 'painel', '4', now);
+    await e.beginModelCall('painel', '4', now);
+    expect(await e.countSince('A', 'painel', since)).toBe(1);
+    expect(await e.countSince('A', 'telegram', since)).toBe(0);
   });
 });
 

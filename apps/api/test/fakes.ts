@@ -1,8 +1,13 @@
 import type { CaseDto, HolidayDto, IsoDate, SettingsDto, TaskDto } from '@aj/shared';
-import { ConflictError } from '../src/application/errors.js';
+import { ConflictError, ForeignEventError } from '../src/application/errors.js';
 import type {
   CaseRepository,
+  ChatChannel,
+  ChatRepository,
+  ChatRole,
   Clock,
+  InboundEventRepository,
+  InboundEventStatus,
   HolidayAdminRepository,
   HolidayRepository,
   NewTask,
@@ -204,12 +209,81 @@ export function createFakes(seed: { now?: Date } = {}) {
     },
   };
 
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const chatRows: { userId: string; channel: ChatChannel; role: ChatRole; content: string; createdAt: Date; expiresAt: Date }[] = [];
+  const chat: ChatRepository = {
+    async append(userId, channel, role, content, at) {
+      chatRows.push({ userId, channel, role, content, createdAt: at, expiresAt: new Date(at.getTime() + DAY_MS) });
+    },
+    async recent(userId, channel, limit, at) {
+      // Ordenação estável: empates de `createdAt` mantêm a ordem de inserção.
+      return chatRows
+        .filter((r) => r.userId === userId && r.channel === channel && r.expiresAt > at)
+        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+        .slice(-limit)
+        .map(({ role, content }) => ({ role, content }));
+    },
+  };
+
+  type EventRow = {
+    userId: string | null;
+    channel: ChatChannel;
+    externalId: string;
+    status: InboundEventStatus;
+    receivedAt: Date;
+    attemptCount: number;
+    reply: unknown | null;
+  };
+  const eventRows: EventRow[] = [];
+  const eventOf = (channel: ChatChannel, externalId: string): EventRow => {
+    const row = eventRows.find((r) => r.channel === channel && r.externalId === externalId);
+    if (!row) throw new Error('evento não encontrado');
+    return row;
+  };
+  const inboundEvents: InboundEventRepository = {
+    async register(userId, channel, externalId, at) {
+      const row = eventRows.find((r) => r.channel === channel && r.externalId === externalId);
+      if (!row) {
+        eventRows.push({ userId, channel, externalId, status: 'recebido', receivedAt: at, attemptCount: 0, reply: null });
+        return { firstTime: true, status: 'recebido', reply: null };
+      }
+      if (row.userId !== null && row.userId !== userId) throw new ForeignEventError();
+      if (row.userId === null && userId !== null) row.userId = userId;
+      if (row.status === 'falhou') {
+        row.status = 'recebido';
+        row.receivedAt = at;
+        return { firstTime: true, status: 'recebido', reply: null };
+      }
+      return { firstTime: false, status: row.status, reply: structuredClone(row.reply) };
+    },
+    async beginModelCall(channel, externalId) {
+      const row = eventOf(channel, externalId);
+      row.status = 'processando';
+      row.attemptCount += 1;
+    },
+    async markProcessed(channel, externalId, reply) {
+      const row = eventOf(channel, externalId);
+      row.status = 'processado';
+      row.reply = structuredClone(reply);
+    },
+    async markFailed(channel, externalId) {
+      eventOf(channel, externalId).status = 'falhou';
+    },
+    async countSince(userId, channel, since) {
+      return eventRows.filter(
+        (r) => r.userId === userId && r.channel === channel && r.attemptCount >= 1 && r.receivedAt >= since,
+      ).length;
+    },
+  };
+
   return {
     tasks,
     cases,
     profiles,
     holidays,
     reminders,
+    chat,
+    inboundEvents,
     clock,
     setNow(date: Date) {
       now = date;

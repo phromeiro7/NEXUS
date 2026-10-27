@@ -12,6 +12,14 @@ export class ConflictError extends Error {
   }
 }
 
+/** O mesmo `externalId` já pertence a outro usuário; a resposta dele nunca é devolvida. */
+export class ForeignEventError extends Error {
+  constructor() {
+    super('Evento de outro usuário');
+    this.name = 'ForeignEventError';
+  }
+}
+
 export class InvalidInputError extends Error {
   constructor(readonly code: 'hora_sem_data') {
     super(`Entrada inválida: ${code}`);
