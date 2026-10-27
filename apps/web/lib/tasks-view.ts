@@ -90,7 +90,7 @@ export function groupHistory(
     }
   }
   // Most recent first, both across days and within a day.
-  entries.sort((a, b) => (a.at === b.at ? 0 : a.at < b.at ? 1 : -1));
+  entries.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
   const groups = new Map<IsoDate, TaskDto[]>();
   for (const e of entries) {
     const list = groups.get(e.day);

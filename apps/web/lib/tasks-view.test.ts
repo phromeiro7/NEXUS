@@ -210,4 +210,12 @@ describe('groupHistory', () => {
     expect(r.map((g) => g.day)).toEqual(['2026-10-26', '2026-10-25']);
     expect(ids(r[0]!.tasks)).toEqual(['x']);
   });
+
+  it('orders by instant, not by raw string, when timestamp formats differ', () => {
+    // Same day in SP; as strings "…15:00:00Z" < "…15:00:00.500Z" is false ("Z" > "."),
+    // yet the second instant is later.
+    const a = task({ id: 'a', status: 'concluida', completedAt: '2026-10-26T15:00:00Z' });
+    const b = task({ id: 'b', status: 'concluida', completedAt: '2026-10-26T15:00:00.500Z' });
+    expect(ids(groupHistory([a, b], { timeZone: SP })[0]!.tasks)).toEqual(['b', 'a']);
+  });
 });
