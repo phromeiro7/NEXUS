@@ -8,6 +8,7 @@ import { useStatusChange } from "@/hooks/use-status-change";
 import { addDays, formatLongDate } from "@/lib/dates";
 import { groupDay, pendingCount } from "@/lib/tasks-view";
 import { usePeriodNav } from "./period-nav";
+import { TaskRowActions } from "./task-actions";
 import { TaskRow } from "./task-row";
 
 const OPEN = ["pendente", "em_andamento"] as TaskStatus[];
@@ -69,7 +70,13 @@ function DayContent({ today, selected }: { today: IsoDate; selected: IsoDate }) 
           <h2 className="mb-2 text-lg font-semibold">{s.title}</h2>
           <ul className="flex flex-col gap-2">
             {s.items.map((t) => (
-              <TaskRow key={t.id} task={t} today={today} onChange={(status) => void change(t.id, status)} />
+              <TaskRow
+                key={t.id}
+                task={t}
+                today={today}
+                onChange={(status) => void change(t.id, status)}
+                actions={<TaskRowActions task={t} />}
+              />
             ))}
           </ul>
         </section>

@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import type { IsoDate, TaskDto, TaskStatus, TaskType } from "@aj/shared";
 import { urgencyLabel } from "@/lib/tasks-view";
 import { StatusChip } from "./status-chip";
@@ -14,10 +15,13 @@ export function TaskRow({
   task,
   today,
   onChange,
+  actions,
 }: {
   task: TaskDto;
   today: IsoDate;
   onChange: (status: TaskStatus) => void;
+  /** Ações da linha (Editar/Excluir), injetadas por quem lista as tarefas. */
+  actions?: ReactNode;
 }) {
   const overdue = task.dueDate !== null && task.dueDate < today && task.status !== "concluida";
   return (
@@ -46,6 +50,7 @@ export function TaskRow({
         </span>
       </div>
       <StatusChip task={task} onChange={onChange} />
+      {actions}
     </li>
   );
 }
