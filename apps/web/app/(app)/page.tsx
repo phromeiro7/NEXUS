@@ -4,6 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { DayView } from "@/components/day-view";
 import { MonthView } from "@/components/month-view";
+import { QuickAdd } from "@/components/quick-add";
 import { SummaryAside } from "@/components/summary-aside";
 import { parseView, ViewSwitcher } from "@/components/view-switcher";
 import { WeekView } from "@/components/week-view";
@@ -19,6 +20,7 @@ function Painel() {
         <h1 className="text-2xl font-semibold">Painel</h1>
         <ViewSwitcher view={view} />
       </div>
+      <QuickAdd />
       <div className="grid gap-4 md:grid-cols-[1fr_16rem]">
         <div>
           {view === "dia" && <DayView date={anchor} />}

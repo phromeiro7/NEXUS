@@ -7,6 +7,7 @@ import { useStatusChange } from "@/hooks/use-status-change";
 import { addDays, formatShort, weekRange } from "@/lib/dates";
 import { groupWeek } from "@/lib/tasks-view";
 import { PeriodNav, usePeriodNav } from "./period-nav";
+import { TaskRowActions } from "./task-actions";
 import { TaskRow } from "./task-row";
 
 const OPEN = ["pendente", "em_andamento"] as TaskStatus[];
@@ -67,7 +68,13 @@ function WeekContent({ today, anchor }: { today: IsoDate; anchor: IsoDate }) {
                 ) : (
                   <ul className="flex flex-col gap-2">
                     {day.tasks.map((t) => (
-                      <TaskRow key={t.id} task={t} today={today} onChange={(s) => void change(t.id, s)} />
+                      <TaskRow
+                        key={t.id}
+                        task={t}
+                        today={today}
+                        onChange={(s) => void change(t.id, s)}
+                        actions={<TaskRowActions task={t} />}
+                      />
                     ))}
                   </ul>
                 )}

@@ -19,6 +19,7 @@ vi.mock("@/components/week-view", () => ({ WeekView: ({ anchor }: { anchor: stri
 vi.mock("@/components/month-view", () => ({
   MonthView: ({ year, month }: { year?: number; month?: number }) => <p>mes-view {year ?? "hoje"}-{month ?? "hoje"}</p>,
 }));
+vi.mock("@/components/quick-add", () => ({ QuickAdd: () => <p>adicao-rapida</p> }));
 vi.mock("@/components/summary-aside", () => ({ SummaryAside: () => <aside>resumo</aside> }));
 
 describe("Painel", () => {
