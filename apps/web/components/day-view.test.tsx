@@ -85,6 +85,13 @@ describe("DayView", () => {
     data.overdue = [makeTask({ id: "a", title: "Velha", dueDate: "2026-10-20" })];
     const error = new ApiError(409, "transicao_invalida", null);
     api.updateTask.mockRejectedValue(error);
+    // Depois da carga inicial, qualquer refetch nunca resolve: só o rollback do onError
+    // pode devolver a linha.
+    const initial = api.listTasks.getMockImplementation()!;
+    let loads = 0;
+    api.listTasks.mockImplementation((q: ListTasksQuery) =>
+      ++loads <= 3 ? initial(q) : new Promise(() => {}),
+    );
     setup();
     fireEvent.click(await screen.findByRole("button", { name: "Concluir Velha" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(messageFor(error));
