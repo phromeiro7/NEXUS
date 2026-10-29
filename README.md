@@ -3,6 +3,8 @@
 Assistente de prazos e tarefas para advogados, multiusuário. Os dados dos
 clientes são confidenciais: cada usuário só enxerga o que é seu (RLS no banco).
 
+Situação do projeto, o que falta e as decisões em aberto: [docs/STATUS.md](docs/STATUS.md).
+
 ## Estrutura
 
 - `apps/api`: API em Hono (`domain/` e `application/` sem dependência de framework; `infra/` fala com o Supabase).
