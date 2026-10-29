@@ -48,8 +48,40 @@ export class AssistantUnavailableError extends Error {
 }
 
 export class InvalidInputError extends Error {
-  constructor(readonly code: 'hora_sem_data') {
+  constructor(readonly code: 'hora_sem_data' | 'mensagem_vazia') {
     super(`Entrada inválida: ${code}`);
     this.name = 'InvalidInputError';
+  }
+}
+
+/** Mensagem acima do limite de caracteres (→ 400). */
+export class MessageTooLongError extends Error {
+  constructor(readonly maxChars: number) {
+    super(`Mensagem acima de ${maxChars} caracteres`);
+    this.name = 'MessageTooLongError';
+  }
+}
+
+/** Limite de mensagens por hora atingido (→ 429). */
+export class RateLimitedError extends Error {
+  constructor(readonly retryAfterSeconds: number) {
+    super('Limite de mensagens por hora atingido');
+    this.name = 'RateLimitedError';
+  }
+}
+
+/** O mesmo evento já está sendo processado (ou ficou preso nesse estado); a resposta ainda não existe. */
+export class EventInProgressError extends Error {
+  constructor() {
+    super('Evento em processamento');
+    this.name = 'EventInProgressError';
+  }
+}
+
+/** Todas as tarefas-alvo de uma resposta foram apagadas ou não são do usuário. */
+export class TargetTasksGoneError extends Error {
+  constructor() {
+    super('Tarefas-alvo não encontradas');
+    this.name = 'TargetTasksGoneError';
   }
 }
