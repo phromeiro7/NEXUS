@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { AssistantModel, ModelStep } from '../src/application/ports.js';
 import {
+  buildProcessMessage,
   buildSmokeCases,
   estimateCost,
   formatReport,
@@ -8,6 +9,7 @@ import {
   maxCalls,
   MAX_STEPS,
   type SmokeResult,
+  USER_ID,
   upperBoundCost,
 } from './assistant-smoke.js';
 
@@ -105,6 +107,17 @@ describe('formatReport', () => {
     expect(report).toContain('ESTIMATIVA DE CUSTO');
     const expected = estimateCost({ inputTokens: 3000, outputTokens: 120, cacheReadTokens: 1500 });
     expect(report).toContain(expected.toFixed(4));
+  });
+});
+
+describe('limite por hora no roteiro', () => {
+  it('40 chamadas dentro da hora do relógio fixo nunca geram RateLimitedError', async () => {
+    const { processMessage } = buildProcessMessage({ step: async () => textStep('ok') });
+    for (let i = 0; i < 40; i += 1) {
+      await expect(
+        processMessage({ userId: USER_ID, channel: 'painel', externalId: `limite-${i}`, text: 'oi', source: 'painel' }),
+      ).resolves.toBeDefined();
+    }
   });
 });
 

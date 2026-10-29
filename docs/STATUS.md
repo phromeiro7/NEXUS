@@ -13,7 +13,7 @@ planos de implementação em `docs/superpowers/plans/` (um por etapa, numerados 
 | 1 | Fundação e domínio (monorepo, banco, RLS, calculadora de prazos, lembretes) | Concluído |
 | 2 | API de tarefas, processos, feriados, configurações, briefing | Concluído |
 | 3 | Painel web (login, Dia/Semana/Mês, formulários, calculadora, histórico, configurações) | Concluído; **nunca visto num navegador real** |
-| 4 | Assistente de IA (barra de comando) e briefing em texto | **Em andamento** (rascunho de PR; ver abaixo) |
+| 4 | Assistente de IA (barra de comando) e briefing em texto | **Implementado e revisado**, falta a execução com o modelo real (rascunho de PR; ver abaixo) |
 | 5 | Telegram, envio de lembretes e agendador | Não iniciado (plano escrito) |
 | 6 | Acabamento, avaliação da IA, segurança, publicação | Não iniciado (plano escrito) |
 
@@ -29,8 +29,8 @@ assim por diante. Revise e integre na ordem.
   rápida e visões Dia, Semana e Mês; troca de status com um clique; criar, editar e excluir tarefas;
   calculadora de prazos; histórico; configurações e feriados locais. Como subir tudo localmente: README,
   seção "Painel".
-- **Banco local** (Supabase, projeto `assistente-juridico`, portas 553xx): migrações 0001 a 0004.
-- Testes: shared 63, API 312, painel 263 (unitários); suíte de banco com 106 testes.
+- **Banco local** (Supabase, projeto `assistente-juridico`, portas 553xx): migrações 0001 a 0005.
+- Testes: shared 80, API 509, painel 301 (unitários); suíte de banco com 143 testes.
 
 ## Plano 4 — assistente de IA (implementado; falta a execução com o modelo real)
 
@@ -46,7 +46,7 @@ execução do roteiro com o modelo real**, que aguarda a sua chave da API e a ap
 - Falha depois de gravar algo: resposta parcial verdadeira com HTTP 200 (reenviar reproduz, sem recriar);
   falha sem gravação: 503 e reenviável. Nada é confirmado falsamente.
 - `max_tokens` do modelo é 4096 (não 1024): o raciocínio adaptativo do Haiku 5.5 conta no limite.
-- Testes: shared 80, API 508, painel 301 (unitários).
+- Testes: shared 80, API 509, painel 301 (unitários); suíte de banco com 143 testes.
 - **Roteiro com o modelo real: NÃO executado.** `pnpm --filter @aj/api smoke:assistant` (repositórios em
   memória, só precisa de `ANTHROPIC_API_KEY`) exige `--yes` depois de mostrar o máximo de chamadas e o teto
   de custo. Instruções, premissas de preço e a lista do que verificar (schemas `strict`, `format`,
@@ -70,10 +70,34 @@ tela de vínculo no painel. Decisão já tomada: tarefa `fatal` com hora **mant�
 - também apagar de `assistant_model_calls` registros com mais de ~2 dias;
 - a resposta do Telegram precisa listar `affectedTasks` (o texto "Confira abaixo" depende disso).
 
+Demais pré-requisitos do Plano 5, vindos do Plano 4:
+- Se `markProcessed` falhar depois de uma gravação, o evento fica `processando`; até o job existir, um
+  evento travado responde 409 `em_processamento` para sempre àquele texto exato, porque o painel mantém o
+  mesmo `clientMessageId` até o texto mudar.
+- A resposta do Telegram deve renderizar `affectedTasks` e ser enviada só como texto **simples** (sem
+  `parse_mode`), pois títulos e o briefing são texto arbitrário.
+- O limite de 30 mensagens/hora é por **usuário**, em todos os canais: o webhook deve chamar
+  `processMessage` com o `userId` vinculado.
+- O caminho `targetTaskIds` (responder a um lembrete) está implementado e testado em unidade no
+  `processMessage`, mas nunca foi exercitado de ponta a ponta: a rota não o aceita; o webhook do Plano 5 é
+  seu primeiro chamador real e precisa de teste próprio.
+- O Telegram reenvia o webhook: o `externalId` deve ser o id da atualização (`update_id`) do Telegram, e um
+  `ForeignEventError` ali precisa de tratamento definido.
+
 ## Plano 6 — acabamento e publicação (não iniciado)
 
 Decisões do usuário, paleta definitiva, dívidas técnicas, limites de uso nas rotas, revisão de segurança,
 avaliação da IA (~50 frases), testes de navegador, dados de demonstração e runbook de publicação.
+
+Backlog herdado do Plano 4 para este plano:
+- `Retry-After` real, calculado a partir da chamada mais antiga na janela (hoje fixo em 60 s), e exposto via
+  CORS.
+- O limite de 1.000 caracteres conta unidades UTF-16; decidir entre UTF-16 e pontos de código.
+- O limite por hora é verificar-depois-agir e pode estourar sob concorrência.
+- Os retries do SDK podem estourar o orçamento (~24 s por passo).
+- `listar_tarefas` carrega tudo antes de cortar em 50.
+- Um 400 BadRequest da API real hoje vira a mensagem de 'configuracao': confirmar na execução real.
+- A própria execução do roteiro com o modelo real (aguarda a chave e a aprovação do gasto do usuário).
 
 ## Depende de você (decisões e contas)
 
