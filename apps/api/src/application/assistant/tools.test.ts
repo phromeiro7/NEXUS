@@ -187,6 +187,46 @@ describe('executor: past rule', () => {
   });
 });
 
+describe('executor: past rule on merged task state', () => {
+  async function seeded(p: Parameters<typeof newTask>[1]) {
+    const s = setup();
+    const t = await s.fakes.tasks.create(U1, newTask('X', p));
+    const ctx = s.newCtx();
+    ctx.knownIds.add(t.id);
+    return { ...s, t, ctx };
+  }
+
+  it('dueDate-only patch to today is checked against the stored time (bypass probe)', async () => {
+    const { exec, fakes, calls, t, ctx } = await seeded({ dueDate: '2026-10-30', dueTime: '08:00' });
+    const r = await exec(U1, 'alterar_tarefa', { id: t.id, dueDate: '2026-10-26' }, ctx);
+    expect(r.isError).toBe(true);
+    expect(r.content.startsWith('horario_no_passado:')).toBe(true);
+    expect(calls.update).toHaveLength(0);
+    expect(await fakes.tasks.get(U1, t.id)).toEqual(t);
+  });
+
+  it('dueDate-only patch to today is allowed when the task has no stored time', async () => {
+    const { exec, t, ctx } = await seeded({ dueDate: '2026-10-30' });
+    const r = await exec(U1, 'alterar_tarefa', { id: t.id, dueDate: '2026-10-26' }, ctx);
+    expect(r.isError).toBe(false);
+    expect(parse(r.content).dueDate).toBe('2026-10-26');
+  });
+
+  it('dueDate moved to the future is allowed even if the stored time looks past', async () => {
+    const { exec, t, ctx } = await seeded({ dueDate: '2026-10-26', dueTime: '08:00' });
+    const r = await exec(U1, 'alterar_tarefa', { id: t.id, dueDate: '2026-10-28' }, ctx);
+    expect(r.isError).toBe(false);
+    expect(parse(r.content).dueDate).toBe('2026-10-28');
+  });
+
+  it('title-only and status-only patches on an overdue task are allowed', async () => {
+    const { exec, t, ctx } = await seeded({ dueDate: '2026-10-20', dueTime: '08:00' });
+    expect((await exec(U1, 'alterar_tarefa', { id: t.id, title: 'Novo' }, ctx)).isError).toBe(false);
+    expect((await exec(U1, 'alterar_tarefa', { id: t.id, status: 'em_andamento' }, ctx)).isError).toBe(false);
+    expect((await exec(U1, 'concluir_tarefa', { id: t.id }, ctx)).isError).toBe(false);
+  });
+});
+
 describe('executor: ids and ownership', () => {
   it('alterar_tarefa with an id never listed -> id_desconhecido', async () => {
     const { exec, fakes, calls, newCtx } = setup();

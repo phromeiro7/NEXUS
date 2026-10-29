@@ -220,10 +220,14 @@ export function makeToolExecutor(deps: {
         const { id, ...fields } = input as z.infer<typeof alterarTarefaSchema>;
         if (!ctx.knownIds.has(id)) return fail('id_desconhecido: liste as tarefas primeiro');
         const patch = Object.fromEntries(Object.entries(fields).filter(([, x]) => x !== undefined)) as UpdateTaskInput;
-        let dateToCheck = patch.dueDate;
-        if (dateToCheck === undefined && patch.dueTime != null) dateToCheck = (await deps.tasks.get(userId, id)).dueDate;
-        const past = await pastError(userId, dateToCheck, patch.dueTime);
-        if (past) return past;
+        // Só quando o patch mexe em data/hora: a regra vale para o estado mesclado (patch sobre o gravado).
+        if (patch.dueDate !== undefined || patch.dueTime !== undefined) {
+          const current = await deps.tasks.get(userId, id);
+          const date = patch.dueDate !== undefined ? patch.dueDate : current.dueDate;
+          const time = patch.dueTime !== undefined ? patch.dueTime : current.dueTime;
+          const past = await pastError(userId, date, time);
+          if (past) return past;
+        }
         return remember(ctx, await deps.tasks.update(userId, id, patch));
       }
       case 'concluir_tarefa': {
