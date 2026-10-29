@@ -8,4 +8,5 @@ next-env.d.ts
 supabase/.temp
 *.tsbuildinfo
 coverage
+apps/api/.vitest/
 .DS_Store
