@@ -270,12 +270,14 @@ describe('fakes: inbound events', () => {
     await e.beginModelCall('A', 'painel', '5', new Date('2026-10-27T10:59:59Z')); // before
     await e.register('B', 'painel', '4', now);
     await e.beginModelCall('B', 'painel', '4', now);
-    expect(await e.countSince('A', 'painel', since)).toBe(2);
-    expect(await e.countSince('A', 'telegram', since)).toBe(0);
+    expect(await e.countSince('A', since)).toBe(2);
+    await e.register('A', 'telegram', 'tg', now);
+    await e.beginModelCall('A', 'telegram', 'tg', now); // other channel counts too (limit is per user)
+    expect(await e.countSince('A', since)).toBe(3);
     await e.markFailed('A', 'painel', '1', now);
     await e.register('A', 'painel', '1', now);
     await e.beginModelCall('A', 'painel', '1', now); // same event, second call
-    expect(await e.countSince('A', 'painel', since)).toBe(3);
+    expect(await e.countSince('A', since)).toBe(4);
   });
 });
 

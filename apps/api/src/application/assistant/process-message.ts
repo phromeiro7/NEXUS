@@ -1,6 +1,7 @@
 import type { AssistantReplyDto, TaskDto } from '@aj/shared';
 import {
   AssistantUnavailableError,
+  type AssistantUnavailableReason,
   EventInProgressError,
   InvalidInputError,
   MessageTooLongError,
@@ -83,6 +84,28 @@ function describeTargets(tasks: TaskDto[]): string {
       `tipo: ${t.type} | status: ${t.status}`,
   );
   return ['Tarefa(s)-alvo da resposta do usuário (ids válidos neste pedido):', ...lines].join('\n');
+}
+
+const errorName = (e: unknown) => (e instanceof Error ? e.name : 'desconhecido');
+
+const WHY: Record<AssistantUnavailableReason, string> = {
+  timeout: 'o tempo esgotou',
+  rede: 'houve falha de conexão com o assistente',
+  limite: 'o assistente atingiu um limite de uso',
+  configuracao: 'o assistente não está configurado',
+  servico: 'o assistente ficou indisponível',
+};
+
+/** Resposta terminal verdadeira quando o pedido falhou DEPOIS de gravar: só o que de fato foi gravado. */
+function partialReplyText(reason: AssistantUnavailableReason, done: TaskDto[]): string {
+  const lines = done.map((t) => {
+    const when =
+      t.dueDate === null
+        ? 'sem data'
+        : `${t.dueDate.slice(8, 10)}/${t.dueDate.slice(5, 7)}${t.dueTime === null ? '' : ` ${t.dueTime}`}`;
+    return `- ${t.title} (${when})${t.status === 'concluida' ? ' [concluída]' : ''}`;
+  });
+  return [`Não consegui concluir tudo (${WHY[reason]}). Já fiz:`, ...lines, 'Envie de novo só o que faltou.'].join('\n');
 }
 
 function replyText(step: ModelStep): string {
@@ -191,7 +214,7 @@ export function makeProcessMessage(deps: ProcessMessageDeps) {
     const ctx: ToolContext = { source: input.source, affected: new Map(), knownIds: new Set() };
     let begun = false;
     try {
-      const used = await deps.events.countSince(userId, channel, new Date(start - HOUR_MS));
+      const used = await deps.events.countSince(userId, new Date(start - HOUR_MS));
       if (used >= limits.perHour) throw new RateLimitedError(RETRY_AFTER_SECONDS);
 
       const messages = toModelMessages(await deps.chat.recent(userId, channel, limits.contextMessages, now));
@@ -209,10 +232,7 @@ export function makeProcessMessage(deps: ProcessMessageDeps) {
       const replyTextFinal = await runCycle({ userId, source: input.source, messages, ctx, start });
       const reply: AssistantReplyDto = { reply: replyTextFinal, affectedTasks: [...ctx.affected.values()] };
 
-      // A conversa só é guardada quando o pedido termina: reenviar um pedido que falhou não duplica a mensagem.
-      await deps.chat.append(userId, channel, 'user', text, now);
-      await deps.chat.append(userId, channel, 'assistant', reply.reply, new Date(start + 1));
-      await deps.events.markProcessed(userId, channel, externalId, reply, now);
+      await finish(reply);
       info('assistant.done', { affected: reply.affectedTasks.length, ms: deps.clock.now().getTime() - start });
       return reply;
     } catch (error) {
@@ -221,17 +241,44 @@ export function makeProcessMessage(deps: ProcessMessageDeps) {
       logError('assistant.failed', {
         begun,
         affected: ctx.affected.size,
-        errorName: original instanceof Error ? original.name : 'desconhecido',
+        errorName: errorName(original),
         reason: begun ? reason : null,
         ms: deps.clock.now().getTime() - start,
       });
+      if (ctx.affected.size > 0) {
+        // Já houve escrita: o evento termina com uma resposta verdadeira (reenviar a reproduz, sem recriar nada).
+        const reply = { reply: partialReplyText(reason, [...ctx.affected.values()]), affectedTasks: [...ctx.affected.values()] };
+        await finish(reply);
+        return reply;
+      }
+      await failEvent();
+      if (!begun || error instanceof Passthrough) throw original;
+      throw new AssistantUnavailableError(reason, []);
+    }
+
+    /** Fecha o evento sem nunca mascarar a resposta: falhas daqui só são registradas (nomes, sem texto). */
+    async function finish(reply: AssistantReplyDto): Promise<void> {
+      try {
+        await deps.chat.append(userId, channel, 'user', text, now);
+        await deps.chat.append(userId, channel, 'assistant', reply.reply, new Date(start + 1));
+      } catch (e) {
+        logError('assistant.chat_append_error', { errorName: errorName(e) });
+      }
+      try {
+        await deps.events.markProcessed(userId, channel, externalId, reply, now);
+      } catch (e) {
+        logError('assistant.mark_processed_error', { errorName: errorName(e) });
+        // Sem escrita nenhuma, reabrir o evento é seguro; com escrita ele fica 'processando' (nunca 'falhou').
+        if (reply.affectedTasks.length === 0) await failEvent();
+      }
+    }
+
+    async function failEvent(): Promise<void> {
       try {
         await deps.events.markFailed(userId, channel, externalId, now);
-      } catch (markError) {
-        logError('assistant.mark_failed_error', { errorName: markError instanceof Error ? markError.name : 'desconhecido' });
+      } catch (e) {
+        logError('assistant.mark_failed_error', { errorName: errorName(e) });
       }
-      if (!begun || error instanceof Passthrough) throw original;
-      throw new AssistantUnavailableError(reason, [...ctx.affected.values()]);
     }
   };
 }
