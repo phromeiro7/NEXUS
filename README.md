@@ -77,6 +77,13 @@ alteradas ou concluídas nesse pedido. O usuário vem só do token, nunca do cor
   `ANTHROPIC_API_KEY` a API sobe normalmente, todas as outras rotas funcionam e esta rota
   responde `503` com `{ "error": "assistente_indisponivel", "reason": "configuracao" }`.
 
+**Assistente (custos e roteiro com o modelo real).** O assistente gasta dinheiro a cada mensagem
+(chamadas ao modelo da Anthropic). A nota `docs/superpowers/notes/2026-assistente-custos.md` explica
+como criar a chave com teto mensal, as premissas de preço e o que reduz o custo. O roteiro manual
+`pnpm --filter @aj/api smoke:assistant` roda ~10 frases fictícias sobre repositórios em memória; sem
+`--yes` só mostra o máximo de chamadas e a estimativa de custo e não chama nada. Ele nunca imprime a
+chave. Os testes automáticos usam modelo falso e não gastam nada.
+
 `PATCH /settings` responde `{ settings, remindersRebuilt, remindersSkipped, skipped }`
 (`UpdateSettingsResultDto` em `@aj/shared`). Sempre que o corpo traz `timezone` ou
 `earlyReminderMinutes`, os lembretes de todas as tarefas abertas com data são refeitos,
