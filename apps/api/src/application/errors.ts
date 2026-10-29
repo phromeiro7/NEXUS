@@ -20,6 +20,14 @@ export class ForeignEventError extends Error {
   }
 }
 
+/** Transição de evento inválida: evento inexistente, estado que não a permite, ou usuário ausente. */
+export class EventStateError extends Error {
+  constructor(readonly code: 'evento_inexistente' | 'evento_em_estado_invalido' | 'usuario_obrigatorio') {
+    super(`Evento: ${code}`);
+    this.name = 'EventStateError';
+  }
+}
+
 export class InvalidInputError extends Error {
   constructor(readonly code: 'hora_sem_data') {
     super(`Entrada inválida: ${code}`);
