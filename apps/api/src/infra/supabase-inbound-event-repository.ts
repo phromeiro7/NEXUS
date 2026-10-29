@@ -92,12 +92,11 @@ export function createSupabaseInboundEventRepository(client: SupabaseClient): In
       );
     },
 
-    async countSince(userId, channel, since) {
+    async countSince(userId, since) {
       const { count, error } = await client
         .from('assistant_model_calls')
         .select('id', { count: 'exact', head: true })
         .eq('user_id', userId)
-        .eq('channel', channel)
         .gte('called_at', since.toISOString());
       if (error) throw new Error(`Falha ao contar chamadas ao modelo: ${error.message}`);
       return count ?? 0;

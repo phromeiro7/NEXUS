@@ -132,10 +132,10 @@ export interface InboundEventRepository {
   /** 'recebido' ou 'processando' -> 'falhou' (pode ser reprocessado por `register`). Nunca reabre 'processado'. */
   markFailed(userId: string | null, channel: ChatChannel, externalId: string, now: Date): Promise<void>;
   /**
-   * Número de CHAMADAS AO MODELO do usuário no canal com `called_at >= since` (Ruling 9: conta
-   * chamadas, não eventos; reenvio ou recusa sem chamada não contam).
+   * Número de CHAMADAS AO MODELO do usuário, em TODOS os canais, com `called_at >= since` (Ruling 9:
+   * conta chamadas, não eventos; reenvio ou recusa sem chamada não contam; o limite é por usuário).
    */
-  countSince(userId: string, channel: ChatChannel, since: Date): Promise<number>;
+  countSince(userId: string, since: Date): Promise<number>;
 }
 
 /*

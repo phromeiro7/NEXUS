@@ -267,31 +267,68 @@ describe('processMessage: failure semantics', () => {
     expect(calls).toHaveLength(2);
   });
 
-  it('(g) failure at step 2 after one creation: partial holds that task and the event is failed', async () => {
-    const { send, markFailed, markProcessed } = setup([
-      toolStep(use('t', 'criar_tarefa', { title: 'Já gravada' })),
+  /** Falha depois de gravar: resposta terminal verdadeira, evento 'processado', conversa guardada, reenvio reproduz. */
+  async function expectTerminalPartial(
+    h: ReturnType<typeof setup>,
+    out: { reply: string; affectedTasks: TaskDto[] },
+    titles: string[],
+    why: string,
+    text: string,
+  ) {
+    expect(out.affectedTasks.map((t) => t.title)).toEqual(titles);
+    expect(out.reply.startsWith(`Não consegui concluir tudo (${why}).`)).toBe(true);
+    expect(out.reply.endsWith('Envie de novo só o que faltou.')).toBe(true);
+    for (const t of titles) expect(out.reply).toContain(`- ${t}`);
+    expect(h.markFailed).not.toHaveBeenCalled();
+    expect(h.markProcessed).toHaveBeenCalledTimes(1);
+    expect(h.markProcessed).toHaveBeenCalledWith(U1, 'painel', 'ev-1', out, expect.any(Date));
+    expect(h.append.mock.calls.map((c) => [c[2], c[3], c[4].getTime() - NOW.getTime()])).toEqual([
+      ['user', text, 0],
+      ['assistant', out.reply, 1],
+    ]);
+    const modelCalls = h.calls.length;
+    const tasksBefore = (await h.allTasks()).length;
+    const replay = await h.send(text);
+    expect(replay).toEqual(out);
+    expect(h.calls).toHaveLength(modelCalls);
+    expect(await h.allTasks()).toHaveLength(tasksBefore);
+  }
+
+  it('(g) failure at step 2 after one creation: truthful terminal reply, event processed, resend replays', async () => {
+    const h = setup([
+      toolStep(use('t', 'criar_tarefa', { title: 'Já gravada', dueDate: '2026-10-27', dueTime: '14:00' })),
       new AssistantUnavailableError('servico'),
     ]);
-    const error = (await send('crie').catch((e: unknown) => e)) as AssistantUnavailableError;
-    expect(error).toBeInstanceOf(AssistantUnavailableError);
-    expect(error.reason).toBe('servico');
-    expect(error.partial.map((t) => t.title)).toEqual(['Já gravada']);
-    expect(markFailed).toHaveBeenCalledTimes(1);
-    expect(markProcessed).not.toHaveBeenCalled();
+    const out = await h.send('crie');
+    expect(out.reply).toBe(
+      'Não consegui concluir tudo (o assistente ficou indisponível). Já fiz:\n- Já gravada (27/10 14:00)\nEnvie de novo só o que faltou.',
+    );
+    await expectTerminalPartial(h, out, ['Já gravada'], 'o assistente ficou indisponível', 'crie');
   });
 
-  it('(h) budget overrun between steps: timeout with the partial', async () => {
+  it('(h) budget overrun between steps: terminal partial reply that names the time limit', async () => {
     const fakesRef: { advance?: () => void } = {};
-    const { send, fakes, calls } = setup(
-      [toolStep(use('t', 'criar_tarefa', { title: 'Antes do estouro' })), endTurn('nunca')],
-      { onCall: (n) => n === 1 && fakesRef.advance?.() },
-    );
-    fakesRef.advance = () => fakes.setNow(new Date(NOW.getTime() + 21_000));
-    const error = (await send('crie').catch((e: unknown) => e)) as AssistantUnavailableError;
-    expect(error).toBeInstanceOf(AssistantUnavailableError);
-    expect(error.reason).toBe('timeout');
-    expect(error.partial.map((t) => t.title)).toEqual(['Antes do estouro']);
-    expect(calls).toHaveLength(1);
+    const h = setup([toolStep(use('t', 'criar_tarefa', { title: 'Antes do estouro' })), endTurn('nunca')], {
+      onCall: (n) => n === 1 && fakesRef.advance?.(),
+    });
+    fakesRef.advance = () => h.fakes.setNow(new Date(NOW.getTime() + 21_000));
+    const out = await h.send('crie');
+    expect(h.calls).toHaveLength(1);
+    expect(out.reply).toContain('- Antes do estouro (sem data)');
+    await expectTerminalPartial(h, out, ['Antes do estouro'], 'o tempo esgotou', 'crie');
+  });
+
+  it('a concluded task is marked as such in the partial reply', async () => {
+    let id = '';
+    const h = setup([
+      toolStep(use('l', 'listar_tarefas', {})),
+      () => toolStep(use('c', 'concluir_tarefa', { id })),
+      new AssistantUnavailableError('rede'),
+    ]);
+    id = (await h.fakes.tasks.create(U1, newTask('Antiga', { dueDate: '2026-10-30' }))).id;
+    const out = await h.send('conclua');
+    expect(out.reply).toContain('- Antiga (30/10) [concluída]');
+    expect(out.reply.startsWith('Não consegui concluir tudo (houve falha de conexão com o assistente).')).toBe(true);
   });
 
   it('bounds each model call by the remaining budget', async () => {
@@ -317,14 +354,19 @@ describe('processMessage: failure semantics', () => {
     expect(out.affectedTasks.map((t) => t.title)).toEqual(['Tarefa 1', 'Tarefa 2', 'Tarefa 3', 'Tarefa 4']);
   });
 
-  it('max_tokens is a service failure carrying the partial', async () => {
-    const { send } = setup([
+  it('max_tokens after a write is a terminal partial reply', async () => {
+    const h = setup([
       toolStep(use('t', 'criar_tarefa', { title: 'Gravada' })),
       { stopReason: 'max_tokens', blocks: [{ type: 'text', text: 'cortado' }], usage },
     ]);
-    const error = (await send('crie').catch((e: unknown) => e)) as AssistantUnavailableError;
-    expect(error).toMatchObject({ name: 'AssistantUnavailableError', reason: 'servico' });
-    expect(error.partial.map((t) => t.title)).toEqual(['Gravada']);
+    const out = await h.send('crie');
+    await expectTerminalPartial(h, out, ['Gravada'], 'o assistente ficou indisponível', 'crie');
+  });
+
+  it('max_tokens with nothing written is a service failure, event failed', async () => {
+    const { send, markFailed } = setup([{ stopReason: 'max_tokens', blocks: [], usage }]);
+    await expect(send('crie')).rejects.toMatchObject({ name: 'AssistantUnavailableError', reason: 'servico', partial: [] });
+    expect(markFailed).toHaveBeenCalledTimes(1);
   });
 
   it('tool_use stop without tool_use blocks is a service failure', async () => {
@@ -332,27 +374,45 @@ describe('processMessage: failure semantics', () => {
     await expect(send('oi')).rejects.toMatchObject({ name: 'AssistantUnavailableError', reason: 'servico' });
   });
 
-  it('an executor that throws is a service failure with the tasks already written', async () => {
-    const { send, executor, markFailed } = setup([
+  it('an executor that throws after a write: terminal partial reply with the tasks already written', async () => {
+    const h = setup([
       toolStep(use('a', 'criar_tarefa', { title: 'Primeira' }), use('b', 'criar_tarefa', { title: 'Segunda' })),
       endTurn('nunca'),
     ]);
-    const real = executor.getMockImplementation()!;
-    executor.mockImplementation(async (userId, name, input, ctx) => {
+    const real = h.executor.getMockImplementation()!;
+    h.executor.mockImplementation(async (userId, name, input, ctx) => {
       if ((input as { title: string }).title === 'Segunda') throw new Error('db down');
       return real(userId, name, input, ctx);
     });
-    const error = (await send('crie duas').catch((e: unknown) => e)) as AssistantUnavailableError;
-    expect(error).toMatchObject({ name: 'AssistantUnavailableError', reason: 'servico' });
-    expect(error.partial.map((t) => t.title)).toEqual(['Primeira']);
-    expect(markFailed).toHaveBeenCalledTimes(1);
+    const out = await h.send('crie duas');
+    await expectTerminalPartial(h, out, ['Primeira'], 'o assistente ficou indisponível', 'crie duas');
   });
 
-  it('a plain Error from the model adapter (programming error) is rethrown as is, event failed', async () => {
+  it('an executor that throws with nothing written: service failure, event failed, resendable', async () => {
+    const { send, executor, markFailed, markProcessed } = setup([toolStep(use('a', 'criar_tarefa', { title: 'X' })), endTurn('ok')]);
+    executor.mockRejectedValueOnce(new Error('db down'));
+    await expect(send('crie')).rejects.toMatchObject({ name: 'AssistantUnavailableError', reason: 'servico', partial: [] });
+    expect(markFailed).toHaveBeenCalledTimes(1);
+    expect(markProcessed).not.toHaveBeenCalled();
+  });
+
+  it('a plain Error from the model adapter (programming error) with nothing written is rethrown as is, event failed', async () => {
     const boom = new Error('prefill guard');
     const { send, markFailed } = setup([boom]);
     await expect(send('oi')).rejects.toBe(boom);
     expect(markFailed).toHaveBeenCalledTimes(1);
+  });
+
+  it('a plain Error from the model adapter AFTER a write becomes a terminal partial reply', async () => {
+    const h = setup([toolStep(use('t', 'criar_tarefa', { title: 'Gravada' })), new Error('prefill guard')]);
+    const out = await h.send('crie');
+    await expectTerminalPartial(h, out, ['Gravada'], 'o assistente ficou indisponível', 'crie');
+  });
+
+  it('a network failure after a write names the connection problem', async () => {
+    const h = setup([toolStep(use('t', 'criar_tarefa', { title: 'Gravada' })), new AssistantUnavailableError('rede')]);
+    const out = await h.send('crie');
+    await expectTerminalPartial(h, out, ['Gravada'], 'houve falha de conexão com o assistente', 'crie');
   });
 
   it('a failing markFailed does not mask the original error and is logged without its message', async () => {
@@ -363,15 +423,37 @@ describe('processMessage: failure semantics', () => {
     expect(JSON.stringify(logs)).not.toContain('segredo-do-banco');
   });
 
-  it('a failure to store the reply after a successful cycle still reports the written tasks', async () => {
-    const { send, markProcessed, markFailed } = setup([
+  it('a failure to store the reply after a successful cycle still RETURNS the reply, logged, event not failed', async () => {
+    const { send, markProcessed, markFailed, logs } = setup([
       toolStep(use('t', 'criar_tarefa', { title: 'Gravada' })),
-      endTurn('ok'),
+      endTurn('Criei.'),
     ]);
+    markProcessed.mockRejectedValueOnce(new Error('segredo-do-banco'));
+    const out = await send('crie');
+    expect(out.reply).toBe('Criei.');
+    expect(out.affectedTasks.map((t) => t.title)).toEqual(['Gravada']);
+    expect(markFailed).not.toHaveBeenCalled();
+    expect(logs.some((l) => l.level === 'error')).toBe(true);
+    expect(JSON.stringify(logs)).not.toContain('segredo-do-banco');
+  });
+
+  it('a failure to store a partial reply (append or markProcessed) still returns it, without marking the event failed', async () => {
+    const h = setup([toolStep(use('t', 'criar_tarefa', { title: 'Gravada' })), new AssistantUnavailableError('timeout')]);
+    h.append.mockRejectedValueOnce(new Error('db down'));
+    h.markProcessed.mockRejectedValueOnce(new Error('db down'));
+    const out = await h.send('crie');
+    expect(out.affectedTasks.map((t) => t.title)).toEqual(['Gravada']);
+    expect(out.reply.startsWith('Não consegui concluir tudo (o tempo esgotou).')).toBe(true);
+    expect(h.markFailed).not.toHaveBeenCalled();
+    // o evento ficou 'processando' (nunca 'falhou'): reenviar NÃO recria a tarefa
+    await expect(h.send('crie')).rejects.toBeInstanceOf(EventInProgressError);
+    expect(await h.allTasks()).toHaveLength(1);
+  });
+
+  it('a failing markProcessed on a zero-write success marks the event failed so it can be resent', async () => {
+    const { send, markProcessed, markFailed } = setup([endTurn('Oi.')]);
     markProcessed.mockRejectedValueOnce(new Error('db down'));
-    const error = (await send('crie').catch((e: unknown) => e)) as AssistantUnavailableError;
-    expect(error).toMatchObject({ name: 'AssistantUnavailableError', reason: 'servico' });
-    expect(error.partial.map((t) => t.title)).toEqual(['Gravada']);
+    expect((await send('oi')).reply).toBe('Oi.');
     expect(markFailed).toHaveBeenCalledTimes(1);
   });
 });
@@ -456,7 +538,7 @@ describe('processMessage: limits', () => {
     expect(calls).toHaveLength(1);
   });
 
-  it('29 calls in the window still pass; calls of another user or channel do not count', async () => {
+  it('29 calls in the window still pass; calls of another user do not count', async () => {
     const { fakes, send, calls } = setup([endTurn('ok')]);
     for (let i = 0; i < 29; i += 1) {
       await fakes.inboundEvents.register(U1, 'painel', `old-${i}`, NOW);
@@ -465,11 +547,22 @@ describe('processMessage: limits', () => {
     for (let i = 0; i < 5; i += 1) {
       await fakes.inboundEvents.register(U2, 'painel', `o2-${i}`, NOW);
       await fakes.inboundEvents.beginModelCall(U2, 'painel', `o2-${i}`, NOW);
-      await fakes.inboundEvents.register(U1, 'telegram', `tg-${i}`, NOW);
-      await fakes.inboundEvents.beginModelCall(U1, 'telegram', `tg-${i}`, NOW);
     }
     await send('oi');
     expect(calls).toHaveLength(1);
+  });
+
+  it('the limit is per USER across channels: 29 painel + 1 telegram refuse the next message on either channel', async () => {
+    const { fakes, send, calls } = setup([endTurn('ok')]);
+    for (let i = 0; i < 29; i += 1) {
+      await fakes.inboundEvents.register(U1, 'painel', `old-${i}`, NOW);
+      await fakes.inboundEvents.beginModelCall(U1, 'painel', `old-${i}`, NOW);
+    }
+    await fakes.inboundEvents.register(U1, 'telegram', 'tg-0', NOW);
+    await fakes.inboundEvents.beginModelCall(U1, 'telegram', 'tg-0', NOW);
+    await expect(send('oi')).rejects.toBeInstanceOf(RateLimitedError);
+    await expect(send('oi', { channel: 'telegram', externalId: 'tg-new' })).rejects.toBeInstanceOf(RateLimitedError);
+    expect(calls).toHaveLength(0);
   });
 });
 

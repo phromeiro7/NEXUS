@@ -280,8 +280,8 @@ export function createFakes(seed: { now?: Date } = {}) {
     async markFailed(userId, channel, externalId) {
       ownedEvent(userId, channel, externalId, ['recebido', 'processando']).status = 'falhou';
     },
-    async countSince(userId, channel, since) {
-      return modelCalls.filter((c) => c.userId === userId && c.channel === channel && c.calledAt >= since).length;
+    async countSince(userId, since) {
+      return modelCalls.filter((c) => c.userId === userId && c.calledAt >= since).length;
     },
   };
 

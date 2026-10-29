@@ -220,7 +220,7 @@ describe('InboundEventRepository state transitions are scoped by user and status
     expect(rejected).toHaveLength(5);
     expect(rejected.every((r) => r.reason instanceof EventStateError)).toBe(true);
     expect((await row(id)).attempt_count).toBe(1);
-    expect(await events.countSince(A, 'painel', minutes(-1))).toBeGreaterThanOrEqual(1);
+    expect(await events.countSince(A, minutes(-1))).toBeGreaterThanOrEqual(1);
   });
 
   it('begin_model_call and register_inbound_event are not executable by anon or authenticated', async () => {
@@ -247,7 +247,7 @@ describe('InboundEventRepository state transitions are scoped by user and status
 });
 
 describe('InboundEventRepository.countSince counts model calls', () => {
-  it('counts calls of that user and channel since the cutoff (>=), each call once', async () => {
+  it('counts calls of that user on ALL channels since the cutoff (>=), each call once', async () => {
     const U = await createUser();
     const V = await createUser();
     const since = minutes(0);
@@ -259,14 +259,13 @@ describe('InboundEventRepository.countSince counts model calls', () => {
     await call(U, 'painel', minutes(0)); // boundary: counts
     await call(U, 'painel', minutes(2)); // counts
     await call(U, 'painel', minutes(-1)); // before the cutoff
-    await call(U, 'telegram', minutes(1)); // other channel
+    await call(U, 'telegram', minutes(1)); // other channel: counts
     await call(V, 'painel', minutes(1)); // other user
     const refused = extId();
     await events.register(U, 'painel', refused, minutes(3));
     await events.markFailed(U, 'painel', refused, minutes(3)); // refused: never called the model
-    expect(await events.countSince(U, 'painel', since)).toBe(2);
-    expect(await events.countSince(U, 'telegram', since)).toBe(1);
-    expect(await events.countSince(V, 'painel', since)).toBe(1);
+    expect(await events.countSince(U, since)).toBe(3); // across channels: the limit is per user
+    expect(await events.countSince(V, since)).toBe(1);
   });
 
   it('a resent failed event does not count before begin_model_call, and a refused resend never counts', async () => {
@@ -275,13 +274,13 @@ describe('InboundEventRepository.countSince counts model calls', () => {
     await events.register(U, 'painel', id, minutes(0));
     await events.beginModelCall(U, 'painel', id, minutes(0));
     await events.markFailed(U, 'painel', id, minutes(1));
-    expect(await events.countSince(U, 'painel', minutes(-1))).toBe(1);
+    expect(await events.countSince(U, minutes(-1))).toBe(1);
     // A later window: the resend resets received_at but must not count.
     expect(await events.register(U, 'painel', id, minutes(120))).toMatchObject({ firstTime: true });
-    expect(await events.countSince(U, 'painel', minutes(60))).toBe(0);
+    expect(await events.countSince(U, minutes(60))).toBe(0);
     await events.markFailed(U, 'painel', id, minutes(121)); // refused again
     await events.register(U, 'painel', id, minutes(180));
-    expect(await events.countSince(U, 'painel', minutes(150))).toBe(0);
+    expect(await events.countSince(U, minutes(150))).toBe(0);
   });
 
   it('three model calls on the same event count as three', async () => {
@@ -293,7 +292,7 @@ describe('InboundEventRepository.countSince counts model calls', () => {
       await events.markFailed(U, 'painel', id, minutes(i));
       await events.register(U, 'painel', id, minutes(i + 1));
     }
-    expect(await events.countSince(U, 'painel', minutes(-1))).toBe(3);
+    expect(await events.countSince(U, minutes(-1))).toBe(3);
     expect((await row(id)).attempt_count).toBe(3);
   });
 });
