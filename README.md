@@ -40,18 +40,42 @@ autenticação. Veja `.env.example` para as variáveis.
 | `GET/POST /holidays`, `DELETE /holidays/:id` | Feriados do usuário |
 | `GET/PATCH /settings` | Configurações (o `PATCH` reconstrói lembretes quando preciso) |
 | `GET /briefing` | Briefing diário |
+| `POST /assistant/message` | Mensagem ao assistente de IA (painel) |
 
 Erros respondem JSON `{ error: <código>, ... }`:
 
 | Código | Status | Quando |
 | --- | --- | --- |
-| `entrada_invalida` | 400 | Corpo, query ou parâmetro inválido |
+| `entrada_invalida` | 400 | Corpo, query ou parâmetro inválido (inclui mensagem vazia ou acima de 1.000 caracteres) |
 | `nao_autenticado` | 401 | Token ausente ou inválido |
 | `nao_encontrado` | 404 | Recurso inexistente ou de outro usuário |
 | `numero_ja_cadastrado`, `feriado_ja_cadastrado`, `tarefa_encerrada`, `transicao_invalida` | 409 | Conflito |
+| `em_processamento` | 409 | O mesmo `clientMessageId` ainda está sendo processado; tente de novo em instantes |
+| `conflito_de_evento` | 409 | O `clientMessageId` já foi usado em outra conta (não revela de quem) |
 | `corpo_muito_grande` | 413 | Corpo da requisição acima de 64 KB (verificado antes da autenticação) |
 | `hora_invalida` | 422 | Hora local inexistente ou ambígua no fuso do usuário (`reason`) |
-| `erro_interno` | 500 | Erro inesperado (detalhes só no log do servidor) |
+| `limite_de_mensagens` | 429 | Mais de 30 chamadas ao assistente na última hora (por usuário); traz `retryAfterSeconds` e o header `Retry-After` |
+| `erro_interno` | 500 | Erro inesperado (detalhes só no log do servidor; nunca o texto do usuário) |
+| `assistente_indisponivel` | 503 | O assistente não pôde responder e nada foi gravado; `reason`: `timeout`, `rede`, `limite`, `servico` ou `configuracao` |
+
+### Assistente de IA
+
+`POST /assistant/message` (autenticado) recebe `{ "text": string, "clientMessageId": uuid }`
+(`text` de 1 a 1.000 caracteres, após remover espaços nas pontas) e responde `200` com
+`{ "reply": string, "affectedTasks": TaskDto[] }`: o texto para o usuário e as tarefas criadas,
+alteradas ou concluídas nesse pedido. O usuário vem só do token, nunca do corpo.
+
+- `clientMessageId` é a chave de idempotência: reenviar o mesmo id devolve a mesma resposta
+  sem executar nada de novo (gere um id novo a cada mensagem; reuse-o só ao reenviar após falha
+  de rede).
+- Se a falha acontece **depois** de o assistente já ter gravado algo, a resposta continua `200`
+  com um texto verdadeiro do que foi feito (`affectedTasks` traz só o que foi gravado) e pede
+  para reenviar apenas o que faltou. O `503` só ocorre quando nada foi gravado, e então o mesmo
+  `clientMessageId` pode ser reenviado.
+- Configuração: `ANTHROPIC_API_KEY` (chave da API da Anthropic; só no servidor) e
+  `ASSISTANT_MODEL` (opcional; o padrão é o modelo Haiku configurado em `config.ts`). Sem
+  `ANTHROPIC_API_KEY` a API sobe normalmente, todas as outras rotas funcionam e esta rota
+  responde `503` com `{ "error": "assistente_indisponivel", "reason": "configuracao" }`.
 
 `PATCH /settings` responde `{ settings, remindersRebuilt, remindersSkipped, skipped }`
 (`UpdateSettingsResultDto` em `@aj/shared`). Sempre que o corpo traz `timezone` ou
@@ -137,6 +161,6 @@ portas 543xx. Os testes de banco usam por padrão
 `postgresql://postgres:postgres@127.0.0.1:55322/postgres` (sobrescreva com
 `DATABASE_URL`). Variáveis da API: veja `.env.example`.
 
-`apps/api/src/compose.ts` exporta `buildApp(config, { clock? })`, que monta a API real (usada por `server.ts`); `apps/api/test/db/api.db.test.ts` a exercita ponta a ponta com usuários e tokens reais e relógio fixo (`pnpm --filter @aj/api test:db`).
+`apps/api/src/compose.ts` exporta `buildApp(config, { clock?, assistantModel? })` (o modelo falso só é usado em testes), que monta a API real (usada por `server.ts`); `apps/api/test/db/api.db.test.ts` a exercita ponta a ponta com usuários e tokens reais e relógio fixo (`pnpm --filter @aj/api test:db`).
 
 > Atenção: nunca rode `db reset` contra uma stack que não é sua; ele apaga o banco.
