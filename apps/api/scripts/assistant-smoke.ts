@@ -160,7 +160,7 @@ function parseArgs(argv: string[]): { yes: boolean; out: string | null } {
 }
 
 /** Semeia 3 tarefas fictícias e devolve o `processMessage` sobre os fakes, com o modelo dado. */
-function buildProcessMessage(model: AssistantModel) {
+export function buildProcessMessage(model: AssistantModel) {
   const fakes = createFakes({ now: SMOKE_NOW });
   fakes.setProfile(USER_ID, { timezone: 'America/Sao_Paulo' });
   const calculateDeadline = makeCalculateDeadline({ holidays: fakes.holidays });
@@ -179,6 +179,8 @@ function buildProcessMessage(model: AssistantModel) {
     events: fakes.inboundEvents,
     profiles: fakes.profiles,
     clock: fakes.clock,
+    // O relógio é fixo: as até 40 chamadas ocorrem na mesma "hora"; o limite de 30/h não pode atrapalhar.
+    limits: { perHour: 1000 },
   });
   const seed = async () => {
     const base = { type: 'tarefa' as const, status: 'pendente' as const, caseId: null, fatal: false };
