@@ -1,4 +1,6 @@
 import type {
+  AssistantMessageInput,
+  AssistantReplyDto,
   BriefingDto,
   CalculateDeadlineResultDto,
   CaseDto,
@@ -112,6 +114,8 @@ export function createApiClient(opts: ApiClientOptions) {
     createHoliday: (input: CreateHolidayInput) => request<HolidayDto>('POST', '/holidays', input),
     deleteHoliday: (id: string) => request<void>('DELETE', `/holidays/${encodeURIComponent(id)}`),
     getBriefing: () => request<BriefingDto>('GET', '/briefing'),
+    sendAssistantMessage: (input: AssistantMessageInput) =>
+      request<AssistantReplyDto>('POST', '/assistant/message', input),
   };
 }
 

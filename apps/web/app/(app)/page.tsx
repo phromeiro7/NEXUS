@@ -2,6 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
+import { BriefingCard } from "@/components/briefing-card";
 import { DayView } from "@/components/day-view";
 import { MonthView } from "@/components/month-view";
 import { QuickAdd } from "@/components/quick-add";
@@ -22,6 +23,7 @@ function Painel() {
         </h1>
         <ViewSwitcher view={view} />
       </div>
+      <BriefingCard />
       <QuickAdd />
       <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_16rem]">
         <div className="min-w-0">

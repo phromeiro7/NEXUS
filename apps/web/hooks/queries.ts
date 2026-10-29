@@ -49,7 +49,7 @@ export function useCases() {
   return useQuery({ queryKey: queryKeys.cases, queryFn: () => api.listCases() });
 }
 
-function useInvalidateTasks() {
+export function useInvalidateTasks() {
   const client = useQueryClient();
   return () =>
     Promise.all([
