@@ -32,26 +32,25 @@ assim por diante. Revise e integre na ordem.
 - **Banco local** (Supabase, projeto `assistente-juridico`, portas 553xx): migrações 0001 a 0004.
 - Testes: shared 63, API 312, painel 263 (unitários); suíte de banco com 106 testes.
 
-## Plano 4 — assistente de IA (em andamento)
+## Plano 4 — assistente de IA (implementado; falta a execução com o modelo real)
 
-Ramo `feat/plano-4-assistente-ia`, aberto como rascunho. **Não integre como está.**
+Ramo `feat/plano-4-assistente-ia`, aberto como rascunho. **Tasks 1 a 8 concluídas e revisadas, EXCETO a
+execução do roteiro com o modelo real**, que aguarda a sua chave da API e a aprovação do gasto.
 
-- **Task 1** (contratos compartilhados e `renderBriefing` em texto): concluída e revisada.
-- **Task 2** (persistência de mensagens e eventos, migração 0005): implementada e revisada; a revisão
-  apontou três pontos importantes e a correção está **incompleta** no último commit (`wip`): os testes
-  unitários e o typecheck passam, mas a suíte de banco **não foi rodada de novo** depois da edição no lugar
-  da migração 0005 e essa rodada não foi revisada. Decisões da correção:
-  - filtrar por usuário e exigir pré-condição de estado em `markProcessed`, `markFailed` e `beginModelCall`;
-  - contar **chamadas ao modelo** numa tabela `assistant_model_calls` (função SQL atômica
-    `begin_model_call`), e não eventos recebidos, para o limite de 30 mensagens por hora;
-  - blocos de raciocínio (`thinking`) do modelo passam adiante sem alteração no ciclo de ferramentas.
-- **Tasks 3 a 8**: não começaram (ferramentas e executor, prompt e adaptador Anthropic, `processMessage`,
-  rota `POST /assistant/message`, barra de comando no painel, roteiro manual e custos).
-- Pontos a tratar na Task 5, vindos das revisões: empate de horário em `recent` (use horários distintos
-  por mensagem ou uma sequência), evento preso em `recebido`/`processando` (responder "em processamento" e
-  tratar `processando` com mais de 2 min como reprocessável) e descartar mensagem inicial do assistente no
-  contexto.
+- Task 1: contratos compartilhados e `renderBriefing` em texto. Task 2: persistência de mensagens e
+  eventos (migração 0005, `assistant_model_calls`, função SQL atômica `begin_model_call`). Task 3:
+  ferramentas e executor. Task 4: prompt e adaptador Anthropic. Task 5: `processMessage`. Task 6: rota
+  `POST /assistant/message`. Task 7: barra de comando no painel. Task 8: roteiro manual, nota de custos e
+  documentação.
+- Limite de 30 mensagens/hora por **usuário** (todos os canais), contado em chamadas ao modelo.
+- Falha depois de gravar algo: resposta parcial verdadeira com HTTP 200 (reenviar reproduz, sem recriar);
+  falha sem gravação: 503 e reenviável. Nada é confirmado falsamente.
 - `max_tokens` do modelo é 4096 (não 1024): o raciocínio adaptativo do Haiku 5.5 conta no limite.
+- Testes: shared 80, API 508, painel 301 (unitários).
+- **Roteiro com o modelo real: NÃO executado.** `pnpm --filter @aj/api smoke:assistant` (repositórios em
+  memória, só precisa de `ANTHROPIC_API_KEY`) exige `--yes` depois de mostrar o máximo de chamadas e o teto
+  de custo. Instruções, premissas de preço e a lista do que verificar (schemas `strict`, `format`,
+  cache, `effort` baixo): `docs/superpowers/notes/2026-assistente-custos.md`.
 
 ## Plano 5 — Telegram, lembretes e agendador (não iniciado)
 
@@ -61,6 +60,15 @@ funções SQL de fila (reserva com `FOR UPDATE SKIP LOCKED`), enviador de lembre
 recuperação, envio do briefing pelo Telegram, endpoint interno do agendador, vínculo por código, webhook e
 tela de vínculo no painel. Decisão já tomada: tarefa `fatal` com hora **mantém** só `antecipado` e
 `no_horario`. O texto "Vínculo disponível em breve" em Configurações é um espaço reservado até lá.
+
+**Requisito (vindo do Plano 4): job de recuperação de eventos presos.** Eventos parados em `processando`
+(ou `recebido`) por mais de ~2 minutos hoje respondem "em processamento" a cada reenvio. O job deve:
+- para evento em `processando` **com chamada ao modelo registrada** (`attempt_count >= 1`; ferramentas podem
+  ter gravado): gravar uma resposta terminal ("Sua mensagem pode ter sido processada só em parte; confira
+  suas tarefas e envie de novo o que faltar") e marcar `processado`;
+- só evento em `recebido` **sem** chamada ao modelo pode ser marcado `falhou` (reenviável);
+- também apagar de `assistant_model_calls` registros com mais de ~2 dias;
+- a resposta do Telegram precisa listar `affectedTasks` (o texto "Confira abaixo" depende disso).
 
 ## Plano 6 — acabamento e publicação (não iniciado)
 
@@ -85,7 +93,8 @@ avaliação da IA (~50 frases), testes de navegador, dados de demonstração e r
   layout em 360, 768 e 1280 px, contraste medido, navegação por teclado/leitor de tela e os
   redirecionamentos do lado do cliente.
 - Nada foi implantado; o runbook de publicação é do Plano 6.
-- O comportamento real do modelo de IA e do Telegram ainda não foi exercitado (Planos 4 e 5).
+- O comportamento real do modelo de IA ainda não foi exercitado: o roteiro existe, mas não foi executado
+  (aguarda chave e aprovação do gasto). O do Telegram é do Plano 5.
 
 ## Dívidas técnicas conhecidas (backlog)
 
@@ -103,6 +112,23 @@ compartilhado e unificar `FIELD_MESSAGE`/`errorsFromIssues`; reavaliar o Turbopa
 `apps/web/next.config.ts`); teste de virada de meia-noite em `todayIn`; ampliar a visão Semana em telas
 largas; teste que fixe o `cancelQueries` ao limpar o cache; varredura de `service_role` também fora de
 `apps/web`.
+
+**Do assistente (Plano 4, menores adiados):**
+- Execução real: confirmar na API real a aceitação do `strict` (anyOf com null, `format` date/uuid, padrão de
+  `dueTime` removido), `strict` + `effort` baixo + raciocínio adaptativo, o mínimo de prefixo cacheável
+  (`cacheReadTokens`), e que montar o adaptador na subida não faz rede; `cache_creation_input_tokens` não é
+  mapeado.
+- `processMessage`: passo com `tool_use` e `max_tokens` ainda executa as ferramentas (falta teste);
+  `retryAfter` fixo em 60 s; limite verificado antes de agir pode estourar sob concorrência; tamanho em
+  UTF-16 conta emoji duas vezes; resposta parcial não diz o que mudou em tarefas alteradas e título com
+  quebra de linha quebra a lista; resultados do 4º passo nunca voltam ao modelo; retries do SDK podem passar
+  do orçamento de ~20 s (pior caso ~24 s por passo); mensagem de chat só com texto vazio.
+- Rota/painel: `Retry-After` não exposto via CORS (o painel lê `retryAfterSeconds` do corpo); `json-logger`
+  pode ter campos sobrescritos; barra de comando: fundo não fecha ao clicar, Ctrl+K abre sobre o diálogo de
+  confirmação, texto digitado durante o envio some ao concluir.
+- Banco: `listar_tarefas` carrega tudo antes de limitar a 50; falta teste de limpeza (`dueDate:null`,
+  `dueTime:null`); índice de `assistant_model_calls` por (user_id, called_at); `apps/api/.vitest/` sem
+  `.gitignore`.
 
 ## Como retomar
 
