@@ -29,7 +29,7 @@ export function createSupabaseInboundEventRepository(client: SupabaseClient): In
   ): Promise<void> {
     const base = client.from('inbound_events').update(patch).eq('channel', channel).eq('external_id', externalId);
     const scoped = userId === null ? base.is('user_id', null) : base.eq('user_id', userId);
-    const { data, error } = await base.in('status', from).select('id');
+    const { data, error } = await scoped.in('status', from).select('id');
     if (error) throw new Error(`Falha ao ${what}: ${error.message}`);
     if ((data ?? []).length > 0) return;
 
