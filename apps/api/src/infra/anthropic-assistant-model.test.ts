@@ -4,7 +4,7 @@ import { ASSISTANT_TOOLS } from '../application/assistant/tools.js';
 import { buildSystemBlocks } from '../application/assistant/prompt.js';
 import { AssistantUnavailableError } from '../application/errors.js';
 import type { ModelMessage } from '../application/ports.js';
-import { createAnthropicAssistantModel } from './anthropic-assistant-model.js';
+import { createAnthropicAssistantModel, createSdkClient } from './anthropic-assistant-model.js';
 
 const API_KEY = 'sk-ant-chave-secreta-de-teste';
 const USER_TEXT = 'texto-secreto-do-usuario-xyz';
@@ -349,5 +349,99 @@ describe('error mapping', () => {
       throw new TypeError('bug');
     });
     await expect(step()).rejects.toBeInstanceOf(TypeError);
+  });
+});
+
+describe('stop_reason fallbacks', () => {
+  it.each([
+    ['model_context_window_exceeded', 'max_tokens'],
+    ['stop_sequence', 'end_turn'],
+    ['pause_turn', 'end_turn'],
+    [null, 'end_turn'],
+  ] as const)('maps stop_reason %s to %s', async (api, expected) => {
+    const { step } = setup(() => message({ stop_reason: api }));
+    expect((await step()).stopReason).toBe(expected);
+  });
+});
+
+describe('generic APIError fallback', () => {
+  const H = new Headers();
+  it.each([
+    ['404', () => new Anthropic.NotFoundError(404, { type: 'error' }, 'x', H), 'configuracao'],
+    ['409', () => new Anthropic.ConflictError(409, { type: 'error' }, 'x', H), 'configuracao'],
+    ['422', () => new Anthropic.UnprocessableEntityError(422, { type: 'error' }, 'x', H), 'configuracao'],
+    ['429 as plain APIError', () => new Anthropic.APIError(429, { type: 'error' }, 'x', H), 'limite'],
+    ['no status', () => new Anthropic.APIError(undefined, undefined, 'x', undefined), 'servico'],
+  ] as const)('%s -> %s', async (_n, make, reason) => {
+    const { step } = setup(() => {
+      throw make();
+    });
+    await expect(step()).rejects.toMatchObject({ reason });
+  });
+});
+
+describe('abort detection is pinned on each check', () => {
+  it('an aborted signal wins over whatever error the client throws', async () => {
+    const ac = new AbortController();
+    const { step } = setup(() => {
+      ac.abort();
+      throw new Anthropic.APIConnectionError({ message: 'x' });
+    });
+    await expect(step({ signal: ac.signal })).rejects.toMatchObject({ reason: 'timeout' });
+  });
+
+  it('APIUserAbortError maps to timeout even when the signal is not aborted', async () => {
+    const { step } = setup(() => {
+      throw new Anthropic.APIUserAbortError();
+    });
+    await expect(step()).rejects.toMatchObject({ reason: 'timeout' });
+  });
+});
+
+describe('empty text blocks', () => {
+  it('drops empty text blocks from the request and keeps thinking untouched', async () => {
+    const thinking = { type: 'thinking', thinking: '', signature: 's' };
+    const { calls, step } = setup();
+    await step({
+      messages: [
+        { role: 'user', content: 'a' },
+        {
+          role: 'assistant',
+          content: [
+            { type: 'thinking', raw: thinking },
+            { type: 'text', text: '' },
+            { type: 'tool_use', id: 't1', name: 'listar_tarefas', input: {} },
+          ],
+        },
+        { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: '{}' }] },
+      ],
+    });
+    expect(calls[0]!.params.messages[1].content).toEqual([thinking, { type: 'tool_use', id: 't1', name: 'listar_tarefas', input: {} }]);
+    expect(calls[0]!.params.messages[1].content[0]).toBe(thinking);
+  });
+
+  it('keeps non-empty text blocks', async () => {
+    const { calls, step } = setup();
+    await step({
+      messages: [
+        { role: 'user', content: 'a' },
+        { role: 'assistant', content: [{ type: 'text', text: 'ok' }, { type: 'text', text: '' }] },
+        { role: 'user', content: 'b' },
+      ],
+    });
+    expect(calls[0]!.params.messages[1].content).toEqual([{ type: 'text', text: 'ok' }]);
+  });
+});
+
+describe('SDK client logging', () => {
+  it('pins logLevel off on the client it builds, even with ANTHROPIC_LOG=debug', () => {
+    const prev = process.env.ANTHROPIC_LOG;
+    process.env.ANTHROPIC_LOG = 'debug';
+    try {
+      expect(createSdkClient(API_KEY).logLevel).toBe('off');
+    } finally {
+      if (prev === undefined) delete process.env.ANTHROPIC_LOG;
+      else process.env.ANTHROPIC_LOG = prev;
+    }
   });
 });

@@ -64,7 +64,11 @@ function toBlockParam(block: ContentBlock): Anthropic.ContentBlockParam {
 function toMessages(messages: ModelMessage[]): Anthropic.MessageParam[] {
   return messages.map((m) => ({
     role: m.role,
-    content: typeof m.content === 'string' ? m.content : m.content.map(toBlockParam),
+    content:
+      typeof m.content === 'string'
+        ? m.content
+        // Bloco de texto vazio dá 400 na API; blocos de pensamento passam intactos.
+        : m.content.filter((b) => b.type !== 'text' || b.text !== '').map(toBlockParam),
   }));
 }
 
@@ -119,8 +123,13 @@ function reasonOf(error: unknown, signal: AbortSignal): AssistantUnavailableReas
   return null;
 }
 
+/** `logLevel: 'off'` fixo: ANTHROPIC_LOG=debug no ambiente nunca pode fazer o SDK logar corpos de requisição. */
+export function createSdkClient(apiKey: string): Anthropic {
+  return new Anthropic({ apiKey, logLevel: 'off' });
+}
+
 export function createAnthropicAssistantModel(opts: { apiKey: string; model: string; client?: Anthropic }): AssistantModel {
-  const client = opts.client ?? new Anthropic({ apiKey: opts.apiKey });
+  const client = opts.client ?? createSdkClient(opts.apiKey);
 
   return {
     async step({ system, messages, tools, signal }) {
