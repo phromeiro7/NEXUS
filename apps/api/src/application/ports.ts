@@ -110,15 +110,30 @@ export interface InboundEventRepository {
     externalId: string,
     now: Date,
   ): Promise<{ firstTime: boolean; status: InboundEventStatus; reply: unknown | null }>;
-  /** status -> 'processando' e `attempt_count + 1` (a chamada ao modelo vai começar). */
-  beginModelCall(channel: ChatChannel, externalId: string, now: Date): Promise<void>;
-  /** status -> 'processado', `processed_at = now`, guarda `reply` (jsonb, < 64 KB). */
-  markProcessed(channel: ChatChannel, externalId: string, reply: unknown, now: Date): Promise<void>;
-  /** status -> 'falhou' (pode ser reprocessado por `register`). */
-  markFailed(channel: ChatChannel, externalId: string, now: Date): Promise<void>;
+  /*
+   * As três transições abaixo filtram pelo dono do evento (`userId`; `null` = evento sem
+   * vínculo) e por pré-condição de estado, de forma atômica. Erros tipados, nunca sucesso
+   * silencioso: `ForeignEventError` (evento de outro usuário), `EventStateError` (evento
+   * inexistente ou estado que não permite a transição).
+   */
   /**
-   * Eventos do usuário no canal com `received_at >= since` e `attempt_count >= 1` (só os que
-   * chegaram a chamar o modelo contam para o limite horário; Ruling 7).
+   * 'recebido' -> 'processando', `attempt_count + 1` e registra UMA chamada ao modelo (conta no
+   * limite horário). `userId` obrigatório (não nulo).
+   */
+  beginModelCall(userId: string, channel: ChatChannel, externalId: string, now: Date): Promise<void>;
+  /** 'processando' -> 'processado', `processed_at = now`, guarda `reply` (jsonb, < 64 KB). */
+  markProcessed(
+    userId: string | null,
+    channel: ChatChannel,
+    externalId: string,
+    reply: unknown,
+    now: Date,
+  ): Promise<void>;
+  /** 'recebido' ou 'processando' -> 'falhou' (pode ser reprocessado por `register`). Nunca reabre 'processado'. */
+  markFailed(userId: string | null, channel: ChatChannel, externalId: string, now: Date): Promise<void>;
+  /**
+   * Número de CHAMADAS AO MODELO do usuário no canal com `called_at >= since` (Ruling 9: conta
+   * chamadas, não eventos; reenvio ou recusa sem chamada não contam).
    */
   countSince(userId: string, channel: ChatChannel, since: Date): Promise<number>;
 }
@@ -127,8 +142,15 @@ export interface InboundEventRepository {
  * Modelo de IA. `ModelMessage` é o histórico do ciclo de ferramentas: texto simples, ou blocos.
  * O assistente responde com `text` e `tool_use`; o servidor devolve cada resultado como um
  * bloco `tool_result` (mensagem `user`) cujo `tool_use_id` é o `id` do `tool_use` respondido.
+ *
+ * Blocos `thinking`/`redacted_thinking` (Haiku 5.5 pensa por padrão): o adaptador deve produzi-los
+ * VERBATIM a partir da resposta da API em `raw` (mesmo com texto vazio) e o ciclo deve reenviá-los
+ * sem modificação, na mesma ordem, antes dos blocos `tool_use` da mensagem do assistente.
  */
+export type ThinkingPassThrough = { type: 'thinking' | 'redacted_thinking'; raw: unknown };
+
 export type ContentBlock =
+  | ThinkingPassThrough
   | { type: 'text'; text: string }
   | { type: 'tool_use'; id: string; name: string; input: unknown }
   | { type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean };
@@ -147,7 +169,9 @@ export type ToolDefinition = {
 
 export type ModelStep = {
   stopReason: 'end_turn' | 'tool_use' | 'max_tokens' | 'refusal';
-  blocks: Array<{ type: 'text'; text: string } | { type: 'tool_use'; id: string; name: string; input: unknown }>;
+  blocks: Array<
+    ThinkingPassThrough | { type: 'text'; text: string } | { type: 'tool_use'; id: string; name: string; input: unknown }
+  >;
   usage: { inputTokens: number; outputTokens: number; cacheReadTokens: number };
 };
 

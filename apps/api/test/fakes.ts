@@ -1,5 +1,5 @@
 import type { CaseDto, HolidayDto, IsoDate, SettingsDto, TaskDto } from '@aj/shared';
-import { ConflictError, ForeignEventError } from '../src/application/errors.js';
+import { ConflictError, EventStateError, ForeignEventError } from '../src/application/errors.js';
 import type {
   CaseRepository,
   ChatChannel,
@@ -235,9 +235,18 @@ export function createFakes(seed: { now?: Date } = {}) {
     reply: unknown | null;
   };
   const eventRows: EventRow[] = [];
-  const eventOf = (channel: ChatChannel, externalId: string): EventRow => {
+  const modelCalls: { userId: string; channel: ChatChannel; calledAt: Date }[] = [];
+  /** Mesma ordem de verificações do SQL: inexistente, outro usuário, estado inválido. */
+  const ownedEvent = (
+    userId: string | null,
+    channel: ChatChannel,
+    externalId: string,
+    allowed: InboundEventStatus[],
+  ): EventRow => {
     const row = eventRows.find((r) => r.channel === channel && r.externalId === externalId);
-    if (!row) throw new Error('evento não encontrado');
+    if (!row) throw new EventStateError('evento_inexistente');
+    if (row.userId !== userId) throw new ForeignEventError();
+    if (!allowed.includes(row.status)) throw new EventStateError('evento_em_estado_invalido');
     return row;
   };
   const inboundEvents: InboundEventRepository = {
@@ -256,23 +265,23 @@ export function createFakes(seed: { now?: Date } = {}) {
       }
       return { firstTime: false, status: row.status, reply: structuredClone(row.reply) };
     },
-    async beginModelCall(channel, externalId) {
-      const row = eventOf(channel, externalId);
+    async beginModelCall(userId, channel, externalId, at) {
+      if (userId === null || userId === undefined) throw new EventStateError('usuario_obrigatorio');
+      const row = ownedEvent(userId, channel, externalId, ['recebido']);
       row.status = 'processando';
       row.attemptCount += 1;
+      modelCalls.push({ userId, channel, calledAt: at });
     },
-    async markProcessed(channel, externalId, reply) {
-      const row = eventOf(channel, externalId);
+    async markProcessed(userId, channel, externalId, reply) {
+      const row = ownedEvent(userId, channel, externalId, ['processando']);
       row.status = 'processado';
       row.reply = structuredClone(reply);
     },
-    async markFailed(channel, externalId) {
-      eventOf(channel, externalId).status = 'falhou';
+    async markFailed(userId, channel, externalId) {
+      ownedEvent(userId, channel, externalId, ['recebido', 'processando']).status = 'falhou';
     },
     async countSince(userId, channel, since) {
-      return eventRows.filter(
-        (r) => r.userId === userId && r.channel === channel && r.attemptCount >= 1 && r.receivedAt >= since,
-      ).length;
+      return modelCalls.filter((c) => c.userId === userId && c.channel === channel && c.calledAt >= since).length;
     },
   };
 

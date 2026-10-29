@@ -86,3 +86,75 @@ revoke all on function public.register_inbound_event(uuid, text, text, timestamp
   from public, anon, authenticated;
 grant execute on function public.register_inbound_event(uuid, text, text, timestamptz)
   to service_role;
+
+-- Rate limit (Ruling 9): counts MODEL CALLS, not events. Append-only ledger with
+-- one row per call to the model; the 'falhou' reset of register_inbound_event
+-- (which moves received_at) and refused resends therefore never affect the count.
+create table public.assistant_model_calls (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  channel text not null,
+  called_at timestamptz not null,
+  constraint assistant_model_calls_channel_check check (channel in ('telegram', 'painel'))
+);
+create index assistant_model_calls_user_channel_called_idx
+  on public.assistant_model_calls (user_id, channel, called_at desc);
+
+-- RLS on and no client grants (same closed pattern as the other tables; 0003
+-- already removed the default grants to anon/authenticated). service_role only.
+alter table public.assistant_model_calls enable row level security;
+revoke all on table public.assistant_model_calls from public, anon, authenticated;
+
+-- Atomically starts a model call for an inbound event: only from 'recebido',
+-- only for the event's owner. Sets 'processando', attempt_count + 1 and inserts
+-- one assistant_model_calls row, in one transaction.
+-- Raises 'usuario_obrigatorio' (null p_user_id), 'evento_inexistente',
+-- 'evento_de_outro_usuario' (owner differs, null owner included) and
+-- 'evento_em_estado_invalido' (status is not 'recebido'). With simultaneous
+-- calls the row lock serializes them: one succeeds, the others see 'processando'.
+-- SECURITY INVOKER: only service_role (the API) may call it.
+create or replace function public.begin_model_call(
+  p_user_id uuid,
+  p_channel text,
+  p_external_id text,
+  p_now timestamptz
+)
+returns void
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare
+  v_event public.inbound_events;
+begin
+  if p_user_id is null then
+    raise exception 'usuario_obrigatorio';
+  end if;
+
+  select * into v_event
+    from public.inbound_events e
+   where e.channel = p_channel and e.external_id = p_external_id
+     for update;
+  if not found then
+    raise exception 'evento_inexistente';
+  end if;
+  if v_event.user_id is distinct from p_user_id then
+    raise exception 'evento_de_outro_usuario';
+  end if;
+  if v_event.status <> 'recebido' then
+    raise exception 'evento_em_estado_invalido';
+  end if;
+
+  update public.inbound_events e
+     set status = 'processando', attempt_count = e.attempt_count + 1
+   where e.id = v_event.id;
+
+  insert into public.assistant_model_calls (user_id, channel, called_at)
+  values (p_user_id, p_channel, p_now);
+end;
+$$;
+
+revoke all on function public.begin_model_call(uuid, text, text, timestamptz)
+  from public, anon, authenticated;
+grant execute on function public.begin_model_call(uuid, text, text, timestamptz)
+  to service_role;

@@ -1,26 +1,48 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { ForeignEventError } from '../application/errors.js';
+import { EventStateError, ForeignEventError } from '../application/errors.js';
 import type { InboundEventRepository, InboundEventStatus } from '../application/ports.js';
-
-const FOREIGN_EVENT = 'evento_de_outro_usuario';
 
 type RegisterRow = { first_time: boolean; status: InboundEventStatus; reply: unknown | null };
 
+/** Maps the typed SQL exceptions of the register/begin functions; anything else is a plain failure. */
+function mapDbError(message: string, what: string): Error {
+  if (message.includes('evento_de_outro_usuario')) return new ForeignEventError();
+  if (message.includes('evento_em_estado_invalido')) return new EventStateError('evento_em_estado_invalido');
+  if (message.includes('evento_inexistente')) return new EventStateError('evento_inexistente');
+  if (message.includes('usuario_obrigatorio')) return new EventStateError('usuario_obrigatorio');
+  return new Error(`Falha ao ${what}: ${message}`);
+}
+
 export function createSupabaseInboundEventRepository(client: SupabaseClient): InboundEventRepository {
-  async function update(
+  /**
+   * Conditional update scoped by owner (`user_id = userId`, or `is null`), channel, external id
+   * and the allowed current statuses. Zero rows -> a read classifies why (missing, another
+   * user's, or wrong state) and a typed error is thrown; never a silent success.
+   */
+  async function transition(
+    userId: string | null,
     channel: string,
     externalId: string,
+    from: InboundEventStatus[],
     patch: Record<string, unknown>,
     what: string,
   ): Promise<void> {
-    const { data, error } = await client
+    const base = client.from('inbound_events').update(patch).eq('channel', channel).eq('external_id', externalId);
+    const scoped = userId === null ? base.is('user_id', null) : base.eq('user_id', userId);
+    const { data, error } = await base.in('status', from).select('id');
+    if (error) throw new Error(`Falha ao ${what}: ${error.message}`);
+    if ((data ?? []).length > 0) return;
+
+    const { data: existing, error: readError } = await client
       .from('inbound_events')
-      .update(patch)
+      .select('user_id')
       .eq('channel', channel)
       .eq('external_id', externalId)
-      .select('id');
-    if (error) throw new Error(`Falha ao ${what}: ${error.message}`);
-    if ((data ?? []).length === 0) throw new Error(`Falha ao ${what}: evento não encontrado`);
+      .maybeSingle();
+    if (readError) throw new Error(`Falha ao ${what}: ${readError.message}`);
+    if (!existing) throw new EventStateError('evento_inexistente');
+    if ((existing.user_id as string | null) !== userId) throw new ForeignEventError();
+    throw new EventStateError('evento_em_estado_invalido');
   }
 
   return {
@@ -31,52 +53,40 @@ export function createSupabaseInboundEventRepository(client: SupabaseClient): In
         p_external_id: externalId,
         p_now: now.toISOString(),
       });
-      if (error) {
-        if (error.message.includes(FOREIGN_EVENT)) throw new ForeignEventError();
-        throw new Error(`Falha ao registrar evento: ${error.message}`);
-      }
+      if (error) throw mapDbError(error.message, 'registrar evento');
       const row = (data as RegisterRow[] | null)?.[0];
       if (!row) throw new Error('Falha ao registrar evento: resposta vazia');
       return { firstTime: row.first_time, status: row.status, reply: row.reply ?? null };
     },
 
-    async beginModelCall(channel, externalId, now) {
-      // Incremento otimista: só grava se `attempt_count` ainda é o valor lido.
-      for (let attempt = 0; attempt < 3; attempt++) {
-        const { data: row, error: readError } = await client
-          .from('inbound_events')
-          .select('attempt_count')
-          .eq('channel', channel)
-          .eq('external_id', externalId)
-          .maybeSingle();
-        if (readError) throw new Error(`Falha ao iniciar chamada ao modelo: ${readError.message}`);
-        if (!row) throw new Error('Falha ao iniciar chamada ao modelo: evento não encontrado');
-        const { data, error } = await client
-          .from('inbound_events')
-          .update({ status: 'processando', attempt_count: (row.attempt_count as number) + 1 })
-          .eq('channel', channel)
-          .eq('external_id', externalId)
-          .eq('attempt_count', row.attempt_count as number)
-          .select('id');
-        if (error) throw new Error(`Falha ao iniciar chamada ao modelo: ${error.message}`);
-        if ((data ?? []).length > 0) return;
-      }
-      throw new Error('Falha ao iniciar chamada ao modelo: conflito de atualização');
+    async beginModelCall(userId, channel, externalId, now) {
+      if (userId === null || userId === undefined) throw new EventStateError('usuario_obrigatorio');
+      const { error } = await client.rpc('begin_model_call', {
+        p_user_id: userId,
+        p_channel: channel,
+        p_external_id: externalId,
+        p_now: now.toISOString(),
+      });
+      if (error) throw mapDbError(error.message, 'iniciar chamada ao modelo');
     },
 
-    async markProcessed(channel, externalId, reply, now) {
-      await update(
+    async markProcessed(userId, channel, externalId, reply, now) {
+      await transition(
+        userId,
         channel,
         externalId,
+        ['processando'],
         { status: 'processado', processed_at: now.toISOString(), reply },
         'marcar evento como processado',
       );
     },
 
-    async markFailed(channel, externalId, now) {
-      await update(
+    async markFailed(userId, channel, externalId, now) {
+      await transition(
+        userId,
         channel,
         externalId,
+        ['recebido', 'processando'],
         { status: 'falhou', processed_at: now.toISOString() },
         'marcar evento como falho',
       );
@@ -84,13 +94,12 @@ export function createSupabaseInboundEventRepository(client: SupabaseClient): In
 
     async countSince(userId, channel, since) {
       const { count, error } = await client
-        .from('inbound_events')
+        .from('assistant_model_calls')
         .select('id', { count: 'exact', head: true })
         .eq('user_id', userId)
         .eq('channel', channel)
-        .gte('attempt_count', 1)
-        .gte('received_at', since.toISOString());
-      if (error) throw new Error(`Falha ao contar eventos: ${error.message}`);
+        .gte('called_at', since.toISOString());
+      if (error) throw new Error(`Falha ao contar chamadas ao modelo: ${error.message}`);
       return count ?? 0;
     },
   };

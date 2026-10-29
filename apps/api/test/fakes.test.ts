@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { IsoDate } from '@aj/shared';
-import { ConflictError, ForeignEventError } from '../src/application/errors.js';
+import { ConflictError, EventStateError, ForeignEventError } from '../src/application/errors.js';
 import type { NewTask } from '../src/application/ports.js';
 import { createFakes } from './fakes.js';
 
@@ -219,10 +219,11 @@ describe('fakes: inbound events', () => {
     const e = f.inboundEvents;
     expect(await e.register('A', 'painel', 'x', now)).toEqual({ firstTime: true, status: 'recebido', reply: null });
     expect((await e.register('A', 'painel', 'x', now)).firstTime).toBe(false);
-    await e.beginModelCall('painel', 'x', now);
-    await e.markFailed('painel', 'x', now);
+    await e.beginModelCall('A', 'painel', 'x', now);
+    await e.markFailed('A', 'painel', 'x', now);
     expect(await e.register('A', 'painel', 'x', now)).toEqual({ firstTime: true, status: 'recebido', reply: null });
-    await e.markProcessed('painel', 'x', { a: { b: 1 } }, now);
+    await e.beginModelCall('A', 'painel', 'x', now);
+    await e.markProcessed('A', 'painel', 'x', { a: { b: 1 } }, now);
     expect(await e.register('A', 'painel', 'x', now)).toEqual({
       firstTime: false,
       status: 'processado',
@@ -239,19 +240,42 @@ describe('fakes: inbound events', () => {
     expect((await e.register('A', 'painel', 'y', now)).firstTime).toBe(true);
   });
 
-  it('countSince counts only attempt_count >= 1 of the user, channel and window', async () => {
+  it('scopes transitions by user and status like the SQL', async () => {
+    const f = createFakes();
+    const e = f.inboundEvents;
+    await e.register('A', 'painel', 'p', now);
+    await expect(e.markProcessed('A', 'painel', 'p', {}, now)).rejects.toBeInstanceOf(EventStateError);
+    await expect(e.beginModelCall('B', 'painel', 'p', now)).rejects.toBeInstanceOf(ForeignEventError);
+    await expect(e.beginModelCall('A', 'painel', 'nope', now)).rejects.toBeInstanceOf(EventStateError);
+    await e.beginModelCall('A', 'painel', 'p', now);
+    await expect(e.beginModelCall('A', 'painel', 'p', now)).rejects.toBeInstanceOf(EventStateError);
+    await expect(e.markProcessed('B', 'painel', 'p', { forged: 1 }, now)).rejects.toBeInstanceOf(ForeignEventError);
+    await e.markProcessed('A', 'painel', 'p', { ok: 1 }, now);
+    await expect(e.markFailed('A', 'painel', 'p', now)).rejects.toBeInstanceOf(EventStateError);
+    expect(await e.register('A', 'painel', 'p', now)).toEqual({ firstTime: false, status: 'processado', reply: { ok: 1 } });
+  });
+
+  it('countSince counts model calls (>= cutoff) of the user and channel, not events or resets', async () => {
     const f = createFakes();
     const e = f.inboundEvents;
     const since = new Date('2026-10-27T11:00:00Z');
     await e.register('A', 'painel', '1', now);
-    await e.beginModelCall('painel', '1', now);
+    await e.beginModelCall('A', 'painel', '1', now);
     await e.register('A', 'painel', '2', now); // refused: no model call
-    await e.register('A', 'painel', '3', new Date('2026-10-27T10:00:00Z'));
-    await e.beginModelCall('painel', '3', now);
+    await e.markFailed('A', 'painel', '2', now);
+    await e.register('A', 'painel', '2', now); // resend: reset does not count
+    await e.register('A', 'painel', '3', since);
+    await e.beginModelCall('A', 'painel', '3', since); // boundary counts
+    await e.register('A', 'painel', '5', new Date('2026-10-27T10:00:00Z'));
+    await e.beginModelCall('A', 'painel', '5', new Date('2026-10-27T10:59:59Z')); // before
     await e.register('B', 'painel', '4', now);
-    await e.beginModelCall('painel', '4', now);
-    expect(await e.countSince('A', 'painel', since)).toBe(1);
+    await e.beginModelCall('B', 'painel', '4', now);
+    expect(await e.countSince('A', 'painel', since)).toBe(2);
     expect(await e.countSince('A', 'telegram', since)).toBe(0);
+    await e.markFailed('A', 'painel', '1', now);
+    await e.register('A', 'painel', '1', now);
+    await e.beginModelCall('A', 'painel', '1', now); // same event, second call
+    expect(await e.countSince('A', 'painel', since)).toBe(3);
   });
 });
 
