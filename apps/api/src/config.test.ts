@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { loadConfig } from './config.js';
 
@@ -19,6 +20,7 @@ describe('loadConfig', () => {
       serviceRoleKey: 'k',
       port: 3001,
       webOrigin: 'http://localhost:3000',
+      assistantModel: 'claude-haiku-5-5',
     });
   });
   it('reads WEB_ORIGIN, trimmed', () => {
@@ -50,6 +52,24 @@ describe('loadConfig', () => {
   });
   it.each(['abc', '80.5', '0', '-1', '70000', ''])('rejects invalid PORT %j', (p) => {
     expect(() => loadConfig({ ...base, PORT: p })).toThrow(/PORT/);
+  });
+  it('starts without an Anthropic key and defaults the assistant model', () => {
+    const c = loadConfig(base);
+    expect(c.anthropicApiKey).toBeUndefined();
+    expect(c.assistantModel).toBe('claude-haiku-5-5');
+  });
+  it('treats an empty ANTHROPIC_API_KEY as absent and reads a set one', () => {
+    expect(loadConfig({ ...base, ANTHROPIC_API_KEY: '' }).anthropicApiKey).toBeUndefined();
+    expect(loadConfig({ ...base, ANTHROPIC_API_KEY: 'chave-teste' }).anthropicApiKey).toBe('chave-teste');
+  });
+  it('overrides the assistant model with ASSISTANT_MODEL, empty means default', () => {
+    expect(loadConfig({ ...base, ASSISTANT_MODEL: ' outro-modelo ' }).assistantModel).toBe('outro-modelo');
+    expect(loadConfig({ ...base, ASSISTANT_MODEL: '' }).assistantModel).toBe('claude-haiku-5-5');
+  });
+  it('lists the assistant variable names (no values) in .env.example', () => {
+    const text = readFileSync(new URL('../../../.env.example', import.meta.url), 'utf8');
+    expect(text).toMatch(/^ANTHROPIC_API_KEY=$/m);
+    expect(text).toMatch(/^ASSISTANT_MODEL=$/m);
   });
   it('never puts the key in an error message', () => {
     expect.assertions(1);
