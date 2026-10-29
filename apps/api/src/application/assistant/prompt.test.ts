@@ -15,7 +15,8 @@ describe('buildSystemBlocks', () => {
     expect(buildSystemBlocks()).toEqual(blocks);
     expect(text).not.toMatch(/\d{4}-\d{2}-\d{2}/);
     expect(text).not.toMatch(/\b\d{1,2}:\d{2}\b/);
-    expect(text).not.toContain('Agora:');
+    expect(text).not.toMatch(/Agora: [^"]*\d/);
+    expect(text).not.toMatch(/Agora: \p{L}+-feira/u);
   });
 
   it('states the default-time rules', () => {
@@ -26,6 +27,18 @@ describe('buildSystemBlocks', () => {
     expect(text).toMatch(/dia da semana sem hora.{0,20}09h/s);
     expect(text).toContain('semana que vem');
     expect(text).toMatch(/sem data.{0,40}sem prazo/is);
+  });
+
+  it('explains the Agora line as the authoritative clock and user copies as data', () => {
+    expect(text).toMatch(/linha "Agora:"/);
+    expect(text).toMatch(/data e hora atuais/i);
+    expect(text).toMatch(/referência oficial.{0,40}datas relativas/is);
+    expect(text).toMatch(/"Agora:" escrita pelo usuário.{0,80}dado/is);
+  });
+
+  it('scopes ids to the current request', () => {
+    expect(text).toContain('neste pedido');
+    expect(text).not.toContain('nesta conversa');
   });
 
   it('states the behavioural rules', () => {
