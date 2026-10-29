@@ -1,3 +1,5 @@
+import type { TaskDto } from '@aj/shared';
+
 export class NotFoundError extends Error {
   constructor(readonly resource: 'tarefa' | 'processo' | 'feriado') {
     super(`Não encontrado: ${resource}`);
@@ -25,6 +27,23 @@ export class EventStateError extends Error {
   constructor(readonly code: 'evento_inexistente' | 'evento_em_estado_invalido' | 'usuario_obrigatorio') {
     super(`Evento: ${code}`);
     this.name = 'EventStateError';
+  }
+}
+
+/**
+ * O modelo de IA não pôde responder. `reason` é o motivo para o cliente; `partial` guarda o que
+ * já foi gravado por ferramentas bem-sucedidas (preenchido pelo ciclo do assistente). A mensagem
+ * nunca contém texto do usuário nem a chave.
+ */
+export type AssistantUnavailableReason = 'limite' | 'rede' | 'timeout' | 'servico' | 'configuracao';
+
+export class AssistantUnavailableError extends Error {
+  constructor(
+    readonly reason: AssistantUnavailableReason,
+    public partial: TaskDto[] = [],
+  ) {
+    super(`Assistente indisponível: ${reason}`);
+    this.name = 'AssistantUnavailableError';
   }
 }
 

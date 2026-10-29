@@ -78,6 +78,16 @@ describe('ASSISTANT_TOOLS', () => {
     expect(tool.description.length).toBeGreaterThan(40);
     expect('strict' in tool).toBe(false);
   });
+
+  it('marks every IsoDate field with format date in the schema sent to the model', () => {
+    const props = (name: string) =>
+      (ASSISTANT_TOOLS.find((t) => t.name === name)!.inputSchema.properties as Record<string, Record<string, unknown>>);
+    expect(props('criar_tarefa').dueDate).toMatchObject({ type: 'string', format: 'date' });
+    expect(props('listar_tarefas').from).toMatchObject({ format: 'date' });
+    expect(props('listar_tarefas').to).toMatchObject({ format: 'date' });
+    expect(props('calcular_prazo').baseDate).toMatchObject({ format: 'date' });
+    expect(JSON.stringify(props('alterar_tarefa').dueDate)).toContain('"format":"date"');
+  });
 });
 
 describe('executor: validation', () => {
