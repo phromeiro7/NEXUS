@@ -44,6 +44,7 @@ as $$
       join public.profiles p on p.id = r.user_id
      where r.status = 'pendente'
        and coalesce(r.next_attempt_at, r.scheduled_at) <= p_now
+       and r.scheduled_at >= p_now - interval '24 hours'
        and t.deleted_at is null
        and t.status in ('pendente', 'em_andamento')
        and p.telegram_chat_id is not null
@@ -123,14 +124,21 @@ as $$
   select count(*)::int from recovered;
 $$;
 
--- Records the outcome of a send. Only from 'enviando'.
---   p_status: 'enviado' (sets sent_at), 'pendente' (retry, stores
+-- Records the outcome of a send. Only from 'enviando', and only by the current
+-- claimer: p_attempts is the attempts value claim_due_reminders returned. Every
+-- new claim increments attempts and recovery never changes it, so it acts as a
+-- fencing token: a sender whose lease expired (recovered and re-claimed by
+-- another sender) can no longer finish the row.
+--   p_status: 'enviado' (sets sent_at), 'pendente' (retry, requires
 --   p_next_attempt_at), 'falhou' or 'cancelado'. The lock is always cleared and
 --   last_error is cut to 200 characters.
--- Raises 'status_invalido', 'lembrete_inexistente' and
--- 'lembrete_em_estado_invalido' (the reminder is not 'enviando').
+-- Raises, in this order: 'status_invalido', 'lembrete_sem_proxima_tentativa'
+-- (retry without a time), then under a row lock 'lembrete_inexistente',
+-- 'lembrete_em_estado_invalido' (not 'enviando') and
+-- 'lembrete_reservado_por_outro' (attempts differ).
 create or replace function public.finish_reminder(
   p_id uuid,
+  p_attempts int,
   p_status text,
   p_error text,
   p_next_attempt_at timestamptz,
@@ -143,12 +151,16 @@ set search_path = public
 as $$
 declare
   v_status text;
+  v_attempts int;
 begin
   if p_status is null or p_status not in ('enviado', 'pendente', 'falhou', 'cancelado') then
     raise exception 'status_invalido';
   end if;
+  if p_status = 'pendente' and p_next_attempt_at is null then
+    raise exception 'lembrete_sem_proxima_tentativa';
+  end if;
 
-  select r.status into v_status
+  select r.status, r.attempts into v_status, v_attempts
     from public.reminders r
    where r.id = p_id
      for update;
@@ -157,6 +169,9 @@ begin
   end if;
   if v_status <> 'enviando' then
     raise exception 'lembrete_em_estado_invalido';
+  end if;
+  if v_attempts is distinct from p_attempts then
+    raise exception 'lembrete_reservado_por_outro';
   end if;
 
   update public.reminders r
@@ -332,7 +347,7 @@ $$;
 revoke all on function public.claim_due_reminders(timestamptz, int) from public, anon, authenticated;
 revoke all on function public.cancel_dead_reminders(timestamptz) from public, anon, authenticated;
 revoke all on function public.recover_stuck_reminders(timestamptz) from public, anon, authenticated;
-revoke all on function public.finish_reminder(uuid, text, text, timestamptz, timestamptz) from public, anon, authenticated;
+revoke all on function public.finish_reminder(uuid, int, text, text, timestamptz, timestamptz) from public, anon, authenticated;
 revoke all on function public.consume_link_code(text, bigint, timestamptz) from public, anon, authenticated;
 revoke all on function public.claim_briefing(uuid, date) from public, anon, authenticated;
 revoke all on function public.release_briefing(uuid, date) from public, anon, authenticated;
@@ -344,7 +359,7 @@ revoke all on function public.recover_stuck_events(timestamptz) from public, ano
 grant execute on function public.claim_due_reminders(timestamptz, int) to service_role;
 grant execute on function public.cancel_dead_reminders(timestamptz) to service_role;
 grant execute on function public.recover_stuck_reminders(timestamptz) to service_role;
-grant execute on function public.finish_reminder(uuid, text, text, timestamptz, timestamptz) to service_role;
+grant execute on function public.finish_reminder(uuid, int, text, text, timestamptz, timestamptz) to service_role;
 grant execute on function public.consume_link_code(text, bigint, timestamptz) to service_role;
 grant execute on function public.claim_briefing(uuid, date) to service_role;
 grant execute on function public.release_briefing(uuid, date) to service_role;

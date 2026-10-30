@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import { asServiceRole, closePool, createUser, deleteCreatedUsers, pool } from './helpers';
 
 const connectionString = process.env.DATABASE_URL ?? 'postgresql://postgres:postgres@127.0.0.1:55322/postgres';
@@ -223,6 +223,16 @@ describe('claim_due_reminders', () => {
     expect((await rem(r2)).status).toBe('pendente');
   });
 
+  it('never reserves a reminder more than 24 h late, even without cancel_dead_reminders', async () => {
+    const u = await mkUser();
+    const late = await mkReminder(u.id, await mkTask(u.id), { scheduledAt: at(-24 * 60 - 1) });
+    const edge = await mkReminder(u.id, await mkTask(u.id), { scheduledAt: at(-24 * 60) });
+    const got = (await claim(NOW_ISO, 1000)).map((r) => r.reminder_id);
+    expect(got).not.toContain(late);
+    expect(got).toContain(edge);
+    expect((await rem(late)).status).toBe('pendente');
+  });
+
   it('is only claimable after next_attempt_at (boundary is <=)', async () => {
     const u = await mkUser();
     const id = await mkReminder(u.id, await mkTask(u.id), { scheduledAt: at(-30), nextAttemptAt: at(5) });
@@ -280,9 +290,10 @@ describe('recover_stuck_reminders', () => {
 });
 
 describe('finish_reminder', () => {
-  const finish = (id: string, status: string, error: string | null, next: string | null, c?: pg.Client) =>
-    (c ?? pool).query(`select public.finish_reminder($1::uuid, $2, $3, $4::timestamptz, $5::timestamptz)`, [
+  const finish = (id: string, status: string, error: string | null, next: string | null, attempts = 1) =>
+    pool.query(`select public.finish_reminder($1::uuid, $2::int, $3, $4, $5::timestamptz, $6::timestamptz)`, [
       id,
+      attempts,
       status,
       error,
       next,
@@ -350,6 +361,46 @@ describe('finish_reminder', () => {
       await expect(finish(id, bad, null, null)).rejects.toThrow('status_invalido');
     }
     expect((await rem(id)).status).toBe('enviando');
+  });
+
+  it('a retry (pendente) without next_attempt_at raises lembrete_sem_proxima_tentativa and changes nothing', async () => {
+    const { id } = await sending();
+    await expect(finish(id, 'pendente', 'x', null)).rejects.toThrow('lembrete_sem_proxima_tentativa');
+    expect((await rem(id)).status).toBe('enviando');
+  });
+
+  it('a wrong p_attempts on a fresh claim raises lembrete_reservado_por_outro', async () => {
+    const { id } = await sending(1);
+    await expect(finish(id, 'enviado', null, null, 2)).rejects.toThrow('lembrete_reservado_por_outro');
+    await expect(finish(id, 'enviado', null, null, 0)).rejects.toThrow('lembrete_reservado_por_outro');
+    expect((await rem(id)).status).toBe('enviando');
+  });
+
+  it('fences a sender whose lease expired: A claims, recovery + B claims, A cannot finish, C cannot claim, B can finish', async () => {
+    const u = await mkUser();
+    const id = await mkReminder(u.id, await mkTask(u.id), { scheduledAt: at(-10) });
+    const mine = async (now: string) => (await claim(now, 1000)).find((r) => r.reminder_id === id);
+
+    const a = await mine(NOW_ISO);
+    expect(a?.attempts).toBe(1);
+    // A fica lento; passam 6 minutos, a recuperação devolve o lembrete e B o reserva.
+    await pool.query(`select public.recover_stuck_reminders($1::timestamptz)`, [at(6)]);
+    const b = await mine(at(6));
+    expect(b?.attempts).toBe(2);
+
+    // O fim tardio de A (retry ou enviado) é recusado e não mexe na reserva de B.
+    await expect(finish(id, 'pendente', 'tarde', at(7), 1)).rejects.toThrow('lembrete_reservado_por_outro');
+    await expect(finish(id, 'enviado', null, null, 1)).rejects.toThrow('lembrete_reservado_por_outro');
+    const held = await rem(id);
+    expect(held).toMatchObject({ status: 'enviando', attempts: 2 });
+    expect(held.locked_at?.toISOString()).toBe(at(6));
+
+    // C não consegue reservar enquanto B segura.
+    expect(await mine(at(8))).toBeUndefined();
+
+    // B ainda termina normalmente.
+    await finish(id, 'enviado', null, null, 2);
+    expect((await rem(id)).status).toBe('enviado');
   });
 
   it('only changes the targeted reminder (other users untouched)', async () => {
@@ -688,11 +739,6 @@ describe('privileges', () => {
     }
   });
 
-  let calledBy: string;
-  beforeAll(() => {
-    calledBy = 'service_role';
-  });
-
   it('service_role can call the queue functions through its own role', async () => {
     const u = await mkUser();
     const id = await mkReminder(u.id, await mkTask(u.id));
@@ -700,7 +746,6 @@ describe('privileges', () => {
       const r = await q(`select reminder_id from public.claim_due_reminders($1::timestamptz, 1000)`, [NOW_ISO]);
       return r.rows.map((x) => x.reminder_id as string);
     });
-    expect(calledBy).toBe('service_role');
     expect(got).toContain(id);
     await pool.query(`update public.reminders set status = 'cancelado' where id = $1`, [id]);
   });
