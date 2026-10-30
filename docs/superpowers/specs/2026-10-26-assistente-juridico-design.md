@@ -258,6 +258,8 @@ Nenhum item abaixo deve ser tratado como confirmado sem consultar a documenta√ß√
 7. Detalhes atuais da Telegram Bot API.
 8. Custo estimado por volume de mensagens.
 
+Resultados dos itens 1, 2, 3, 4 e 7 (consulta de 2026-10-30): ver `docs/superpowers/notes/2026-verificacoes-infra.md`.
+
 ---
 
 ## 13. Custos (ordem de grandeza, a confirmar)
