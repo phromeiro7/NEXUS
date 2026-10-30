@@ -41,6 +41,7 @@ autenticação. Veja `.env.example` para as variáveis.
 | `GET/PATCH /settings` | Configurações (o `PATCH` reconstrói lembretes quando preciso) |
 | `GET /briefing` | Briefing diário |
 | `POST /assistant/message` | Mensagem ao assistente de IA (painel) |
+| `POST /internal/reminders/run` | Passada do agendador (interna, sem token de usuário; exige `X-Internal-Secret`) |
 
 Erros respondem JSON `{ error: <código>, ... }`:
 
@@ -56,7 +57,29 @@ Erros respondem JSON `{ error: <código>, ... }`:
 | `hora_invalida` | 422 | Hora local inexistente ou ambígua no fuso do usuário (`reason`) |
 | `limite_de_mensagens` | 429 | Mais de 30 chamadas ao assistente na última hora (por usuário); traz `retryAfterSeconds` e o header `Retry-After` |
 | `erro_interno` | 500 | Erro inesperado (detalhes só no log do servidor; nunca o texto do usuário) |
+| `agendador_desabilitado` | 503 | `INTERNAL_SECRET` ausente: a rota interna do agendador fica desabilitada |
 | `assistente_indisponivel` | 503 | O assistente não pôde responder e nada foi gravado; `reason`: `timeout`, `rede`, `limite`, `servico` ou `configuracao` |
+
+### Agendador interno (lembretes, briefing e limpezas)
+
+`POST /internal/reminders/run` não usa o token de usuário: exige o cabeçalho `X-Internal-Secret`,
+comparado em tempo constante com `INTERNAL_SECRET`. O corpo é ignorado e só `POST` é aceito.
+
+- `503` `{ "error": "agendador_desabilitado" }`: `INTERNAL_SECRET` não está configurado (falha fechada;
+  a checagem vem antes de olhar o cabeçalho).
+- `401` `{ "error": "nao_autenticado" }`: cabeçalho ausente ou errado (sem nenhum detalhe).
+- `200`: só contagens, `{ reminders, briefings, eventsRecovered, purged }`. Cada etapa (recuperar eventos
+  presos, lembretes, briefings, três limpezas) é isolada: se uma falha, o erro é registrado só pelo nome e ela
+  conta zero. Sem `TELEGRAM_BOT_TOKEN` a rota ainda recupera, cancela e limpa, mas não envia nada.
+
+Variáveis (só os nomes; valores ficam no ambiente): `INTERNAL_SECRET`, `TELEGRAM_BOT_TOKEN`,
+`TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET`.
+
+Para disparar uma passada localmente (a API precisa estar no ar):
+`INTERNAL_SECRET=... pnpm --filter @aj/api reminders:tick`. `REMINDERS_URL` (padrão
+`http://localhost:3001`) aponta para outra API. O script imprime só o status HTTP e as contagens e sai com
+código diferente de zero se o status não for 200. Em produção, um agendador externo deve chamar a rota a
+cada minuto (detalhes no runbook da Task 10).
 
 ### Assistente de IA
 
