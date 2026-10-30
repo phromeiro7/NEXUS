@@ -59,6 +59,32 @@ describe('makeRunScheduler', () => {
     });
   });
 
+  it('runs the steps strictly sequentially: each one ends before the next starts', async () => {
+    const events: string[] = [];
+    const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 5));
+    const step = <T>(name: string, value: T) => async (..._a: unknown[]): Promise<T> => {
+      events.push(`start:${name}`);
+      await tick();
+      events.push(`end:${name}`);
+      return value;
+    };
+    const run = makeRunScheduler({
+      maintenance: {
+        recoverStuckEvents: step('recover', { recovered: 0, failed: 0 }),
+        purgeExpiredChatMessages: step('purgeChat', 0),
+        purgeExpiredLinkCodes: step('purgeLink', 0),
+        purgeOldModelCalls: step('purgeModel', 0),
+      },
+      runReminders: step('reminders', zeroReminders),
+      sendDailyBriefings: step('briefings', zeroBriefings),
+      clock: { now: () => NOW },
+    });
+    await run();
+    expect(events).toEqual(
+      ['recover', 'reminders', 'briefings', 'purgeChat', 'purgeLink', 'purgeModel'].flatMap((n) => [`start:${n}`, `end:${n}`]),
+    );
+  });
+
   it('passes the clock time to the maintenance steps', async () => {
     const seen: Date[] = [];
     const run = makeRunScheduler({

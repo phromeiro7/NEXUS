@@ -76,9 +76,11 @@ Variáveis (só os nomes; valores ficam no ambiente): `INTERNAL_SECRET`, `TELEGR
 `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET`.
 
 Para disparar uma passada localmente (a API precisa estar no ar):
-`INTERNAL_SECRET=... pnpm --filter @aj/api reminders:tick`. `REMINDERS_URL` (padrão
-`http://localhost:3001`) aponta para outra API. O script imprime só o status HTTP e as contagens e sai com
-código diferente de zero se o status não for 200. Em produção, um agendador externo deve chamar a rota a
+`pnpm --filter @aj/api reminders:tick`. O script lê `INTERNAL_SECRET` do ambiente ou do arquivo
+`apps/api/.env` (ignorado pelo Git), então o segredo não precisa ser digitado no shell. `REMINDERS_URL`
+(padrão `http://localhost:3001`) aponta para outra API; `http:` só é aceito para localhost, e qualquer outro
+destino precisa de `https:`. O script não segue redirecionamentos, imprime só o status HTTP e as contagens
+(em erro, só o código conhecido da API) e sai com código diferente de zero se o status não for 200. Em produção, um agendador externo deve chamar a rota a
 cada minuto (detalhes no runbook da Task 10).
 
 ### Assistente de IA
