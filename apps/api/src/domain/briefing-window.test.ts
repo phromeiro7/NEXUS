@@ -68,6 +68,14 @@ describe('briefingLocalDate', () => {
     expect(briefingLocalDate(at('2026-11-01T06:30:00Z'), 'America/New_York', '01:30')).toBe('2026-11-01');
   });
 
+  it('fuso desconhecido ou briefingTime malformado lançam RangeError (quem chama pula a linha)', () => {
+    const now = at('2026-10-26T11:00:00Z');
+    expect(() => briefingLocalDate(now, 'Nowhere/Land', '08:00')).toThrow(RangeError);
+    for (const bad of ['abc', '', '8:00', '25:00', '08:60', '08:00:99', '08']) {
+      expect(() => briefingLocalDate(now, SP, bad), bad).toThrow(RangeError);
+    }
+  });
+
   it('nunca usa o fuso do servidor: mesmo resultado em qualquer TZ do processo', () => {
     expect(briefingLocalDate(at('2026-10-26T11:00:00Z'), SP, '08:00')).toBe('2026-10-26');
     expect(briefingLocalDate(at('2026-10-26T10:00:00Z'), 'UTC', '10:00')).toBe('2026-10-26');

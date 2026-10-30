@@ -657,6 +657,16 @@ describe('fakes: briefings', () => {
     expect(f.briefings.lastSent('A')).toBe('2026-10-31');
   });
 
+  it('dueFor pula perfil com fuso inválido ou hora malformada e registra o usuário; os outros seguem', async () => {
+    const f = setup();
+    f.links.setChat('bad-tz', 222);
+    f.setProfile('bad-tz', { timezone: 'Nowhere/Land' });
+    f.links.setChat('bad-time', 333);
+    f.setProfile('bad-time', { briefingTime: 'xx:yy' });
+    expect((await f.briefings.dueFor(f.clock.now())).map((r) => r.userId)).toEqual(['A']);
+    expect(f.briefings.skipped()).toEqual(['bad-tz', 'bad-time']);
+  });
+
   it('dueFor deixa de devolver depois do claim', async () => {
     const f = setup();
     await f.briefings.claim('A', d('2026-10-26'));

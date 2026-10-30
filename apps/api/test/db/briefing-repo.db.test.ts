@@ -87,6 +87,43 @@ describe('briefing repository (real DB)', () => {
     expect(rows.map((r) => r.localDate)).toEqual(['2031-03-09']);
   });
 
+  it('dueFor: a profile with an invalid time zone is skipped and logged; the others are still returned', async () => {
+    const bad = await mkUser({ timezone: 'Nowhere/Land' });
+    const good = await mkUser();
+    const logs: Array<{ event: string; fields: Record<string, unknown> }> = [];
+    const repo = createSupabaseBriefingRepository(admin, {
+      logger: { info: () => {}, error: (event, fields) => logs.push({ event, fields }) },
+    });
+    const rows = (await repo.dueFor(AT_0800_SP)).filter((r) => [bad.id, good.id].includes(r.userId));
+    expect(rows.map((r) => r.userId)).toEqual([good.id]);
+    const mine = logs.filter((l) => l.fields.userId === bad.id);
+    expect(mine).toEqual([
+      { event: 'briefing.invalid_profile', fields: { userId: bad.id, errorName: 'RangeError' } },
+    ]);
+  });
+
+  it('dueFor pages the candidates: every due user exactly once, in stable id order (pageSize 2)', async () => {
+    const users = [];
+    for (let i = 0; i < 5; i += 1) users.push(await mkUser());
+    const ids = users.map((u) => u.id);
+    const paged = createSupabaseBriefingRepository(admin, { pageSize: 2 });
+    const got = (await paged.dueFor(AT_0800_SP)).map((r) => r.userId).filter((id) => ids.includes(id));
+    expect(got).toEqual([...ids].sort());
+  });
+
+  it('dueFor pages correctly when the due users are exactly a multiple of the page size', async () => {
+    // Todos os perfis do banco local entram nos candidatos; pageSize = total de candidatos força o limite exato.
+    const u = await mkUser();
+    const total = Number(
+      (await pool.query(`select count(*)::int as n from public.profiles where telegram_chat_id is not null and not channel_paused`))
+        .rows[0].n,
+    );
+    const paged = createSupabaseBriefingRepository(admin, { pageSize: total });
+    const got = (await paged.dueFor(AT_0800_SP)).map((r) => r.userId);
+    expect(got).toContain(u.id);
+    expect(new Set(got).size).toBe(got.length);
+  });
+
   it('claim: true once, false afterwards; dueFor stops returning the user', async () => {
     const u = await mkUser();
     expect(await briefings.claim(u.id, '2031-05-12' as never)).toBe(true);
