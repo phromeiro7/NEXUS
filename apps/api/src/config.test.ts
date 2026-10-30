@@ -71,6 +71,98 @@ describe('loadConfig', () => {
     expect(text).toMatch(/^ANTHROPIC_API_KEY=$/m);
     expect(text).toMatch(/^ASSISTANT_MODEL=$/m);
   });
+  it('starts without any Telegram or internal setting, all undefined and absent from the object', () => {
+    const c = loadConfig(base);
+    expect(c.telegramBotToken).toBeUndefined();
+    expect(c.telegramBotUsername).toBeUndefined();
+    expect(c.telegramWebhookSecret).toBeUndefined();
+    expect(c.internalSecret).toBeUndefined();
+    expect(Object.keys(c).sort()).toEqual(
+      ['assistantModel', 'port', 'serviceRoleKey', 'supabaseUrl', 'webOrigin'].sort(),
+    );
+  });
+  it('treats blank Telegram and internal values as absent', () => {
+    const c = loadConfig({
+      ...base,
+      TELEGRAM_BOT_TOKEN: '  ',
+      TELEGRAM_BOT_USERNAME: '',
+      TELEGRAM_WEBHOOK_SECRET: ' ',
+      INTERNAL_SECRET: '',
+    });
+    expect(c.telegramBotToken).toBeUndefined();
+    expect(c.telegramBotUsername).toBeUndefined();
+    expect(c.telegramWebhookSecret).toBeUndefined();
+    expect(c.internalSecret).toBeUndefined();
+  });
+  it('reads the four values, trimmed', () => {
+    const c = loadConfig({
+      ...base,
+      TELEGRAM_BOT_TOKEN: ' TEST_TOKEN_123 ',
+      TELEGRAM_BOT_USERNAME: ' meu_bot ',
+      TELEGRAM_WEBHOOK_SECRET: ' abc-DEF_123 ',
+      INTERNAL_SECRET: ' interno-teste ',
+    });
+    expect(c.telegramBotToken).toBe('TEST_TOKEN_123');
+    expect(c.telegramBotUsername).toBe('meu_bot');
+    expect(c.telegramWebhookSecret).toBe('abc-DEF_123');
+    expect(c.internalSecret).toBe('interno-teste');
+  });
+  it.each(['com espaço', 'acentuação', 'a/b', 'x'.repeat(257), 'a+b'])(
+    'rejects an invalid TELEGRAM_WEBHOOK_SECRET %j naming only the variable',
+    (v) => {
+      expect.assertions(3);
+      try {
+        loadConfig({ ...base, TELEGRAM_WEBHOOK_SECRET: v });
+      } catch (e) {
+        const message = (e as Error).message;
+        expect(message).toMatch(/TELEGRAM_WEBHOOK_SECRET/);
+        expect(message).not.toContain(v);
+        expect(message).not.toContain('SUPABASE');
+      }
+    },
+  );
+  it('accepts a TELEGRAM_WEBHOOK_SECRET of exactly 256 valid characters', () => {
+    const secret = 'a'.repeat(256);
+    expect(loadConfig({ ...base, TELEGRAM_WEBHOOK_SECRET: secret }).telegramWebhookSecret).toBe(secret);
+  });
+  it.each(['ab', 'com-hifen', '@meu_bot', 'x'.repeat(65), 'bot com espaço'])(
+    'rejects an invalid TELEGRAM_BOT_USERNAME %j naming only the variable',
+    (v) => {
+      expect.assertions(2);
+      try {
+        loadConfig({ ...base, TELEGRAM_BOT_USERNAME: v });
+      } catch (e) {
+        expect((e as Error).message).toMatch(/TELEGRAM_BOT_USERNAME/);
+        expect((e as Error).message).not.toContain(v);
+      }
+    },
+  );
+  it('accepts usernames of 3 and 64 valid characters', () => {
+    expect(loadConfig({ ...base, TELEGRAM_BOT_USERNAME: 'abc' }).telegramBotUsername).toBe('abc');
+    const long = 'A_1'.repeat(21) + 'x';
+    expect(long).toHaveLength(64);
+    expect(loadConfig({ ...base, TELEGRAM_BOT_USERNAME: long }).telegramBotUsername).toBe(long);
+  });
+  it('never echoes the token or the internal secret in any error message', () => {
+    expect.assertions(2);
+    try {
+      loadConfig({
+        ...base,
+        TELEGRAM_BOT_TOKEN: 'TOKEN_SECRETO_9',
+        INTERNAL_SECRET: 'INTERNO_SECRETO_9',
+        TELEGRAM_WEBHOOK_SECRET: 'inválido!',
+      });
+    } catch (e) {
+      expect((e as Error).message).not.toContain('TOKEN_SECRETO_9');
+      expect((e as Error).message).not.toContain('INTERNO_SECRETO_9');
+    }
+  });
+  it('lists the Telegram and internal variable names (no values) in .env.example', () => {
+    const text = readFileSync(new URL('../../../.env.example', import.meta.url), 'utf8');
+    for (const name of ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_BOT_USERNAME', 'TELEGRAM_WEBHOOK_SECRET', 'INTERNAL_SECRET']) {
+      expect(text).toMatch(new RegExp(`^${name}=$`, 'm'));
+    }
+  });
   it('never puts the key in an error message', () => {
     expect.assertions(1);
     try {

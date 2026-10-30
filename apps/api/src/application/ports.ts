@@ -8,10 +8,12 @@ import type {
   ListTasksQuery,
   SettingsDto,
   TaskDto,
+  TaskType,
   UpdateCaseInput,
   UpdateSettingsInput,
 } from '@aj/shared';
-import type { ReminderDraft } from '../domain/reminders.js';
+import type { TelegramErrorClass } from '../domain/reminder-message.js';
+import type { ReminderDraft, ReminderKind } from '../domain/reminders.js';
 
 /*
  * Contrato comum a todas as portas: todo método recebe `userId` primeiro e NUNCA
@@ -182,4 +184,87 @@ export interface AssistantModel {
     tools: ToolDefinition[];
     signal: AbortSignal;
   }): Promise<ModelStep>;
+}
+
+/*
+ * Telegram e lembretes (Plano 5).
+ */
+
+/** Envia texto simples. Nunca lança por falha do Telegram: devolve a classificação do erro. */
+export interface TelegramClient {
+  sendMessage(
+    chatId: number,
+    text: string,
+  ): Promise<{ ok: true; messageId: number } | { ok: false; error: TelegramErrorClass }>;
+}
+
+/** Lembrete reservado (`enviando`) com tudo o que o envio precisa; `attempts` é o token de reserva. */
+export type ClaimedReminder = {
+  reminderId: string;
+  userId: string;
+  taskId: string;
+  kind: ReminderKind;
+  scheduledAt: Date;
+  attempts: number;
+  title: string;
+  taskType: TaskType;
+  dueDate: IsoDate;
+  /** HH:mm */
+  dueTime: string | null;
+  fatal: boolean;
+  chatId: number;
+  timezone: string;
+};
+
+export interface ReminderQueue {
+  /** Reserva até `limit` lembretes vencidos (SKIP LOCKED); o mais antigo primeiro. */
+  claimDue(now: Date, limit: number): Promise<ClaimedReminder[]>;
+  /** Cancela lembretes que nunca devem ser enviados (tarefa apagada/encerrada ou atraso > 24 h). */
+  cancelDead(now: Date): Promise<number>;
+  /** Devolve a `pendente` os lembretes presos em `enviando` há mais de 5 minutos. */
+  recoverStuck(now: Date): Promise<number>;
+  /**
+   * Registra o resultado do envio. `attempts` é o valor devolvido por `claimDue` (cerca de reserva).
+   * Lança `ReminderLeaseError` se a reserva foi perdida; qualquer outro erro do banco propaga.
+   */
+  finish(
+    input: {
+      reminderId: string;
+      attempts: number;
+      status: 'enviado' | 'pendente' | 'falhou' | 'cancelado';
+      error: string | null;
+      nextAttemptAt: Date | null;
+    },
+    now: Date,
+  ): Promise<void>;
+  /** Pausa o canal (`channel_paused`) só desse usuário. */
+  pauseChannel(userId: string): Promise<void>;
+}
+
+export interface LinkCodeRepository {
+  /** Substitui TODOS os códigos anteriores do usuário por este. */
+  create(userId: string, code: string, expiresAt: Date): Promise<void>;
+  consume(
+    code: string,
+    chatId: number,
+    now: Date,
+  ): Promise<{ status: 'ok'; userId: string } | { status: 'invalido' } | { status: 'chat_em_uso' }>;
+  /** Desvincula o Telegram do usuário (`telegram_chat_id` nulo). */
+  unlink(userId: string): Promise<void>;
+  /** Dono do chat, ou `null` se nenhum usuário o tem vinculado. */
+  userForChat(chatId: number): Promise<string | null>;
+}
+
+export interface ConfirmationRepository {
+  /** Idempotente (chave primária). */
+  record(chatId: number, messageId: number, taskIds: string[]): Promise<void>;
+  /** Tarefas da confirmação que são do usuário: vivas e a contagem das apagadas. Nunca vê tarefas de outro usuário. */
+  tasksFor(userId: string, chatId: number, messageId: number): Promise<{ alive: string[]; deletedCount: number }>;
+}
+
+export interface MaintenanceRepository {
+  purgeExpiredChatMessages(now: Date): Promise<number>;
+  purgeExpiredLinkCodes(now: Date): Promise<number>;
+  purgeOldModelCalls(now: Date): Promise<number>;
+  recoverStuckEvents(now: Date): Promise<{ recovered: number; failed: number }>;
 }
