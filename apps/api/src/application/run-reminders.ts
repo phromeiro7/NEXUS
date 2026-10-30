@@ -96,12 +96,24 @@ export function makeRunReminders(deps: RunRemindersDeps) {
       ) => queue.finish({ reminderId: r.reminderId, attempts: r.attempts, status, error, nextAttemptAt }, clock.now());
 
       /** Contrato 2: depois de qualquer desfecho, se a tarefa mudou desde a reserva, refaz os lembretes dela. */
-      const resyncIfChanged = async (): Promise<void> => {
-        const after = await tasks.get(r.userId, r.taskId);
-        if (after !== null && after.status !== 'concluida' && after.status !== 'cancelada' && changedSince(r, after)) {
-          await syncReminders(r.userId, after, await profiles.get(r.userId));
+      const bestEffort = async (work: () => Promise<void>): Promise<void> => {
+        try {
+          await work();
+        } catch (err) {
+          // O desfecho já foi gravado: falha de ressincronização só é registrada (nome do erro), nunca propaga.
+          logger?.error('reminder.resync_failed', {
+            reminderId: r.reminderId,
+            errorName: err instanceof Error ? err.name : 'desconhecido',
+          });
         }
       };
+      const resyncIfChanged = (): Promise<void> =>
+        bestEffort(async () => {
+          const after = await tasks.get(r.userId, r.taskId);
+          if (after !== null && after.status !== 'concluida' && after.status !== 'cancelada' && changedSince(r, after)) {
+            await syncReminders(r.userId, after, await profiles.get(r.userId));
+          }
+        });
 
       if (r.attempts > MAX_ATTEMPTS) {
         await finish('falhou', 'tentativas_esgotadas', null);
@@ -120,13 +132,13 @@ export function makeRunReminders(deps: RunRemindersDeps) {
       if (task.dueDate === null) {
         await finish('cancelado', 'sem_data', null);
         result.cancelled += 1;
-        await syncReminders(r.userId, task, await profiles.get(r.userId));
+        await bestEffort(async () => syncReminders(r.userId, task, await profiles.get(r.userId)));
         return;
       }
       if (changedSince(r, task)) {
         await finish('cancelado', 'remarcada', null);
         result.cancelled += 1;
-        await syncReminders(r.userId, task, await profiles.get(r.userId));
+        await bestEffort(async () => syncReminders(r.userId, task, await profiles.get(r.userId)));
         return;
       }
 
@@ -184,7 +196,6 @@ export function makeRunReminders(deps: RunRemindersDeps) {
       await finish('falhou', error.reason, null);
       result.failed += 1;
       logger?.error('reminder.failed', { reminderId: r.reminderId, attempts: r.attempts, reason: error.reason });
-      await resyncIfChanged();
 
       if (error.reason === 'bot_bloqueado' || error.reason === 'chat_inexistente') {
         if (!pausedUsers.has(r.userId)) {
@@ -210,6 +221,8 @@ export function makeRunReminders(deps: RunRemindersDeps) {
           );
         }
       }
+      // Depois da pausa e da devolução dos irmãos: a ressincronização nunca pode impedi-las.
+      await resyncIfChanged();
     };
 
     if (telegram === undefined) {
