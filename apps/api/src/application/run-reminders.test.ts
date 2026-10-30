@@ -49,12 +49,14 @@ function setup(opts: { telegram?: boolean } = {}) {
   });
   const pauseSpy = vi.spyOn(f.reminderQueue, 'pauseChannel');
   const claimSpy = vi.spyOn(f.reminderQueue, 'claimDue');
-  const make = (over: { queue?: ReminderQueue } = {}) =>
+  const make = (
+    over: { queue?: ReminderQueue; tasks?: typeof f.tasks; profiles?: typeof f.profiles } = {},
+  ) =>
     makeRunReminders({
       queue: over.queue ?? f.reminderQueue,
       ...(opts.telegram === false ? {} : { telegram }),
-      tasks: f.tasks,
-      profiles: f.profiles,
+      tasks: over.tasks ?? f.tasks,
+      profiles: over.profiles ?? f.profiles,
       syncReminders: sync as never,
       clock: f.clock,
       logger,
@@ -461,6 +463,113 @@ describe('runReminders', () => {
       await s.make()();
       expect(row(s, id).status).toBe('pendente');
       expect(s.sync).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('resync é best-effort (round 2)', () => {
+    type Break = 'sync' | 'profiles' | 'tasks';
+    const breaks: Break[] = ['sync', 'profiles', 'tasks'];
+
+    /** Remarca durante o envio e, a partir daí, quebra a etapa pedida da ressincronização. */
+    const arm = async (s: ReturnType<typeof setup>, which: Break, taskId: string) => {
+      let broken = false;
+      s.setOnSend(async () => {
+        await s.f.tasks.update('u1', taskId, { dueTime: '15:30' });
+        broken = true;
+      });
+      s.sync.mockImplementation(async () => {
+        if (which === 'sync') throw new RangeError(`sync ${SECRET_TITLE}`);
+      });
+      const tasks = {
+        ...s.f.tasks,
+        get: async (u: string, id: string) => {
+          if (broken && which === 'tasks' && id === taskId) throw new EvalError(`get ${SECRET_TITLE}`);
+          return s.f.tasks.get(u, id);
+        },
+      };
+      const profiles = {
+        ...s.f.profiles,
+        get: async (u: string) => {
+          if (which === 'profiles') throw new SyntaxError(`profile ${SECRET_TITLE}`);
+          return s.f.profiles.get(u);
+        },
+      };
+      return { tasks, profiles };
+    };
+    const NAMES: Record<Break, string> = { sync: 'RangeError', profiles: 'SyntaxError', tasks: 'EvalError' };
+
+    const expectResyncLogged = (s: ReturnType<typeof setup>, reminderId: string, which: Break) => {
+      expect(s.logs).toContainEqual({
+        level: 'error',
+        event: 'reminder.resync_failed',
+        fields: { reminderId, errorName: NAMES[which] },
+      });
+      expect(JSON.stringify(s.logs)).not.toContain('SEGREDO');
+      expect(s.logs.some((l) => l.event === 'reminder.unexpected_error')).toBe(false);
+    };
+
+    it.each(breaks)('403 + remarcação + %s lança: canal pausado, irmãos devolvidos, falhou contado uma vez', async (which) => {
+      const s = setup();
+      const a1 = await s.addReminder('u1', { scheduledAt: new Date(NOW.getTime() - 3 * MIN) });
+      const b1 = await s.addReminder('u2', { scheduledAt: new Date(NOW.getTime() - 2 * MIN) });
+      const a2 = await s.addReminder('u1', { scheduledAt: new Date(NOW.getTime() - 1 * MIN) });
+      s.f.telegram.failNext({ kind: 'permanent', reason: 'bot_bloqueado' });
+      const over = await arm(s, which, a1.task.id);
+      const res = await s.make(over)();
+      expect(res).toEqual({ sent: 1, retried: 0, failed: 1, cancelled: 0, recovered: 0, paused: 1, leaseLost: 0, deferred: 0 });
+      expect(s.pauseSpy.mock.calls).toEqual([['u1']]);
+      expect(row(s, a1.id).status).toBe('falhou');
+      expect(row(s, a2.id)).toMatchObject({ status: 'pendente', lastError: 'canal_pausado' });
+      expect(row(s, b1.id).status).toBe('enviado');
+      expect(s.f.telegram.sent.map((m) => m.chatId)).toEqual([111, 222]);
+      expectResyncLogged(s, a1.id, which);
+    });
+
+    it.each(breaks)('transitório + remarcação + %s lança: retry registrado e o lote continua', async (which) => {
+      const s = setup();
+      const a = await s.addReminder('u1', { scheduledAt: new Date(NOW.getTime() - 2 * MIN) });
+      const b = await s.addReminder('u2', { scheduledAt: new Date(NOW.getTime() - 1 * MIN) });
+      s.f.telegram.failNext({ kind: 'transient' });
+      const over = await arm(s, which, a.task.id);
+      const res = await s.make(over)();
+      expect(res).toMatchObject({ sent: 1, retried: 1, failed: 0 });
+      expect(row(s, a.id).status).toBe('pendente');
+      expect(row(s, b.id).status).toBe('enviado');
+      expectResyncLogged(s, a.id, which);
+    });
+
+    it.each(breaks)('enviado + remarcação + %s lança: enviado contado e o lote continua', async (which) => {
+      const s = setup();
+      const a = await s.addReminder('u1', { scheduledAt: new Date(NOW.getTime() - 2 * MIN) });
+      const b = await s.addReminder('u2', { scheduledAt: new Date(NOW.getTime() - 1 * MIN) });
+      const over = await arm(s, which, a.task.id);
+      const res = await s.make(over)();
+      expect(res).toMatchObject({ sent: 2, leaseLost: 0 });
+      expect(row(s, a.id).status).toBe('enviado');
+      expect(row(s, b.id).status).toBe('enviado');
+      expectResyncLogged(s, a.id, which);
+    });
+
+    it('remarcada antes do envio e syncReminders lança: cancelado contado, lote continua, log distinto', async () => {
+      const s = setup();
+      const a = await s.addReminder('u1', { scheduledAt: new Date(NOW.getTime() - 2 * MIN) });
+      const b = await s.addReminder('u2', { scheduledAt: new Date(NOW.getTime() - 1 * MIN) });
+      s.sync.mockImplementation(async () => {
+        throw new RangeError(SECRET_TITLE);
+      });
+      const q = s.f.reminderQueue;
+      const queue: ReminderQueue = {
+        ...q,
+        claimDue: async (at, n) => {
+          const c = await q.claimDue(at, n);
+          await s.f.tasks.update('u1', a.task.id, { dueTime: '15:30' });
+          return c;
+        },
+      };
+      const res = await s.make({ queue })();
+      expect(res).toMatchObject({ sent: 1, cancelled: 1 });
+      expect(row(s, a.id)).toMatchObject({ status: 'cancelado', lastError: 'remarcada' });
+      expectResyncLogged(s, a.id, 'sync');
     });
   });
 
