@@ -21,6 +21,8 @@ export type HarnessOpts = {
   now?: Date;
   /** `processMessage` falso para as rotas do assistente (ausente = assistente desabilitado). */
   processMessage?: AppDeps['processMessage'];
+  scheduler?: AppDeps['scheduler'];
+  internalSecret?: AppDeps['internalSecret'];
 };
 
 /** App real sobre casos de uso reais e repositórios fake. Tokens: token-ok -> u1, token-u2 -> u2. */
@@ -57,6 +59,8 @@ export function buildApp(opts: HarnessOpts = {}) {
     briefing: makeGetBriefing({ tasks: fakes.tasks, profiles: fakes.profiles, clock: fakes.clock }),
     webOrigin: WEB_ORIGIN,
     ...(opts.processMessage !== undefined ? { processMessage: opts.processMessage } : {}),
+    ...(opts.scheduler !== undefined ? { scheduler: opts.scheduler } : {}),
+    ...(opts.internalSecret !== undefined ? { internalSecret: opts.internalSecret } : {}),
   });
   return { app, fakes };
 }
