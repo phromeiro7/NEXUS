@@ -1,6 +1,8 @@
 import type { CaseDto, HolidayDto, IsoDate, SettingsDto, TaskDto } from '@aj/shared';
 import { ConflictError, EventStateError, ForeignEventError, ReminderLeaseError } from '../src/application/errors.js';
+import { briefingLocalDate } from '../src/domain/briefing-window.js';
 import type {
+  BriefingRepository,
   CaseRepository,
   ChatChannel,
   ChatRepository,
@@ -364,6 +366,47 @@ export function createFakes(seed: { now?: Date } = {}) {
     codesOf: (userId) => linkRows.filter((r) => r.userId === userId).map((r) => r.code),
   };
 
+  // ---- Briefing diário: mesma semântica de claim_briefing / release_briefing ----
+  const lastBriefing = new Map<string, IsoDate>();
+  const previousDay = (d: IsoDate): IsoDate => {
+    const [y, m, day] = d.split('-').map(Number) as [number, number, number];
+    return new Date(Date.UTC(y, m - 1, day - 1)).toISOString().slice(0, 10) as IsoDate;
+  };
+  const briefings: BriefingRepository & {
+    /** Prepara o estado: `last_briefing_sent_on`. */
+    seedLastSent(userId: string, date: IsoDate | null): void;
+    lastSent(userId: string): IsoDate | null;
+  } = {
+    async dueFor(at) {
+      const out: Array<{ userId: string; chatId: number; timezone: string; localDate: IsoDate }> = [];
+      for (const [userId, chatId] of chatOf) {
+        if (pausedUsers.has(userId)) continue;
+        const p = profileOf(userId);
+        const localDate = briefingLocalDate(at, p.timezone, p.briefingTime);
+        if (localDate === null) continue;
+        const last = lastBriefing.get(userId) ?? null;
+        if (last !== null && last >= localDate) continue;
+        out.push({ userId, chatId, timezone: p.timezone, localDate });
+      }
+      return out;
+    },
+    // Síncrono dentro do método: atômico como o UPDATE condicional do SQL.
+    async claim(userId, localDate) {
+      const last = lastBriefing.get(userId) ?? null;
+      if (last !== null && last >= localDate) return false;
+      lastBriefing.set(userId, localDate);
+      return true;
+    },
+    async release(userId, localDate) {
+      if (lastBriefing.get(userId) === localDate) lastBriefing.set(userId, previousDay(localDate));
+    },
+    seedLastSent(userId, date) {
+      if (date === null) lastBriefing.delete(userId);
+      else lastBriefing.set(userId, date);
+    },
+    lastSent: (userId) => lastBriefing.get(userId) ?? null,
+  };
+
   // ---- Fila de lembretes: mesma semântica das funções SQL (reserva, cerca, recuperação) ----
   type ReminderStatus = 'pendente' | 'enviando' | 'enviado' | 'falhou' | 'cancelado';
   type ReminderRow = {
@@ -583,6 +626,7 @@ export function createFakes(seed: { now?: Date } = {}) {
   return {
     telegram,
     links,
+    briefings,
     reminderQueue,
     confirmations,
     maintenance,
