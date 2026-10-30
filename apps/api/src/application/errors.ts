@@ -78,6 +78,17 @@ export class EventInProgressError extends Error {
   }
 }
 
+/**
+ * A reserva do lembrete foi perdida (inexistente, fora de `enviando` ou reservado por outro
+ * envio). O remetente trata como benigno: registra o código e descarta, sem nova tentativa.
+ */
+export class ReminderLeaseError extends Error {
+  constructor(readonly code: 'lembrete_inexistente' | 'lembrete_reservado_por_outro' | 'lembrete_em_estado_invalido') {
+    super(`Lembrete: ${code}`);
+    this.name = 'ReminderLeaseError';
+  }
+}
+
 /** Todas as tarefas-alvo de uma resposta foram apagadas ou não são do usuário. */
 export class TargetTasksGoneError extends Error {
   constructor() {
