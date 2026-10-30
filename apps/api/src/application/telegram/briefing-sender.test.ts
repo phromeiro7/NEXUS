@@ -105,6 +105,13 @@ describe('recipient computation (dueFor) through the sender', () => {
     expect(s.f.telegram.sent.map((m) => m.chatId)).toEqual([111]);
   });
 
+  it('a profile with an invalid time zone does not stop the others', async () => {
+    const s = setup({ users: [['bad', 999], ['u1', 111]] });
+    s.f.setProfile('bad', { timezone: 'Nowhere/Land' });
+    expect(await s.make()()).toEqual({ ...ZERO, sent: 1 });
+    expect(s.f.telegram.sent.map((m) => m.chatId)).toEqual([111]);
+  });
+
   it('paused and unlinked profiles are never due', async () => {
     const s = setup({ users: [['u1', 111], ['u2', 222]] });
     s.f.links.setChat('u3', null);

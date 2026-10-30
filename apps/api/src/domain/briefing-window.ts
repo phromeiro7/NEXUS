@@ -29,7 +29,10 @@ function previousDay(date: IsoDate): IsoDate {
  * `briefingTime`: `HH:mm` ou `HH:mm:ss`. Horário de verão: a janela é medida em hora de parede.
  */
 export function briefingLocalDate(now: Date, timeZone: string, briefingTime: string): IsoDate | null {
-  const [h, m] = briefingTime.split(':').map(Number) as [number, number];
+  const match = /^([01]\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?$/.exec(briefingTime);
+  if (!match) throw new RangeError('Invalid briefing time');
+  const h = Number(match[1]);
+  const m = Number(match[2]);
   const start = h * 60 + m;
   const end = start + BRIEFING_WINDOW_MINUTES;
   const current = localMinutes(timeZone, now);

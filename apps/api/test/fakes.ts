@@ -368,6 +368,7 @@ export function createFakes(seed: { now?: Date } = {}) {
 
   // ---- Briefing diário: mesma semântica de claim_briefing / release_briefing ----
   const lastBriefing = new Map<string, IsoDate>();
+  const skippedUsers: string[] = [];
   const previousDay = (d: IsoDate): IsoDate => {
     const [y, m, day] = d.split('-').map(Number) as [number, number, number];
     return new Date(Date.UTC(y, m - 1, day - 1)).toISOString().slice(0, 10) as IsoDate;
@@ -376,13 +377,22 @@ export function createFakes(seed: { now?: Date } = {}) {
     /** Prepara o estado: `last_briefing_sent_on`. */
     seedLastSent(userId: string, date: IsoDate | null): void;
     lastSent(userId: string): IsoDate | null;
+    /** Usuários pulados por perfil inválido (fuso/hora), em ordem. */
+    skipped(): string[];
   } = {
+    skipped: () => [...skippedUsers],
     async dueFor(at) {
       const out: Array<{ userId: string; chatId: number; timezone: string; localDate: IsoDate }> = [];
       for (const [userId, chatId] of chatOf) {
         if (pausedUsers.has(userId)) continue;
         const p = profileOf(userId);
-        const localDate = briefingLocalDate(at, p.timezone, p.briefingTime);
+        let localDate: IsoDate | null;
+        try {
+          localDate = briefingLocalDate(at, p.timezone, p.briefingTime);
+        } catch {
+          skippedUsers.push(userId);
+          continue;
+        }
         if (localDate === null) continue;
         const last = lastBriefing.get(userId) ?? null;
         if (last !== null && last >= localDate) continue;
