@@ -241,6 +241,22 @@ export interface ReminderQueue {
   pauseChannel(userId: string): Promise<void>;
 }
 
+export type BriefingRecipient = { userId: string; chatId: number; timezone: string; localDate: IsoDate };
+
+export interface BriefingRepository {
+  /**
+   * Usuários vinculados e NÃO pausados cuja hora LOCAL (fuso do perfil) está em
+   * [briefingTime, briefingTime + 4 h] e cujo último briefing é anterior a `localDate`
+   * (Ruling 19). `localDate` é a data local do `briefingTime` (se a janela cruza a
+   * meia-noite, a do dia anterior). Fora da janela nada é devolvido.
+   */
+  dueFor(now: Date): Promise<BriefingRecipient[]>;
+  /** Atômico (`claim_briefing`): `true` só para quem tomou o dia. */
+  claim(userId: string, localDate: IsoDate): Promise<boolean>;
+  /** Desfaz o claim (`release_briefing`) só se o dia guardado é exatamente `localDate`. */
+  release(userId: string, localDate: IsoDate): Promise<void>;
+}
+
 export interface LinkCodeRepository {
   /** Substitui TODOS os códigos anteriores do usuário por este. */
   create(userId: string, code: string, expiresAt: Date): Promise<void>;

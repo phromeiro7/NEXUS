@@ -600,6 +600,70 @@ describe('fakes: maintenance', () => {
   });
 });
 
+describe('fakes: briefings', () => {
+  const setup = () => {
+    const f = createFakes({ now: new Date('2026-10-26T11:00:00Z') }); // 08:00 em São Paulo
+    f.links.setChat('A', 111);
+    return f;
+  };
+
+  it('dueFor: vinculado, não pausado, na janela e sem envio no dia', async () => {
+    const f = setup();
+    expect(await f.briefings.dueFor(f.clock.now())).toEqual([
+      { userId: 'A', chatId: 111, timezone: 'America/Sao_Paulo', localDate: '2026-10-26' },
+    ]);
+  });
+
+  it('dueFor ignora desvinculado e pausado', async () => {
+    const f = setup();
+    f.links.setChat('B', null);
+    f.links.setChat('C', 333);
+    await f.reminderQueue.pauseChannel('C');
+    expect((await f.briefings.dueFor(f.clock.now())).map((r) => r.userId)).toEqual(['A']);
+  });
+
+  it('claim é atômico: só o primeiro leva o dia; dia anterior ou igual não toma de novo', async () => {
+    const f = setup();
+    expect(await f.briefings.claim('A', d('2026-10-26'))).toBe(true);
+    expect(await f.briefings.claim('A', d('2026-10-26'))).toBe(false);
+    expect(await f.briefings.claim('A', d('2026-10-25'))).toBe(false);
+    expect(f.briefings.lastSent('A')).toBe('2026-10-26');
+    expect(await f.briefings.claim('A', d('2026-10-27'))).toBe(true);
+  });
+
+  it('claims simultâneos: exatamente um true', async () => {
+    const f = setup();
+    const r = await Promise.all([
+      f.briefings.claim('A', d('2026-10-26')),
+      f.briefings.claim('A', d('2026-10-26')),
+    ]);
+    expect(r.filter(Boolean)).toHaveLength(1);
+  });
+
+  it('release volta para localDate - 1 só se o dia guardado é exatamente localDate', async () => {
+    const f = setup();
+    await f.briefings.claim('A', d('2026-10-26'));
+    await f.briefings.release('A', d('2026-10-25')); // outro dia: nada
+    expect(f.briefings.lastSent('A')).toBe('2026-10-26');
+    await f.briefings.release('A', d('2026-10-26'));
+    expect(f.briefings.lastSent('A')).toBe('2026-10-25');
+    expect(await f.briefings.claim('A', d('2026-10-26'))).toBe(true);
+  });
+
+  it('release atravessa o início do mês', async () => {
+    const f = setup();
+    await f.briefings.claim('A', d('2026-11-01'));
+    await f.briefings.release('A', d('2026-11-01'));
+    expect(f.briefings.lastSent('A')).toBe('2026-10-31');
+  });
+
+  it('dueFor deixa de devolver depois do claim', async () => {
+    const f = setup();
+    await f.briefings.claim('A', d('2026-10-26'));
+    expect(await f.briefings.dueFor(f.clock.now())).toEqual([]);
+  });
+});
+
 describe('fakes: clock', () => {
   it('starts at 2026-10-26T12:00:00Z and can be changed', () => {
     const f = createFakes();
