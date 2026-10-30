@@ -38,14 +38,21 @@ export type RunRemindersResult = {
   recovered: number;
   paused: number;
   leaseLost: number;
+  /** Devolvidos a pendente sem envio por falta de tempo na execução. */
+  deferred: number;
 };
+
+const DEFAULT_BUDGET_MS = 25_000;
 
 export function makeRunReminders(deps: RunRemindersDeps) {
   const { queue, telegram, tasks, profiles, syncReminders, clock, logger } = deps;
 
-  return async (opts: { maxBatches?: number; batchSize?: number } = {}): Promise<RunRemindersResult> => {
+  return async (
+    opts: { maxBatches?: number; batchSize?: number; budgetMs?: number } = {},
+  ): Promise<RunRemindersResult> => {
     const maxBatches = opts.maxBatches ?? 5;
     const batchSize = opts.batchSize ?? 20;
+    const budgetMs = opts.budgetMs ?? DEFAULT_BUDGET_MS;
     const startedAt = clock.now().getTime();
     const result: RunRemindersResult = {
       sent: 0,
@@ -55,6 +62,7 @@ export function makeRunReminders(deps: RunRemindersDeps) {
       recovered: 0,
       paused: 0,
       leaseLost: 0,
+      deferred: 0,
     };
 
     result.recovered = await queue.recoverStuck(clock.now());
@@ -87,10 +95,19 @@ export function makeRunReminders(deps: RunRemindersDeps) {
         nextAttemptAt: Date | null,
       ) => queue.finish({ reminderId: r.reminderId, attempts: r.attempts, status, error, nextAttemptAt }, clock.now());
 
+      /** Contrato 2: depois de qualquer desfecho, se a tarefa mudou desde a reserva, refaz os lembretes dela. */
+      const resyncIfChanged = async (): Promise<void> => {
+        const after = await tasks.get(r.userId, r.taskId);
+        if (after !== null && after.status !== 'concluida' && after.status !== 'cancelada' && changedSince(r, after)) {
+          await syncReminders(r.userId, after, await profiles.get(r.userId));
+        }
+      };
+
       if (r.attempts > MAX_ATTEMPTS) {
         await finish('falhou', 'tentativas_esgotadas', null);
         result.failed += 1;
         logger?.error('reminder.failed', { reminderId: r.reminderId, attempts: r.attempts, reason: 'tentativas_esgotadas' });
+        await resyncIfChanged();
         return;
       }
 
@@ -98,6 +115,12 @@ export function makeRunReminders(deps: RunRemindersDeps) {
       if (task === null || task.status === 'concluida' || task.status === 'cancelada') {
         await finish('cancelado', 'tarefa_encerrada', null);
         result.cancelled += 1;
+        return;
+      }
+      if (task.dueDate === null) {
+        await finish('cancelado', 'sem_data', null);
+        result.cancelled += 1;
+        await syncReminders(r.userId, task, await profiles.get(r.userId));
         return;
       }
       if (changedSince(r, task)) {
@@ -120,18 +143,23 @@ export function makeRunReminders(deps: RunRemindersDeps) {
       const sendResult = await telegram!.sendMessage(r.chatId, text);
 
       if (sendResult.ok) {
-        await finish('enviado', null, null);
+        try {
+          await finish('enviado', null, null);
+        } catch (err) {
+          // A mensagem saiu mas o registro falhou: a recuperação pode reenviar (pelo menos uma vez).
+          logger?.error('reminder.sent_unrecorded', {
+            reminderId: r.reminderId,
+            error: err instanceof ReminderLeaseError ? err.code : err instanceof Error ? err.name : 'desconhecido',
+          });
+          throw err;
+        }
         result.sent += 1;
         logger?.info('reminder.sent', {
           reminderId: r.reminderId,
           attempts: r.attempts,
           durationMs: clock.now().getTime() - sendStartedAt,
         });
-        // Contrato 2: se a tarefa mudou desde a reserva, refaz os lembretes dela.
-        const after = await tasks.get(r.userId, r.taskId);
-        if (after !== null && after.status !== 'concluida' && after.status !== 'cancelada' && changedSince(r, after)) {
-          await syncReminders(r.userId, after, await profiles.get(r.userId));
-        }
+        await resyncIfChanged();
         return;
       }
 
@@ -142,18 +170,21 @@ export function makeRunReminders(deps: RunRemindersDeps) {
           await finish('falhou', 'tentativas_esgotadas', null);
           result.failed += 1;
           logger?.error('reminder.failed', { reminderId: r.reminderId, attempts: r.attempts, reason: 'tentativas_esgotadas' });
+          await resyncIfChanged();
           return;
         }
         const waitMs = Math.max(delay, Math.min(error.retryAfterMs ?? 0, MAX_RETRY_AFTER_MS));
         await finish('pendente', 'transitorio', new Date(clock.now().getTime() + waitMs));
         result.retried += 1;
         logger?.info('reminder.retry', { reminderId: r.reminderId, attempts: r.attempts, waitMs });
+        await resyncIfChanged();
         return;
       }
 
       await finish('falhou', error.reason, null);
       result.failed += 1;
       logger?.error('reminder.failed', { reminderId: r.reminderId, attempts: r.attempts, reason: error.reason });
+      await resyncIfChanged();
 
       if (error.reason === 'bot_bloqueado' || error.reason === 'chat_inexistente') {
         if (!pausedUsers.has(r.userId)) {
@@ -186,13 +217,35 @@ export function makeRunReminders(deps: RunRemindersDeps) {
       return result;
     }
 
-    for (let batch = 0; batch < maxBatches; batch += 1) {
+    const overBudget = () => clock.now().getTime() - startedAt > budgetMs;
+    let outOfTime = false;
+
+    for (let batch = 0; batch < maxBatches && !outOfTime; batch += 1) {
+      if (overBudget()) break;
       const claimed = await queue.claimDue(clock.now(), batchSize);
       if (claimed.length === 0) break;
       const handled = new Set<string>();
       for (let i = 0; i < claimed.length; i += 1) {
         const r = claimed[i]!;
         if (handled.has(r.reminderId)) continue;
+        if (outOfTime || overBudget()) {
+          outOfTime = true;
+          result.deferred += 1;
+          logger?.info('reminder.deferred', { reminderId: r.reminderId, reason: 'orcamento_de_tempo' });
+          await guarded(r.reminderId, () =>
+            queue.finish(
+              {
+                reminderId: r.reminderId,
+                attempts: r.attempts,
+                status: 'pendente',
+                error: 'orcamento_de_tempo',
+                nextAttemptAt: clock.now(),
+              },
+              clock.now(),
+            ),
+          );
+          continue;
+        }
         await guarded(r.reminderId, () => processOne(r, claimed.slice(i + 1), handled));
       }
     }

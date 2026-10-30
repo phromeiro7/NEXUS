@@ -106,7 +106,7 @@ describe('runReminders', () => {
     const s = setup();
     const { id } = await s.addReminder('u1');
     const res = await s.make()();
-    expect(res).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, recovered: 0, paused: 0, leaseLost: 0 });
+    expect(res).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, recovered: 0, paused: 0, leaseLost: 0, deferred: 0 });
     expect(s.f.telegram.sent).toEqual([
       {
         chatId: 111,
@@ -229,7 +229,7 @@ describe('runReminders', () => {
     const a2 = await s.addReminder('u1', { scheduledAt: new Date(NOW.getTime() - 1 * MIN) });
     s.f.telegram.failNext({ kind: 'permanent', reason: 'bot_bloqueado' });
     const res = await s.make()();
-    expect(res).toEqual({ sent: 1, retried: 0, failed: 1, cancelled: 0, recovered: 0, paused: 1, leaseLost: 0 });
+    expect(res).toEqual({ sent: 1, retried: 0, failed: 1, cancelled: 0, recovered: 0, paused: 1, leaseLost: 0, deferred: 0 });
     expect(s.pauseSpy.mock.calls).toEqual([['u1']]);
     expect(s.f.telegram.sent.map((m) => m.chatId)).toEqual([111, 222]);
     expect(row(s, a1.id)).toMatchObject({ status: 'falhou', lastError: 'bot_bloqueado' });
@@ -254,7 +254,7 @@ describe('runReminders', () => {
     const a2 = await s.addReminder('u1', { scheduledAt: new Date(NOW.getTime() - 1 * MIN) });
     s.f.telegram.failNext({ kind: 'permanent', reason: 'outro' });
     const res = await s.make()();
-    expect(res).toEqual({ sent: 1, retried: 0, failed: 1, cancelled: 0, recovered: 0, paused: 0, leaseLost: 0 });
+    expect(res).toEqual({ sent: 1, retried: 0, failed: 1, cancelled: 0, recovered: 0, paused: 0, leaseLost: 0, deferred: 0 });
     expect(s.pauseSpy).not.toHaveBeenCalled();
     expect(row(s, a1.id)).toMatchObject({ status: 'falhou', lastError: 'outro' });
     expect(row(s, a2.id).status).toBe('enviado');
@@ -347,7 +347,7 @@ describe('runReminders', () => {
         },
       };
       const res = await s.make({ queue })();
-      expect(res).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, recovered: 0, paused: 0, leaseLost: 1 });
+      expect(res).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, recovered: 0, paused: 0, leaseLost: 1, deferred: 0 });
       expect(row(s, b.id).status).toBe('enviado');
       expect(s.logs).toContainEqual(expect.objectContaining({ event: 'reminder.lease_lost', fields: { reminderId: a.id, code } }));
     });
@@ -388,6 +388,168 @@ describe('runReminders', () => {
     });
   });
 
+  describe('re-sincroniza depois de QUALQUER desfecho (I1)', () => {
+    const outcomes: Array<{
+      name: string;
+      attempts: number;
+      script: TelegramErrorClass | null;
+      status: string;
+      sends: number;
+      rescheduleBeforeSend?: boolean;
+    }> = [
+      { name: 'enviado', attempts: 0, script: null, status: 'enviado', sends: 1 },
+      { name: 'transitório (retry)', attempts: 0, script: { kind: 'transient' }, status: 'pendente', sends: 1 },
+      { name: 'transitório esgotado', attempts: 4, script: { kind: 'transient' }, status: 'falhou', sends: 1 },
+      { name: 'permanente outro', attempts: 0, script: { kind: 'permanent', reason: 'outro' }, status: 'falhou', sends: 1 },
+      {
+        name: 'permanente bot_bloqueado',
+        attempts: 0,
+        script: { kind: 'permanent', reason: 'bot_bloqueado' },
+        status: 'falhou',
+        sends: 1,
+      },
+      { name: 'attempts > 5', attempts: 5, script: null, status: 'falhou', sends: 0, rescheduleBeforeSend: true },
+    ];
+
+    it.each(outcomes)('$name + remarcação: finish antes de syncReminders', async (o) => {
+      const s = setup();
+      const { id, task } = await s.addReminder('u1', { attempts: o.attempts });
+      if (o.script !== null) s.f.telegram.failNext(o.script);
+      const reschedule = () => s.f.tasks.update('u1', task.id, { dueTime: '15:30' });
+      let queue: ReminderQueue = s.f.reminderQueue;
+      if (o.rescheduleBeforeSend === true) {
+        const q = s.f.reminderQueue;
+        queue = {
+          ...q,
+          claimDue: async (at, n) => {
+            const c = await q.claimDue(at, n);
+            await reschedule();
+            return c;
+          },
+        };
+      } else {
+        s.setOnSend(async () => {
+          await reschedule();
+        });
+      }
+      await s.make({ queue })();
+      expect(row(s, id).status).toBe(o.status);
+      expect(s.f.telegram.sent).toHaveLength(o.sends);
+      expect(s.sync).toHaveBeenCalledTimes(1);
+      expect(s.sync.mock.calls[0]![1]).toMatchObject({ id: task.id, dueTime: '15:30' });
+      const events = s.events.filter((e) => e !== 'send');
+      expect(events[0]).toBe(`finish:${o.status}`);
+      expect(events[1]).toBe('sync');
+    });
+
+    it.each(outcomes)('$name sem mudança: syncReminders NÃO chamado', async (o) => {
+      const s = setup();
+      const { id } = await s.addReminder('u1', { attempts: o.attempts });
+      if (o.script !== null) s.f.telegram.failNext(o.script);
+      await s.make()();
+      expect(row(s, id).status).toBe(o.status);
+      expect(s.sync).not.toHaveBeenCalled();
+    });
+
+    it('transitório + tarefa concluída durante o envio: nada a refazer', async () => {
+      const s = setup();
+      const { id, task } = await s.addReminder('u1');
+      s.f.telegram.failNext({ kind: 'transient' });
+      s.setOnSend(async () => {
+        await s.f.tasks.update('u1', task.id, { status: 'concluida' });
+      });
+      await s.make()();
+      expect(row(s, id).status).toBe('pendente');
+      expect(s.sync).not.toHaveBeenCalled();
+    });
+  });
+
+  it('data removida depois da reserva: cancelado (sem_data), sem envio, syncReminders chamado', async () => {
+    const s = setup();
+    const { id, task } = await s.addReminder('u1');
+    const q = s.f.reminderQueue;
+    const queue: ReminderQueue = {
+      ...q,
+      claimDue: async (at, n) => {
+        const c = await q.claimDue(at, n);
+        await s.f.tasks.update('u1', task.id, { dueDate: null, dueTime: null });
+        return c;
+      },
+    };
+    const res = await s.make({ queue })();
+    expect(res).toMatchObject({ sent: 0, cancelled: 1, failed: 0 });
+    expect(s.f.telegram.sent).toHaveLength(0);
+    expect(row(s, id)).toMatchObject({ status: 'cancelado', lastError: 'sem_data' });
+    expect(s.events).toEqual(['finish:cancelado', 'sync']);
+    expect(s.sync.mock.calls[0]![1]).toMatchObject({ id: task.id, dueDate: null });
+  });
+
+  it('orçamento de tempo: excedido, o resto do lote volta a pendente sem envio e nenhum lote novo é reservado', async () => {
+    const s = setup();
+    const ids: string[] = [];
+    for (let i = 0; i < 4; i += 1) {
+      const u = ['u1', 'u2', 'u3', 'u1'][i]!;
+      ids.push((await s.addReminder(u, { scheduledAt: new Date(NOW.getTime() - (10 - i) * MIN) })).id);
+    }
+    s.setOnSend(() => {
+      s.f.setNow(new Date(s.f.clock.now().getTime() + 6_000));
+    });
+    const res = await s.make()({ budgetMs: 10_000, batchSize: 3 });
+    expect(res).toEqual({
+      sent: 2,
+      retried: 0,
+      failed: 0,
+      cancelled: 0,
+      recovered: 0,
+      paused: 0,
+      leaseLost: 0,
+      deferred: 1,
+    });
+    expect(s.f.telegram.sent).toHaveLength(2);
+    expect(row(s, ids[2]!)).toMatchObject({ status: 'pendente', lastError: 'orcamento_de_tempo' });
+    expect(row(s, ids[2]!).nextAttemptAt).toEqual(new Date(NOW.getTime() + 12_000));
+    expect(row(s, ids[3]!).status).toBe('pendente');
+    expect(row(s, ids[3]!).attempts).toBe(0);
+    expect(s.claimSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('orçamento padrão de 25 s: execução rápida não adia nada', async () => {
+    const s = setup();
+    await s.addReminder('u1');
+    const res = await s.make()();
+    expect(res).toMatchObject({ sent: 1, deferred: 0 });
+  });
+
+  it('finish(enviado) falha depois do envio: evento reminder.sent_unrecorded com o código/nome, sem texto', async () => {
+    const s = setup();
+    const a = await s.addReminder('u1', { scheduledAt: new Date(NOW.getTime() - 2 * MIN) });
+    const b = await s.addReminder('u2', { scheduledAt: new Date(NOW.getTime() - 1 * MIN) });
+    const q = s.f.reminderQueue;
+    const queue: ReminderQueue = {
+      ...q,
+      finish: async (input, at) => {
+        if (input.status === 'enviado' && input.reminderId === a.id) {
+          throw new ReminderLeaseError('lembrete_reservado_por_outro');
+        }
+        if (input.status === 'enviado' && input.reminderId === b.id) throw new TypeError(SECRET_TITLE);
+        return q.finish(input, at);
+      },
+    };
+    const res = await s.make({ queue })();
+    expect(res).toMatchObject({ sent: 0, leaseLost: 1 });
+    expect(s.logs).toContainEqual({
+      level: 'error',
+      event: 'reminder.sent_unrecorded',
+      fields: { reminderId: a.id, error: 'lembrete_reservado_por_outro' },
+    });
+    expect(s.logs).toContainEqual({
+      level: 'error',
+      event: 'reminder.sent_unrecorded',
+      fields: { reminderId: b.id, error: 'TypeError' },
+    });
+    expect(JSON.stringify(s.logs)).not.toContain('SEGREDO');
+  });
+
   it('sem Telegram: recoverStuck e cancelDead rodam, claimDue NUNCA', async () => {
     const s = setup({ telegram: false });
     const stuck = s.f.reminderQueue.seed({
@@ -401,7 +563,7 @@ describe('runReminders', () => {
     const dead = await s.addReminder('u1', { scheduledAt: new Date(NOW.getTime() - 2 * DAY) });
     const fresh = await s.addReminder('u1');
     const res = await s.make()();
-    expect(res).toEqual({ sent: 0, retried: 0, failed: 0, cancelled: 1, recovered: 1, paused: 0, leaseLost: 0 });
+    expect(res).toEqual({ sent: 0, retried: 0, failed: 0, cancelled: 1, recovered: 1, paused: 0, leaseLost: 0, deferred: 0 });
     expect(s.claimSpy).not.toHaveBeenCalled();
     expect(row(s, stuck).status).toBe('pendente');
     expect(row(s, dead.id).status).toBe('cancelado');
@@ -420,7 +582,7 @@ describe('runReminders', () => {
     });
     await s.addReminder('u1', { scheduledAt: new Date(NOW.getTime() - 2 * DAY) });
     const res = await s.make()();
-    expect(res).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 1, recovered: 1, paused: 0, leaseLost: 0 });
+    expect(res).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 1, recovered: 1, paused: 0, leaseLost: 0, deferred: 0 });
   });
 
   it('envio estritamente sequencial: nunca duas sendMessage sobrepostas', async () => {
