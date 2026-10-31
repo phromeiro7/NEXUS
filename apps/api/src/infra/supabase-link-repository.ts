@@ -1,5 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { LinkCodeCollisionError } from '../application/errors.js';
 import type { LinkCodeRepository } from '../application/ports.js';
+
+const UNIQUE_VIOLATION = '23505';
 
 type ConsumeRow = { status: 'ok' | 'invalido' | 'chat_em_uso'; user_id: string | null };
 
@@ -12,6 +15,8 @@ export function createSupabaseLinkRepository(client: SupabaseClient): LinkCodeRe
       const { error } = await client
         .from('link_codes')
         .insert({ code, user_id: userId, expires_at: expiresAt.toISOString() });
+      // A chave primária é o próprio código: duas pessoas sorteando o mesmo valor colidem aqui.
+      if (error?.code === UNIQUE_VIOLATION) throw new LinkCodeCollisionError();
       if (error) throw new Error(`Falha ao gravar código de vínculo: ${error.message}`);
     },
 

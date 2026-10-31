@@ -241,6 +241,7 @@ describe('profile repository', () => {
       earlyReminderMinutes: 15,
       briefingTime: '08:00',
       telegramLinked: false,
+      channelPaused: false,
     });
     const updated = await profiles.update(A, {
       timezone: 'America/Manaus',
@@ -256,6 +257,7 @@ describe('profile repository', () => {
       earlyReminderMinutes: 30,
       briefingTime: '07:30',
       telegramLinked: false,
+      channelPaused: false,
     });
     expect(await profiles.get(A)).toEqual(updated);
     expect((await profiles.get(B)).timezone).toBe('America/Sao_Paulo');

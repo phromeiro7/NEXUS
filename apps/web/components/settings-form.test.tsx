@@ -15,6 +15,7 @@ const SETTINGS: SettingsDto = {
   earlyReminderMinutes: 60,
   briefingTime: "08:00",
   telegramLinked: false,
+  channelPaused: false,
 };
 
 function result(over: Partial<UpdateSettingsResultDto> = {}): UpdateSettingsResultDto {

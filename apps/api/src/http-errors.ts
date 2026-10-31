@@ -8,6 +8,7 @@ import {
   NotFoundError,
   RateLimitedError,
   TargetTasksGoneError,
+  TelegramNotConfiguredError,
 } from './application/errors.js';
 import { HoraInvalidaError } from './domain/reminders.js';
 import { InvalidTransitionError } from './domain/task-status.js';
@@ -56,5 +57,6 @@ export function errorResponse(err: unknown): ErrorResponse {
   if (err instanceof AssistantUnavailableError) {
     return { status: 503, body: { error: 'assistente_indisponivel', reason: err.reason } };
   }
+  if (err instanceof TelegramNotConfiguredError) return { status: 503, body: { error: 'telegram_nao_configurado' } };
   return { status: 500, body: { error: 'erro_interno' } };
 }

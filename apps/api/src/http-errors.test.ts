@@ -6,14 +6,29 @@ import {
   EventStateError,
   ForeignEventError,
   InvalidInputError,
+  LinkCodeCollisionError,
   MessageTooLongError,
   NotFoundError,
   RateLimitedError,
   TargetTasksGoneError,
+  TelegramNotConfiguredError,
 } from './application/errors.js';
 import { InvalidTransitionError } from './domain/task-status.js';
 import { HoraInvalidaError } from './domain/reminders.js';
 import { errorResponse, ValidationError } from './http-errors.js';
+
+describe('errorResponse (telegram)', () => {
+  it('TelegramNotConfiguredError -> 503 telegram_nao_configurado', () => {
+    expect(errorResponse(new TelegramNotConfiguredError())).toEqual({
+      status: 503,
+      body: { error: 'telegram_nao_configurado' },
+    });
+  });
+
+  it('LinkCodeCollisionError stays a generic 500', () => {
+    expect(errorResponse(new LinkCodeCollisionError())).toEqual({ status: 500, body: { error: 'erro_interno' } });
+  });
+});
 
 describe('errorResponse', () => {
   it('ValidationError -> 400 entrada_invalida with issues', () => {

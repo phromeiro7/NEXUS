@@ -25,4 +25,6 @@ export type SettingsDto = {
   earlyReminderMinutes: number;
   briefingTime: string;
   telegramLinked: boolean;
+  /** Canal pausado (bot bloqueado ou chat inexistente): lembretes e briefing deixam de sair até um novo vínculo. */
+  channelPaused: boolean;
 };

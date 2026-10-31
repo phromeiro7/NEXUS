@@ -1,5 +1,11 @@
 import type { CaseDto, HolidayDto, IsoDate, SettingsDto, TaskDto } from '@aj/shared';
-import { ConflictError, EventStateError, ForeignEventError, ReminderLeaseError } from '../src/application/errors.js';
+import {
+  ConflictError,
+  EventStateError,
+  ForeignEventError,
+  LinkCodeCollisionError,
+  ReminderLeaseError,
+} from '../src/application/errors.js';
 import { briefingLocalDate } from '../src/domain/briefing-window.js';
 import type {
   BriefingRepository,
@@ -36,6 +42,7 @@ const DEFAULT_PROFILE: SettingsDto = {
   earlyReminderMinutes: 15,
   briefingTime: '08:00',
   telegramLinked: false,
+  channelPaused: false,
 };
 
 function defined<T extends object>(patch: T): Partial<T> {
@@ -178,12 +185,12 @@ export function createFakes(seed: { now?: Date } = {}) {
 
   const profiles: ProfileRepository = {
     async get(userId) {
-      return { ...profileOf(userId) };
+      return { ...profileOf(userId), channelPaused: pausedUsers.has(userId) };
     },
     async update(userId, patch) {
       const next = { ...profileOf(userId), ...defined(patch) };
       profileRows.set(userId, next);
-      return { ...next };
+      return { ...next, channelPaused: pausedUsers.has(userId) };
     },
   };
 
@@ -335,7 +342,7 @@ export function createFakes(seed: { now?: Date } = {}) {
   } = {
     async create(userId, code, expiresAt) {
       for (let i = linkRows.length - 1; i >= 0; i--) if (linkRows[i]!.userId === userId) linkRows.splice(i, 1);
-      if (linkRows.some((r) => r.code === code)) throw new Error('codigo ja existe');
+      if (linkRows.some((r) => r.code === code)) throw new LinkCodeCollisionError();
       linkRows.push({ code, userId, expiresAt });
     },
     async consume(code, chatId, at) {
@@ -653,6 +660,10 @@ export function createFakes(seed: { now?: Date } = {}) {
     },
     setProfile(userId: string, patch: Partial<SettingsDto>) {
       profileRows.set(userId, { ...profileOf(userId), ...patch });
+      if (patch.channelPaused !== undefined) {
+        if (patch.channelPaused) pausedUsers.add(userId);
+        else pausedUsers.delete(userId);
+      }
     },
   };
 }

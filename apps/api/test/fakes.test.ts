@@ -133,7 +133,7 @@ describe('fakes: profiles', () => {
     const f = createFakes();
     expect(await f.profiles.get('A')).toEqual({
       timezone: 'America/Sao_Paulo', uf: null, city: null,
-      earlyReminderMinutes: 15, briefingTime: '08:00', telegramLinked: false,
+      earlyReminderMinutes: 15, briefingTime: '08:00', telegramLinked: false, channelPaused: false,
     });
     await f.profiles.update('A', { uf: 'SP', earlyReminderMinutes: 30 });
     expect(await f.profiles.get('A')).toMatchObject({ uf: 'SP', earlyReminderMinutes: 30 });

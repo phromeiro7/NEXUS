@@ -11,6 +11,7 @@ describe('response DTOs', () => {
         earlyReminderMinutes: 15,
         briefingTime: '08:00',
         telegramLinked: false,
+        channelPaused: false,
       },
       remindersRebuilt: 1,
       remindersSkipped: 1,

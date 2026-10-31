@@ -11,7 +11,7 @@ const MAX_TITLE_CHARS = 200;
 const LATE_THRESHOLD_MS = 5 * 60_000;
 
 /** Texto simples: espaços colapsados, no máximo 200 pontos de código, nunca vazio. */
-function sanitizeTitle(raw: string): string {
+export function sanitizeTitle(raw: string): string {
   const collapsed = raw.replace(/\s+/g, ' ').trim();
   if (collapsed === '') return 'Sem título';
   const chars = Array.from(collapsed);
