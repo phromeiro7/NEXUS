@@ -3,7 +3,11 @@ import type { TaskDto } from '@aj/shared';
 import { createApp } from './app.js';
 import { makeProcessMessage } from './application/assistant/process-message.js';
 import { makeToolExecutor } from './application/assistant/tools.js';
-import { NotFoundError } from './application/errors.js';
+import { AssistantUnavailableError, NotFoundError } from './application/errors.js';
+import { makeLinkUseCases } from './application/telegram/link.js';
+import { makeHandleTelegramUpdate } from './application/telegram/webhook.js';
+import { createSupabaseConfirmationRepository } from './infra/supabase-confirmation-repository.js';
+import { createSupabaseLinkRepository } from './infra/supabase-link-repository.js';
 import type { AssistantModel } from './application/ports.js';
 import { createAnthropicAssistantModel } from './infra/anthropic-assistant-model.js';
 import { createJsonLogger } from './infra/json-logger.js';
@@ -54,6 +58,7 @@ export function buildApp(
   const calculateDeadline = makeCalculateDeadline({ holidays });
   const taskUseCases = makeTaskUseCases({ tasks, cases, profiles, reminders, calculateDeadline, clock });
 
+  const events = createSupabaseInboundEventRepository(client);
   const model: AssistantModel | undefined =
     overrides?.assistantModel ??
     (config.anthropicApiKey !== undefined
@@ -66,7 +71,7 @@ export function buildApp(
           model,
           executor: makeToolExecutor({ tasks: taskUseCases, calculateDeadline, profiles, clock }),
           chat: createSupabaseChatRepository(client),
-          events: createSupabaseInboundEventRepository(client),
+          events,
           profiles,
           clock,
           tasksByIds: async (userId, ids) => {
@@ -118,7 +123,32 @@ export function buildApp(
     logger,
   });
 
+  // Vínculo e webhook do Telegram. O webhook só existe com cliente do Telegram E segredo configurados;
+  // sem eles a rota responde 503 'webhook_desabilitado' e o resto da API funciona.
+  const links = createSupabaseLinkRepository(client);
+  const telegramLink = makeLinkUseCases({ links, botUsername: config.telegramBotUsername, clock });
+  const handleTelegramUpdate =
+    telegram !== undefined && config.telegramWebhookSecret !== undefined
+      ? makeHandleTelegramUpdate({
+          links,
+          events,
+          confirmations: createSupabaseConfirmationRepository(client),
+          // Sem modelo (sem chave): o usuário recebe o aviso de indisponibilidade e nada é gravado.
+          processMessage:
+            processMessage ??
+            (async () => {
+              throw new AssistantUnavailableError('configuracao');
+            }),
+          telegram,
+          clock,
+          logger,
+        })
+      : undefined;
+
   return createApp({
+    telegramLink,
+    ...(handleTelegramUpdate !== undefined ? { handleTelegramUpdate } : {}),
+    ...(config.telegramWebhookSecret !== undefined ? { telegramWebhookSecret: config.telegramWebhookSecret } : {}),
     scheduler,
     ...(config.internalSecret !== undefined ? { internalSecret: config.internalSecret } : {}),
     verifyToken: createSupabaseAuthVerifier(client),

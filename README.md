@@ -41,6 +41,9 @@ autenticação. Veja `.env.example` para as variáveis.
 | `GET/PATCH /settings` | Configurações (o `PATCH` reconstrói lembretes quando preciso) |
 | `GET /briefing` | Briefing diário |
 | `POST /assistant/message` | Mensagem ao assistente de IA (painel) |
+| `POST /telegram/link-codes` | Gera o código de vínculo do Telegram (`{ code, deepLink, expiresAt }`) |
+| `DELETE /telegram/link` | Desvincula o Telegram da conta (`204`) |
+| `POST /telegram/webhook` | Webhook do bot (sem token de usuário; exige `X-Telegram-Bot-Api-Secret-Token`) |
 | `POST /internal/reminders/run` | Passada do agendador (interna, sem token de usuário; exige `X-Internal-Secret`) |
 
 Erros respondem JSON `{ error: <código>, ... }`:
@@ -58,6 +61,8 @@ Erros respondem JSON `{ error: <código>, ... }`:
 | `limite_de_mensagens` | 429 | Mais de 30 chamadas ao assistente na última hora (por usuário); traz `retryAfterSeconds` e o header `Retry-After` |
 | `erro_interno` | 500 | Erro inesperado (detalhes só no log do servidor; nunca o texto do usuário) |
 | `agendador_desabilitado` | 503 | `INTERNAL_SECRET` ausente: a rota interna do agendador fica desabilitada |
+| `telegram_nao_configurado` | 503 | `TELEGRAM_BOT_USERNAME` ausente: não há link de vínculo |
+| `webhook_desabilitado` | 503 | `TELEGRAM_WEBHOOK_SECRET` (ou o bot) ausente: o webhook fica desabilitado |
 | `assistente_indisponivel` | 503 | O assistente não pôde responder e nada foi gravado; `reason`: `timeout`, `rede`, `limite`, `servico` ou `configuracao` |
 
 ### Agendador interno (lembretes, briefing e limpezas)
@@ -82,6 +87,33 @@ Para disparar uma passada localmente (a API precisa estar no ar):
 destino precisa de `https:`. O script não segue redirecionamentos, imprime só o status HTTP e as contagens
 (em erro, só o código conhecido da API) e sai com código diferente de zero se o status não for 200. Em produção, um agendador externo deve chamar a rota a
 cada minuto (detalhes no runbook da Task 10).
+
+### Telegram (vínculo e webhook)
+
+- `POST /telegram/link-codes` (autenticado) gera um código de 8 caracteres (alfabeto sem ambíguos,
+  `crypto` com amostragem por rejeição), de uso único, válido por 10 minutos; um código novo invalida os
+  anteriores do usuário. Resposta: `{ code, deepLink: "https://t.me/<bot>?start=<code>", expiresAt }`.
+  Sem `TELEGRAM_BOT_USERNAME` responde `503` `telegram_nao_configurado`.
+- `DELETE /telegram/link` (autenticado) desvincula o chat (`204`); a fila de lembretes é mantida, mas nada é
+  reservado enquanto não houver chat.
+- `POST /telegram/webhook` não usa token de usuário: exige o cabeçalho `X-Telegram-Bot-Api-Secret-Token`
+  igual a `TELEGRAM_WEBHOOK_SECRET` (o mesmo valor do `secret_token` do `setWebhook`), comparado em tempo
+  constante. Sem o segredo (ou sem o bot) configurado: `503` `webhook_desabilitado`, antes de olhar o
+  cabeçalho; cabeçalho ausente ou errado: `401` `nao_autenticado`. Depois disso a resposta é sempre `200`
+  (corpo inválido, chat que não é privado, mensagem editada e erros internos são ignorados ou registrados só
+  pelo nome do erro). O processamento termina antes do `200` e a idempotência é por `update_id`.
+
+Comandos do bot (só em chat privado): `/start CÓDIGO` vincula o chat à conta que gerou o código;
+`/desvincular` remove o vínculo. Mensagens de texto vão ao assistente (resposta em texto simples; responder a
+uma confirmação do bot edita aquela tarefa); outros tipos de mensagem recebem "Por enquanto só entendo
+texto.". Falhas de `/start` são limitadas a 5 em 10 minutos por chat (em memória, por instância).
+
+Nota de segurança: um código de vínculo é um token ao portador. Quem o enviar ao bot liga o próprio Telegram
+à conta que o gerou, e quem o enviar a uma vítima (login CSRF) a induz a ligar o chat dela à conta do
+atacante. Por isso a resposta "Conta vinculada!" lembra que, se o usuário não gerou o código no painel, deve
+enviar `/desvincular`. Um chat só pode estar ligado a uma conta (`Este Telegram já está ligado a outra conta.`).
+
+Variáveis (só os nomes): `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET`.
 
 ### Assistente de IA
 

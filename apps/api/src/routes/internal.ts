@@ -1,13 +1,6 @@
-import { createHash, timingSafeEqual } from 'node:crypto';
 import { Hono } from 'hono';
 import type { SchedulerResult } from '../application/scheduler.js';
-
-/** Compara em tempo constante: os dois lados viram SHA-256 (32 bytes), então o tamanho nunca vaza nem lança. */
-function secretsMatch(given: string, expected: string): boolean {
-  const a = createHash('sha256').update(given, 'utf8').digest();
-  const b = createHash('sha256').update(expected, 'utf8').digest();
-  return timingSafeEqual(a, b);
-}
+import { secretsMatch } from './secret.js';
 
 /**
  * Rotas internas (agendador). SEM autenticação de usuário: exigem `X-Internal-Secret`.

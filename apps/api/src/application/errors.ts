@@ -89,6 +89,22 @@ export class ReminderLeaseError extends Error {
   }
 }
 
+/** O código de vínculo gerado já existe (violação de unicidade em `link_codes`): gere outro. */
+export class LinkCodeCollisionError extends Error {
+  constructor() {
+    super('Código de vínculo já existe');
+    this.name = 'LinkCodeCollisionError';
+  }
+}
+
+/** Sem `TELEGRAM_BOT_USERNAME` não há link de vínculo (→ 503). */
+export class TelegramNotConfiguredError extends Error {
+  constructor() {
+    super('Telegram não configurado');
+    this.name = 'TelegramNotConfiguredError';
+  }
+}
+
 /** Todas as tarefas-alvo de uma resposta foram apagadas ou não são do usuário. */
 export class TargetTasksGoneError extends Error {
   constructor() {
