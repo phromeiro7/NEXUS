@@ -237,9 +237,20 @@ describe("SettingsForm", () => {
     expect(api.updateSettings).toHaveBeenCalledWith({ city: "Campinas" });
   });
 
-  it("seção Telegram mostra o estado e o aviso, sem botão", () => {
+  it("seção Telegram vinculada mostra o estado e Desvincular, sem o aviso antigo", () => {
     setup({ ...SETTINGS, telegramLinked: true });
     expect(screen.getByText("Telegram vinculado")).toBeInTheDocument();
-    expect(screen.getByText("Vínculo disponível em breve")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Desvincular" })).toBeInTheDocument();
+    expect(screen.queryByText("Vínculo disponível em breve")).toBeNull();
+  });
+
+  it("seção Telegram não vinculada oferece Gerar código", () => {
+    setup();
+    expect(screen.getByRole("button", { name: "Gerar código" })).toBeInTheDocument();
+  });
+
+  it("channelPaused mostra o alerta de pausa na seção Telegram", () => {
+    setup({ ...SETTINGS, channelPaused: true });
+    expect(screen.getByRole("alert")).toHaveTextContent("O envio pelo Telegram está pausado");
   });
 });
