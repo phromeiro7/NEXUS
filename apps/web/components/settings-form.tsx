@@ -10,6 +10,7 @@ import { useUpdateSettings } from "@/hooks/queries";
 import { ApiError } from "@/lib/api";
 import { messageFor } from "@/lib/messages";
 import { FieldError, inputClass } from "./field";
+import { TelegramLink } from "./telegram-link";
 
 const DEFAULT_TIMEZONE = "America/Sao_Paulo";
 
@@ -331,8 +332,7 @@ export function SettingsForm({ settings }: { settings: SettingsDto }) {
         <h2 id={id("telegram")} className="text-lg font-semibold">
           Telegram
         </h2>
-        <p className="text-sm">{settings.telegramLinked ? "Telegram vinculado" : "Telegram não vinculado"}</p>
-        <p className="text-sm text-[var(--color-texto-suave)]">Vínculo disponível em breve</p>
+        <TelegramLink linked={settings.telegramLinked} paused={settings.channelPaused} />
       </section>
     </div>
   );

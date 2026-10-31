@@ -11,6 +11,7 @@ const BY_CODE: Record<string, string> = {
   feriado_ja_cadastrado: 'Este feriado já está cadastrado.',
   corpo_muito_grande: 'Os dados enviados são grandes demais.',
   rede: 'Sem conexão com o servidor.',
+  telegram_nao_configurado: 'O Telegram ainda não está configurado neste servidor.',
   em_processamento: 'Sua mensagem anterior ainda está sendo processada. Aguarde um instante e tente de novo.',
   conflito_de_evento: 'Não foi possível processar esta mensagem. Tente reenviar.',
 };
