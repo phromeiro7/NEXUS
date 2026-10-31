@@ -56,7 +56,7 @@ const toolStep = (name: string, input: unknown): ModelStep => ({
 });
 const endStep = (text: string): ModelStep => ({ stopReason: 'end_turn', blocks: [{ type: 'text', text }], usage });
 
-type User = { id: string; token: string };
+type User = { id: string; token: string; email: string };
 const password = `pw-${randomUUID()}`;
 const authUserIds: string[] = [];
 
@@ -68,7 +68,7 @@ async function makeUser(label: string): Promise<User> {
   const anon = createClient(env.url, env.anonKey, opts);
   const { data: s, error: e2 } = await anon.auth.signInWithPassword({ email, password });
   if (e2 || !s.session) throw new Error(`signIn: ${e2?.message}`);
-  return { id: data.user.id, token: s.session.access_token };
+  return { id: data.user.id, token: s.session.access_token, email };
 }
 
 // biome-ignore lint/suspicious/noExplicitAny: JSON bodies are inspected loosely in tests
@@ -183,9 +183,12 @@ describe('Telegram link flow and webhook (real repositories, scripted model, fak
     chatA = newChat();
     const res = await hook(update(chatA, { text: `/start ${code}` }));
     expect(res.status).toBe(200);
+    // A confirmação diz QUAL conta foi ligada, com o e-mail real mascarado (nunca o e-mail inteiro).
     expect(sentTo(chatA)).toEqual([
-      'Conta vinculada! Você receberá lembretes e o briefing do dia aqui. Se não foi você quem gerou o código no painel, envie /desvincular.',
+      `Conta vinculada: ${a.email[0]}***@example.test. Você receberá lembretes e o briefing do dia aqui. Se você não reconhece esta conta, envie /desvincular agora.`,
     ]);
+    expect(JSON.stringify(telegram.sent)).not.toContain(a.email);
+    expect(JSON.stringify(telegram.sent)).not.toContain(a.email.split('@')[0]!);
     expect(Number((await profileOf(a.id)).telegram_chat_id)).toBe(chatA);
     expect(await codeRows(a.id)).toEqual([]);
     expect((await call(a, 'GET', '/settings')).json).toMatchObject({ telegramLinked: true, channelPaused: false });
@@ -278,9 +281,14 @@ describe('Telegram link flow and webhook (real repositories, scripted model, fak
     const c = await makeUser('c');
     const code = (await call(c, 'POST', '/telegram/link-codes')).json.code as string;
     const chat = newChat();
-    await hook(update(chat, { text: `/start ${code}` }));
+    // O sufixo de OUTRO bot não é comando: nada é vinculado e o código segue válido.
+    await hook(update(chat, { text: `/start@outro_bot ${code}` }));
+    expect((await profileOf(c.id)).telegram_chat_id).toBeNull();
+    expect((await codeRows(c.id)).map((r) => r.code)).toEqual([code]);
+    // O nosso, em qualquer caixa, e o comando em maiúsculas, funcionam.
+    await hook(update(chat, { text: `/START@MEU_BOT ${code}` }));
     expect(Number((await profileOf(c.id)).telegram_chat_id)).toBe(chat);
-    await hook(update(chat, { text: '/desvincular' }));
+    await hook(update(chat, { text: '/Desvincular' }));
     expect(sentTo(chat).at(-1)).toBe('Telegram desvinculado. Você não receberá mais lembretes por aqui.');
     expect((await profileOf(c.id)).telegram_chat_id).toBeNull();
   });

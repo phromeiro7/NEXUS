@@ -1,12 +1,28 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { LinkCodeCollisionError } from '../application/errors.js';
 import type { LinkCodeRepository } from '../application/ports.js';
+import { maskEmail } from '../application/telegram/mask-email.js';
 
 const UNIQUE_VIOLATION = '23505';
 
 type ConsumeRow = { status: 'ok' | 'invalido' | 'chat_em_uso'; user_id: string | null };
 
 export function createSupabaseLinkRepository(client: SupabaseClient): LinkCodeRepository {
+  /**
+   * E-mail mascarado da conta, só para a confirmação do vínculo. Qualquer falha (ou ausência de e-mail)
+   * vira `null`: o vínculo já foi feito e o aviso cai no texto sem identificação. Nada é registrado
+   * (nem o e-mail, nem o erro).
+   */
+  async function accountHintFor(userId: string): Promise<string | null> {
+    try {
+      const { data, error } = await client.auth.admin.getUserById(userId);
+      if (error || !data.user?.email) return null;
+      return maskEmail(data.user.email);
+    } catch {
+      return null;
+    }
+  }
+
   return {
     async create(userId, code, expiresAt) {
       // Os códigos antigos saem primeiro: um usuário nunca tem mais de um código válido.
@@ -29,7 +45,9 @@ export function createSupabaseLinkRepository(client: SupabaseClient): LinkCodeRe
       if (error) throw new Error(`Falha ao consumir código de vínculo: ${error.message}`);
       const row = (data as ConsumeRow[] | null)?.[0];
       if (!row) throw new Error('Falha ao consumir código de vínculo: resposta vazia');
-      if (row.status === 'ok' && row.user_id !== null) return { status: 'ok', userId: row.user_id };
+      if (row.status === 'ok' && row.user_id !== null) {
+        return { status: 'ok', userId: row.user_id, accountHint: await accountHintFor(row.user_id) };
+      }
       if (row.status === 'chat_em_uso') return { status: 'chat_em_uso' };
       if (row.status === 'invalido') return { status: 'invalido' };
       throw new Error('Falha ao consumir código de vínculo: resposta inesperada');

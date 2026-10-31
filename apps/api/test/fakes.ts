@@ -30,6 +30,7 @@ import type {
   TaskPatch,
   TaskRepository,
 } from '../src/application/ports.js';
+import { maskEmail } from '../src/application/telegram/mask-email.js';
 import type { TelegramErrorClass } from '../src/domain/reminder-message.js';
 import type { ReminderDraft, ReminderKind } from '../src/domain/reminders.js';
 
@@ -333,7 +334,12 @@ export function createFakes(seed: { now?: Date } = {}) {
     for (const [u, c] of chatOf) if (c === chatId && u !== except) return u;
     return null;
   };
+  /** Dica da conta: padrão determinístico `<1ª letra do id>***@fake.test`; `setHint` a troca (ou `null`). */
+  const hints = new Map<string, string | null>();
+  const hintOf = (userId: string): string | null =>
+    hints.has(userId) ? hints.get(userId)! : maskEmail(`${userId}@fake.test`);
   const links: LinkCodeRepository & {
+    setHint(userId: string, hint: string | null): void;
     /** Prepara o estado: vincula o chat sem passar por código. */
     setChat(userId: string, chatId: number | null): void;
     chatFor(userId: string): number | null;
@@ -354,7 +360,7 @@ export function createFakes(seed: { now?: Date } = {}) {
       profileRows.set(userId, { ...profileOf(userId), telegramLinked: true });
       pausedUsers.delete(userId);
       linkRows.splice(i, 1);
-      return { status: 'ok', userId };
+      return { status: 'ok', userId, accountHint: hintOf(userId) };
     },
     async unlink(userId) {
       chatOf.delete(userId);
@@ -367,6 +373,9 @@ export function createFakes(seed: { now?: Date } = {}) {
       if (chatId === null) chatOf.delete(userId);
       else chatOf.set(userId, chatId);
       profileRows.set(userId, { ...profileOf(userId), telegramLinked: chatId !== null });
+    },
+    setHint(userId, hint) {
+      hints.set(userId, hint);
     },
     chatFor: (userId) => chatOf.get(userId) ?? null,
     isPaused: (userId) => pausedUsers.has(userId),

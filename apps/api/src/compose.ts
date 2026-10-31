@@ -142,6 +142,7 @@ export function buildApp(
           telegram,
           clock,
           logger,
+          ...(config.telegramBotUsername !== undefined ? { botUsername: config.telegramBotUsername } : {}),
         })
       : undefined;
 

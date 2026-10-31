@@ -34,7 +34,7 @@ const updateSchema = z.object({
 
 const TEXT = {
   startHelp: 'Para vincular, gere um código no painel (Configurações) e envie /start CÓDIGO.',
-  linked:
+  linkedNoHint:
     'Conta vinculada! Você receberá lembretes e o briefing do dia aqui. Se não foi você quem gerou o código no painel, envie /desvincular.',
   invalidCode: 'Código inválido ou vencido. Gere outro no painel.',
   chatInUse: 'Este Telegram já está ligado a outra conta.',
@@ -49,8 +49,32 @@ const TEXT = {
   inProgress: 'Sua mensagem anterior ainda está sendo processada. Aguarde um instante.',
 } as const;
 
-const CODE_FORMAT = /^[A-Z0-9]{8}$/;
-const COMMAND = /^\/(start|desvincular)(?:@[A-Za-z0-9_]+)?(?:\s+([\s\S]*))?$/;
+/**
+ * Confirmação do vínculo. Com a dica (e-mail mascarado), diz QUAL conta foi ligada: quem tocou num link
+ * de outra pessoa (login CSRF) reconhece que a conta não é a sua. A dica nunca é registrada em log.
+ */
+function linkedText(accountHint: string | null): string {
+  if (accountHint === null) return TEXT.linkedNoHint;
+  return `Conta vinculada: ${accountHint}. Você receberá lembretes e o briefing do dia aqui. Se você não reconhece esta conta, envie /desvincular agora.`;
+}
+
+const CODE_FORMAT =/^[A-Z0-9]{8}$/;
+/** `/comando`, `/comando@bot` e `/comando argumentos`; o comando não distingue maiúsculas. */
+const COMMAND = /^\/(start|desvincular)(?:@([A-Za-z0-9_]+))?(?:\s+([\s\S]*))?$/i;
+
+/**
+ * Comando para o NOSSO bot: sem sufixo, ou com `@<nome>` igual ao nome configurado (sem distinguir
+ * maiúsculas). Sufixo de outro bot (ou nome não configurado) não é comando: vira texto comum.
+ */
+function parseCommand(text: string, botUsername: string | undefined): { name: 'start' | 'desvincular'; args: string } | null {
+  const m = COMMAND.exec(text.trim());
+  if (m === null) return null;
+  const suffix = m[2];
+  if (suffix !== undefined && (botUsername === undefined || suffix.toLowerCase() !== botUsername.toLowerCase())) {
+    return null;
+  }
+  return { name: m[1]!.toLowerCase() as 'start' | 'desvincular', args: m[3] ?? '' };
+}
 
 const errorName = (e: unknown) => (e instanceof Error ? e.name : 'desconhecido');
 
@@ -63,6 +87,8 @@ export type HandleTelegramUpdateDeps = {
   clock: Clock;
   logger: AssistantLogger;
   failedStartLimiter?: FailedStartLimiter;
+  /** Nome do NOSSO bot (sem @). `/comando@outro_bot` só é comando se o sufixo for este nome. */
+  botUsername?: string;
 };
 
 /*
@@ -135,7 +161,7 @@ export function makeHandleTelegramUpdate(deps: HandleTelegramUpdateDeps) {
 
     const userId = await links.userForChat(chatId);
     const text = message.text;
-    const command = text === undefined ? null : COMMAND.exec(text.trim());
+    const command = text === undefined ? null : parseCommand(text, deps.botUsername);
 
     /** Idempotência dos ramos sem modelo (Ruling 21): `false` = já tratado, nada a fazer. */
     const firstTime = async (): Promise<boolean> =>
@@ -147,7 +173,7 @@ export function makeHandleTelegramUpdate(deps: HandleTelegramUpdateDeps) {
       return;
     }
 
-    if (command?.[1] === 'desvincular') {
+    if (command?.name === 'desvincular') {
       if (!(await firstTime())) return;
       if (userId === null) return void (await say(chatId, TEXT.unlinked));
       await links.unlink(userId);
@@ -155,9 +181,9 @@ export function makeHandleTelegramUpdate(deps: HandleTelegramUpdateDeps) {
       return;
     }
 
-    if (command?.[1] === 'start') {
+    if (command?.name === 'start') {
       if (!(await firstTime())) return;
-      const raw = (command[2] ?? '').trim();
+      const raw = command.args.trim();
       if (raw === '') return void (await say(chatId, TEXT.startHelp));
       if (!limiter.allow(chatId, now)) return void (await say(chatId, TEXT.tooMany));
       const code = raw.toUpperCase();
@@ -166,7 +192,7 @@ export function makeHandleTelegramUpdate(deps: HandleTelegramUpdateDeps) {
         return void (await say(chatId, TEXT.invalidCode));
       }
       const outcome = await links.consume(code, chatId, now);
-      if (outcome.status === 'ok') return void (await say(chatId, TEXT.linked));
+      if (outcome.status === 'ok') return void (await say(chatId, linkedText(outcome.accountHint)));
       limiter.recordFailure(chatId, now);
       await say(chatId, outcome.status === 'chat_em_uso' ? TEXT.chatInUse : TEXT.invalidCode);
       return;
