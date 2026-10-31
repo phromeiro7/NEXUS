@@ -312,7 +312,13 @@ describe('LinkCodeRepository', () => {
     const c = code();
     const chat = newChatId();
     await links.create(a.id, c, at(10));
-    expect(await links.consume(c, chat, NOW)).toEqual({ status: 'ok', userId: a.id });
+    expect(await links.consume(c, chat, NOW)).toEqual({
+      status: 'ok',
+      userId: a.id,
+      // Usuário inserido direto em auth.users (sem o resto das colunas do GoTrue): a consulta pela API
+      // administrativa falha e a dica degrada para null, sem erro. A dica real é coberta em telegram.db.test.ts.
+      accountHint: null,
+    });
     expect(await profile(a.id)).toEqual({ telegram_chat_id: String(chat), channel_paused: false });
     expect(await codesOf(a.id)).toEqual([]);
     expect(await links.consume(c, chat, NOW)).toEqual({ status: 'invalido' });

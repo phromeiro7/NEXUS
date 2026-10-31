@@ -110,8 +110,11 @@ texto.". Falhas de `/start` são limitadas a 5 em 10 minutos por chat (em memór
 
 Nota de segurança: um código de vínculo é um token ao portador. Quem o enviar ao bot liga o próprio Telegram
 à conta que o gerou, e quem o enviar a uma vítima (login CSRF) a induz a ligar o chat dela à conta do
-atacante. Por isso a resposta "Conta vinculada!" lembra que, se o usuário não gerou o código no painel, deve
-enviar `/desvincular`. Um chat só pode estar ligado a uma conta (`Este Telegram já está ligado a outra conta.`).
+atacante. Por isso a confirmação diz QUAL conta foi ligada, com o e-mail mascarado (`Conta vinculada: p***@dominio. ...
+Se você não reconhece esta conta, envie /desvincular agora.`; sem e-mail disponível, o texto genérico
+"Conta vinculada!" manda enviar `/desvincular` se o código não foi gerado pelo usuário). O e-mail inteiro nunca
+aparece em respostas nem em logs. `/comando@outro_bot` só é comando se o sufixo for o nome do nosso bot
+(`TELEGRAM_BOT_USERNAME`, sem distinguir maiúsculas); os comandos também não distinguem maiúsculas. Um chat só pode estar ligado a uma conta (`Este Telegram já está ligado a outra conta.`).
 
 Variáveis (só os nomes): `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET`.
 

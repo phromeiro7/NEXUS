@@ -85,6 +85,7 @@ function setup(opts: { script?: Array<ModelStep | Error>; limiter?: boolean } = 
     telegram: fakes.telegram,
     clock: fakes.clock,
     logger,
+    botUsername: 'meu_bot',
     ...(opts.limiter === false ? {} : { failedStartLimiter: limiter }),
   });
   fakes.links.setChat(U1, CHAT1);
@@ -113,7 +114,10 @@ function setup(opts: { script?: Array<ModelStep | Error>; limiter?: boolean } = 
 
 const INVALID = 'Código inválido ou vencido. Gere outro no painel.';
 const UNLINKED = 'Esta conta ainda não está vinculada. Gere um código no painel (Configurações) e envie /start CÓDIGO.';
-const LINKED =
+// A dica determinística do fake para U2 ('user-2'): primeira letra + *** + domínio.
+const HINT_U2 = 'u***@fake.test';
+const LINKED = `Conta vinculada: ${HINT_U2}. Você receberá lembretes e o briefing do dia aqui. Se você não reconhece esta conta, envie /desvincular agora.`;
+const LINKED_NO_HINT =
   'Conta vinculada! Você receberá lembretes e o briefing do dia aqui. Se não foi você quem gerou o código no painel, envie /desvincular.';
 
 describe('filtering', () => {
@@ -305,6 +309,102 @@ describe('/start CODE', () => {
     const c = await s.code(U2);
     await s.handle(s.msg(CHAT2, { text: `/start ${c}` }));
     expect(s.sentTo(CHAT2)).toEqual([LINKED]);
+  });
+});
+
+describe('account identification in the link confirmation', () => {
+  it('names the masked account, with the exact text', async () => {
+    const s = setup();
+    const c = await s.code(U2);
+    await s.handle(s.msg(CHAT2, { text: `/start ${c}` }));
+    expect(s.sentTo(CHAT2)).toEqual([
+      'Conta vinculada: u***@fake.test. Você receberá lembretes e o briefing do dia aqui. Se você não reconhece esta conta, envie /desvincular agora.',
+    ]);
+  });
+
+  it('falls back to the generic text when the repository has no hint', async () => {
+    const s = setup();
+    s.fakes.links.setHint(U2, null);
+    const c = await s.code(U2);
+    await s.handle(s.msg(CHAT2, { text: `/start ${c}` }));
+    expect(s.sentTo(CHAT2)).toEqual([LINKED_NO_HINT]);
+    expect(s.fakes.links.chatFor(U2)).toBe(CHAT2);
+  });
+
+  it('never puts the raw e-mail or the hint in any log or console output', async () => {
+    const s = setup();
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const c = await s.code(U2);
+    await s.handle(s.msg(CHAT2, { text: `/start ${c}` }));
+    const out = JSON.stringify([s.logs, logSpy.mock.calls, errSpy.mock.calls]);
+    expect(out).not.toContain('user-2@fake.test');
+    expect(out).not.toContain(HINT_U2);
+    expect(JSON.stringify(s.fakes.telegram.sent)).not.toContain('user-2@fake.test');
+    logSpy.mockRestore();
+    errSpy.mockRestore();
+  });
+});
+
+describe('command suffix and case', () => {
+  it('commands are case-insensitive', async () => {
+    const s = setup();
+    const c = await s.code(U2);
+    await s.handle(s.msg(CHAT2, { text: `/START ${c}` }));
+    expect(s.sentTo(CHAT2)).toEqual([LINKED]);
+    await s.handle(s.msg(CHAT1, { text: '/Desvincular' }));
+    expect(s.sentTo(CHAT1)).toEqual(['Telegram desvinculado. Você não receberá mais lembretes por aqui.']);
+  });
+
+  it('our own bot suffix works in any case', async () => {
+    const s = setup();
+    const c = await s.code(U2);
+    await s.handle(s.msg(CHAT2, { text: `/start@MEU_Bot ${c}` }));
+    expect(s.sentTo(CHAT2)).toEqual([LINKED]);
+    await s.handle(s.msg(CHAT1, { text: '/desvincular@Meu_Bot' }));
+    expect(s.fakes.links.chatFor(U1)).toBeNull();
+  });
+
+  it('another bot suffix is not a command: an unlinked chat gets the guidance and no lookup', async () => {
+    const s = setup();
+    const consume = vi.spyOn(s.fakes.links, 'consume');
+    const c = await s.code(U2);
+    await s.handle(s.msg(CHAT2, { text: `/start@outro_bot ${c}` }));
+    expect(s.sentTo(CHAT2)).toEqual([UNLINKED]);
+    expect(consume).not.toHaveBeenCalled();
+    expect(s.fakes.links.chatFor(U2)).toBeNull();
+  });
+
+  it('another bot suffix from a linked chat is ordinary text for the model and never unlinks', async () => {
+    const s = setup({ script: [endTurn('ok')] });
+    await s.handle(s.msg(CHAT1, { text: '/desvincular@outro_bot' }));
+    expect(s.processMessage).toHaveBeenCalledTimes(1);
+    expect(s.processMessage.mock.calls[0]![0].text).toBe('/desvincular@outro_bot');
+    expect(s.fakes.links.chatFor(U1)).toBe(CHAT1);
+  });
+
+  it('without a configured bot username any suffix is ordinary text', async () => {
+    const fakes = createFakes({ now: NOW });
+    fakes.links.setChat(U1, CHAT1);
+    const processMessage = vi.fn(async () => ({ reply: 'ok', affectedTasks: [] }));
+    const handle = makeHandleTelegramUpdate({
+      links: fakes.links,
+      events: fakes.inboundEvents,
+      confirmations: fakes.confirmations,
+      processMessage,
+      telegram: fakes.telegram,
+      clock: fakes.clock,
+      logger: { info: () => {}, error: () => {} },
+    });
+    await handle({ update_id: 1, message: { message_id: 1, chat: { id: CHAT1, type: 'private' }, text: '/desvincular@meu_bot' } });
+    expect(processMessage).toHaveBeenCalledTimes(1);
+    expect(fakes.links.chatFor(U1)).toBe(CHAT1);
+  });
+
+  it('a command-like word is not a command (/starting, /desvincularx)', async () => {
+    const s = setup({ script: [endTurn('ok'), endTurn('ok')] });
+    await s.handle(s.msg(CHAT1, { text: '/desvincularx' }));
+    expect(s.fakes.links.chatFor(U1)).toBe(CHAT1);
   });
 });
 

@@ -315,7 +315,7 @@ describe('fakes: link codes', () => {
     const f = createFakes();
     await f.reminderQueue.pauseChannel('A');
     await f.links.create('A', 'C1', later(10));
-    expect(await f.links.consume('C1', 555, T)).toEqual({ status: 'ok', userId: 'A' });
+    expect(await f.links.consume('C1', 555, T)).toEqual({ status: 'ok', userId: 'A', accountHint: '*@fake.test' });
     expect(f.links.chatFor('A')).toBe(555);
     expect(f.links.isPaused('A')).toBe(false);
     expect((await f.profiles.get('A')).telegramLinked).toBe(true);
@@ -340,7 +340,7 @@ describe('fakes: link codes', () => {
     expect(f.links.chatFor('B')).toBeNull();
     // the owner relinking the same chat is fine
     await f.links.create('A', 'CA', later(10));
-    expect(await f.links.consume('CA', 555, T)).toEqual({ status: 'ok', userId: 'A' });
+    expect(await f.links.consume('CA', 555, T)).toEqual({ status: 'ok', userId: 'A', accountHint: '*@fake.test' });
   });
 
   it('unlink clears only that user and userForChat returns null afterwards, never another user', async () => {

@@ -264,7 +264,10 @@ export interface LinkCodeRepository {
     code: string,
     chatId: number,
     now: Date,
-  ): Promise<{ status: 'ok'; userId: string } | { status: 'invalido' } | { status: 'chat_em_uso' }>;
+  ): Promise<
+    /** `accountHint`: e-mail MASCARADO da conta vinculada (`p***@dominio`), ou `null` se indisponível. */
+    { status: 'ok'; userId: string; accountHint: string | null } | { status: 'invalido' } | { status: 'chat_em_uso' }
+  >;
   /** Desvincula o Telegram do usuário (`telegram_chat_id` nulo). */
   unlink(userId: string): Promise<void>;
   /** Dono do chat, ou `null` se nenhum usuário o tem vinculado. */
