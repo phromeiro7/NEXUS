@@ -6,7 +6,7 @@ Data da consulta: **2026-10-30**. Todas as URLs abaixo foram lidas nessa data. O
 
 Nenhuma contradição direta com os pressupostos do plano (nome do cabeçalho do segredo, alfabeto do código, 429 com `retry_after`, limite de 4.096). Há três pontos de atenção que o controlador deve decidir antes das Tasks 3, 4, 5 e 11:
 
-1. **Timeout do `pg_net` (padrão 2000 ms).** O plano (linha 7, `docs/superpowers/plans/2026-10-27-plano-5-telegram-e-lembretes.md`) e o runbook (linha 215) falam em "pg_cron+pg_net faz um `POST`" sem mencionar timeout. O padrão de `net.http_post` é 2 s; o endpoint `/internal/reminders/run` (linha 161) pode levar mais. O `cron.schedule` do runbook deve passar `timeout_milliseconds` explícito (ex.: 30000) e o endpoint deve ser seguro se a resposta for descartada (já é: reserva com `SKIP LOCKED`, "pelo menos uma vez").
+1. **Timeout do `pg_net` (padrão 2000 ms).** O plano (linha 7, `docs/superpowers/plans/2026-10-27-plano-5-telegram-e-lembretes.md`) e o runbook (linha 215) falam em "pg_cron+pg_net faz um `POST`" sem mencionar timeout. O padrão de `net.http_post` é 2 s; o endpoint `/internal/reminders/run` (linha 161) pode levar mais. O `cron.schedule` do runbook deve passar `timeout_milliseconds` explícito (60000: o pior caso do endpoint é ~45 s) e o endpoint deve ser seguro se a resposta for descartada (já é: reserva com `SKIP LOCKED`, "pelo menos uma vez").
 2. **Descrições de erro do Telegram não são documentadas oficialmente.** Linhas 100 e 102 do plano fixam `403 "Forbidden: bot was blocked by the user"` e `400 "chat not found"`. A Bot API oficial só documenta `ok`, `error_code`, `description` e `parameters.retry_after`; as frases exatas vêm de fontes não oficiais (ver §4). Recomendação: classificar por `error_code` (403 → permanente, qualquer descrição, o que também cobre "user is deactivated" e "bot can't initiate conversation"), e usar a descrição só para distinguir `bot_bloqueado` / `chat_inexistente` com comparação por substring e fallback `outro`. O caso "user is deactivated" (403) não aparece no plano.
 3. **Limite de 1 mensagem/s por chat** (linha 135 e `runReminders`): o plano não espaça envios para o mesmo chat. Vários lembretes do mesmo usuário no mesmo minuto podem gerar 429; o tratamento por `retry_after` já cobre, mas convém enviar sequencialmente por chat (sem paralelismo) na Task 5.
 
@@ -53,7 +53,7 @@ select cron.schedule(
       'X-Internal-Secret', (select decrypted_secret from vault.decrypted_secrets where name = 'internal_secret')
     ),
     body := '{}'::jsonb,
-    timeout_milliseconds := 30000
+    timeout_milliseconds := 60000
   );
   $job$
 );
@@ -115,7 +115,7 @@ Consultado em 2026-10-30.
 
 ## Recomendação
 
-1. **Agendador:** `pg_cron` + `pg_net` + Vault do Supabase, como na spec §7, com `timeout_milliseconds` explícito (30000), a cada minuto, apontando para o domínio de produção da API. Habilitar as extensões no projeto real como primeira validação, pois a disponibilidade no plano gratuito não está confirmada em documentação oficial. Plano B: qualquer cron externo fazendo o mesmo `POST` (o código não muda).
+1. **Agendador:** `pg_cron` + `pg_net` + Vault do Supabase, como na spec §7, com `timeout_milliseconds` explícito (60000), a cada minuto, apontando para o domínio de produção da API. Habilitar as extensões no projeto real como primeira validação, pois a disponibilidade no plano gratuito não está confirmada em documentação oficial. Plano B: qualquer cron externo fazendo o mesmo `POST` (o código não muda).
 2. **Hospedagem:** para a demo, Vercel Hobby (grátis, 300 s, domínio de produção fora da proteção com Standard Protection) é suficiente; para o piloto real com cliente pagante, Vercel Pro ou um serviço de processo contínuo barato (Render Starter ~US$ 7/mês, Fly ~US$ 2-5/mês, Railway Hobby US$ 5/mês), porque Hobby é restrito a uso não comercial. Descartar Render Free (hiberna após 15 min).
 3. **Banco:** Supabase Pro (US$ 25/mês) no piloto real, para evitar a pausa de 7 dias.
 4. **Telegram:** manter o plano; ajustar (divergências 1 a 3): classificar por `error_code`, tratar 403 como permanente em geral, enviar sequencialmente por chat.

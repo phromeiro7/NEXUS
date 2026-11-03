@@ -131,9 +131,9 @@ logs, issues ou mensagens. Se vazar, use `/revoke` no BotFather e gere outro.
 
 - `TELEGRAM_BOT_TOKEN`: token do BotFather.
 - `TELEGRAM_BOT_USERNAME`: username do bot **sem** `@` (monta o link `https://t.me/<bot>?start=<código>`).
-- `TELEGRAM_WEBHOOK_SECRET`: segredo que você inventa (1 a 256 caracteres de `A-Z a-z 0-9 _ -`; gere com
+- `TELEGRAM_WEBHOOK_SECRET`: segredo que você inventa (16 a 256 caracteres de `A-Z a-z 0-9 _ -`; gere com
   `openssl rand -hex 32`). Sem ele o webhook responde `503`.
-- `INTERNAL_SECRET`: segredo do agendador (também `openssl rand -hex 32`). Sem ele a rota interna responde `503`.
+- `INTERNAL_SECRET`: segredo do agendador (mínimo de 16 caracteres; também `openssl rand -hex 32`). Sem ele a rota interna responde `503`.
 
 **3. Registrar o webhook** (depois que a API estiver no ar em HTTPS, no domínio de produção). Com o token e o
 segredo nas variáveis do shell e `<API>` o endereço público:
@@ -143,9 +143,12 @@ curl -sS "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
   -d "url=<API>/telegram/webhook" \
   -d "secret_token=$TELEGRAM_WEBHOOK_SECRET" \
   -d 'allowed_updates=["message"]'
+
+curl -sS "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo"
 ```
 
-`getWebhookInfo` mostra o estado e o último erro; `deleteWebhook` desfaz. Com `secret_token`, o Telegram
+Antes de vincular qualquer conta, confira com `getWebhookInfo` que `url` é o endereço esperado, que
+`last_error_message` está ausente e que `pending_update_count` não cresce. `deleteWebhook` desfaz. Com `secret_token`, o Telegram
 envia `X-Telegram-Bot-Api-Secret-Token` em cada chamada, e a API compara com `TELEGRAM_WEBHOOK_SECRET`.
 
 **4. Testar sem bot real.** Os testes usam Telegram falso (`apps/api/test/fakes.ts`) e modelo falso: nada sai
@@ -172,17 +175,31 @@ select cron.schedule('reminders-tick', '* * * * *', $job$
       'X-Internal-Secret', (select decrypted_secret from vault.decrypted_secrets where name = 'internal_secret')
     ),
     body := '{}'::jsonb,
-    timeout_milliseconds := 30000
+    timeout_milliseconds := 60000
   );
 $job$);
 ```
 
-`timeout_milliseconds` precisa ser explícito: o padrão do `pg_net` é 2000 ms e o endpoint pode levar cerca de
-45 s no pior caso. Se a resposta for descartada ou a execução for cortada, o resultado parcial é seguro:
-lembretes que ficaram `enviando` voltam a `pendente` depois de 5 minutos e são reenviados (garantia "pelo menos
-uma vez"). Já o briefing é "no máximo uma vez": se a execução cair depois de reservar o briefing do dia, o
-briefing daquele dia se perde. Confirme que `pg_cron` e `pg_net` estão habilitados no projeto (a documentação
+`timeout_milliseconds` precisa ser explícito: o padrão do `pg_net` é 2000 ms. O pior caso real do endpoint é de
+cerca de 45 s: o orçamento de 15 s dos lembretes é verificado antes de cada item, então o último pode começar
+perto dos 15 s e levar um envio (até 10 s) mais a ressincronização; o orçamento de 8 s dos briefings também é
+verificado por destinatário; e ainda há a recuperação e as limpezas. Como a chamada é de minuto em minuto,
+60000 ms cobre esse pior caso sem esconder uma travada de verdade (um `timed_out` em `net._http_response`
+passa a significar problema real). Se a resposta for descartada ou a execução for cortada, o resultado parcial
+é seguro: lembretes que ficaram `enviando` voltam a `pendente` depois de 5 minutos e são reenviados (garantia
+"pelo menos uma vez"). O briefing é "no máximo uma vez" só para queda de processo depois de reservar o dia:
+nesse caso o briefing daquele dia se perde. Uma falha transitória de envio (inclusive o corte de 10 s do
+cliente) libera a reserva, e o minuto seguinte pode enviar de novo, dentro da janela de 4 h; por isso um
+briefing repetido é possível. Confirme que `pg_cron` e `pg_net` estão habilitados no projeto (a documentação
 oficial não confirma a disponibilidade no plano gratuito).
+
+**Rotação do segredo.** `vault.create_secret(..., 'internal_secret')` falha se o nome já existe. Para trocar o
+valor: `select vault.update_secret((select id from vault.secrets where name = 'internal_secret'), '<novo valor>');`
+e atualize `INTERNAL_SECRET` na API. O `cron.schedule` com o mesmo nome (`reminders-tick`) é idempotente.
+
+**Acesso ao schema `net`.** O `pg_net` grava a requisição, com o cabeçalho `X-Internal-Secret` já decifrado, em
+`net.http_request_queue` até enviá-la. Restrinja quem pode ler o schema `net` (e a view
+`vault.decrypted_secrets`) a papéis de administração; não os exponha ao `anon`/`authenticated`.
 
 Opção B: um cron externo (qualquer serviço) que faça o mesmo `POST <dominio-de-producao>/internal/reminders/run`
 a cada minuto com o cabeçalho `X-Internal-Secret: <INTERNAL_SECRET>`; o código não muda.
@@ -191,7 +208,8 @@ Em qualquer opção, o agendador deve apontar para o **domínio de produção**,
 proteção de implantação da Vercel as bloqueia; o domínio de produção fica de fora da proteção padrão).
 
 **Hospedagem.** O alvo é a Vercel (domínio gratuito `*.vercel.app`; o plano Hobby é só para uso não comercial).
-**Ainda falta** o adaptador que expõe a API Hono como função da Vercel (um entrypoint de função): ele **não foi
+A função precisará de `maxDuration` de pelo menos 60 s (o padrão do plano Hobby é menor), porque a execução
+não é abortada no meio de um envio. **Ainda falta** o adaptador que expõe a API Hono como função da Vercel (um entrypoint de função): ele **não foi
 construído**. Hoje a API só sobe como servidor Node (`src/server.ts`); sem o adaptador, o webhook e o agendador
 não têm onde receber chamadas em produção.
 
@@ -230,10 +248,10 @@ que falhou). `skipped` lista as tarefas (`id`, `title`, `reason`: `hora_inexiste
 os lembretes calculados com o fuso/antecedência anteriores**, e o painel deve avisar o
 usuário usando `skipped`. `remindersSkipped` é `skipped.length`.
 
-A API só grava a fila de lembretes; o envio é do Plano 5. As regras que o enviador
-precisa cumprir (tarefa ainda viva, reagendamento durante o envio, lembretes vencidos,
-tarefa criada no próprio dia, `fatal` com hora) estão em "Contrato do enviador de
-lembretes (Plano 5)", §7 de `docs/superpowers/specs/2026-10-26-assistente-juridico-design.md`.
+A API grava a fila de lembretes e o agendador interno os envia pelo Telegram (veja "Telegram e
+lembretes: runbook"). As regras que o enviador cumpre (tarefa ainda viva, reagendamento durante o
+envio, lembretes vencidos, tarefa criada no próprio dia, `fatal` com hora) estão em "Contrato do
+enviador de lembretes", §7 de `docs/superpowers/specs/2026-10-26-assistente-juridico-design.md`.
 
 ## Painel
 
@@ -282,11 +300,11 @@ troca de status otimista, criação, edição e exclusão de tarefas (prazo, aud
 processo existente); calculadora de prazos com criação de tarefa a partir do resultado;
 histórico de tarefas concluídas (com canceladas opcionais); configurações (fuso, UF, cidade,
 antecedência do lembrete, horário do resumo, aviso de tarefas que mantiveram lembretes antigos
-quando a API devolve `skipped`) e feriados locais.
+quando a API devolve `skipped`), vínculo com o Telegram por código (gerar, desvincular, aviso de canal
+pausado; o envio dos lembretes e do resumo pelo Telegram existe) e feriados locais.
 
 **O que não está:** barra de comando e IA (Plano 4; há um espaço reservado no cabeçalho),
-vínculo e envio pelo Telegram (Plano 5; a tela mostra "Vínculo disponível em breve"), tela de
-Processos (fora do escopo; o processo só aparece como referência na tarefa). A paleta de cores
+tela de Processos (fora do escopo; o processo só aparece como referência na tarefa). A paleta de cores
 é provisória e está isolada em tokens CSS em `apps/web/app/globals.css` para troca posterior.
 
 ## Banco local (testes de banco)
