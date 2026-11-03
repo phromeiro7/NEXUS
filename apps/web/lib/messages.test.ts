@@ -21,6 +21,36 @@ describe('messageFor', () => {
     expect(messageFor(err(status, code))).toBe(text);
   });
 
+  it('maps assistant errors', () => {
+    expect(messageFor(err(429, 'limite_de_mensagens', { error: 'limite_de_mensagens', retryAfterSeconds: 90 }))).toBe(
+      'Limite de 30 mensagens por hora atingido. Tente de novo em 2 min.',
+    );
+    expect(messageFor(err(429, 'limite_de_mensagens', { error: 'limite_de_mensagens', retryAfterSeconds: 60 }))).toBe(
+      'Limite de 30 mensagens por hora atingido. Tente de novo em 1 min.',
+    );
+    expect(messageFor(err(429, 'limite_de_mensagens', { error: 'limite_de_mensagens', retryAfterSeconds: 1 }))).toBe(
+      'Limite de 30 mensagens por hora atingido. Tente de novo em 1 min.',
+    );
+    expect(messageFor(err(429, 'limite_de_mensagens', null))).toBe(
+      'Limite de 30 mensagens por hora atingido. Tente de novo em 1 min.',
+    );
+    expect(messageFor(err(503, 'assistente_indisponivel', { error: 'assistente_indisponivel', reason: 'configuracao' }))).toBe(
+      'O assistente ainda não está configurado.',
+    );
+    for (const reason of ['limite', 'rede', 'timeout', 'servico']) {
+      expect(messageFor(err(503, 'assistente_indisponivel', { error: 'assistente_indisponivel', reason }))).toBe(
+        'O assistente está indisponível agora. Nada foi alterado.',
+      );
+    }
+    expect(messageFor(err(503, 'assistente_indisponivel', null))).toBe(
+      'O assistente está indisponível agora. Nada foi alterado.',
+    );
+    expect(messageFor(err(409, 'em_processamento'))).toBe(
+      'Sua mensagem anterior ainda está sendo processada. Aguarde um instante e tente de novo.',
+    );
+    expect(messageFor(err(409, 'conflito_de_evento'))).toBe('Não foi possível processar esta mensagem. Tente reenviar.');
+  });
+
   it('distinguishes hora_invalida reasons', () => {
     const inexistente = messageFor(
       err(422, 'hora_invalida', { error: 'hora_invalida', reason: 'hora_inexistente' }),

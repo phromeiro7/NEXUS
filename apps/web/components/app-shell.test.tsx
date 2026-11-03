@@ -4,6 +4,7 @@ import { AppShell } from "./app-shell";
 
 let pathname = "/";
 vi.mock("next/navigation", () => ({ usePathname: () => pathname }));
+vi.mock("./command-bar", () => ({ CommandBar: () => <button type="button">barra-de-comando</button> }));
 const signOut = vi.fn();
 vi.mock("./auth-provider", () => ({ useAuth: () => ({ signOut }) }));
 
@@ -48,6 +49,12 @@ describe("AppShell", () => {
   it("Painel ativo em /", () => {
     render(<AppShell>x</AppShell>);
     expect(screen.getByRole("link", { name: "Painel" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("monta a barra de comando no slot reservado do cabeçalho", () => {
+    const { container } = render(<AppShell>x</AppShell>);
+    const slot = container.querySelector('header [data-slot="command-bar"]')!;
+    expect(slot).toContainElement(screen.getByRole("button", { name: "barra-de-comando" }));
   });
 
   it("o botão sair chama signOut", () => {

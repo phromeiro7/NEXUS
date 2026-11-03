@@ -1,4 +1,4 @@
-import { createApp } from '../src/app.js';
+import { type AppDeps, createApp } from '../src/app.js';
 import { makeCalculateDeadline } from '../src/application/calculate-deadline.js';
 import { makeGetBriefing } from '../src/application/briefing.js';
 import { makeCaseUseCases } from '../src/application/cases.js';
@@ -19,6 +19,8 @@ export type HarnessOpts = {
   casesOverride?: Partial<ReturnType<typeof makeCaseUseCases>>;
   holidaysOverride?: Partial<ReturnType<typeof makeHolidayUseCases>>;
   now?: Date;
+  /** `processMessage` falso para as rotas do assistente (ausente = assistente desabilitado). */
+  processMessage?: AppDeps['processMessage'];
 };
 
 /** App real sobre casos de uso reais e repositórios fake. Tokens: token-ok -> u1, token-u2 -> u2. */
@@ -54,6 +56,7 @@ export function buildApp(opts: HarnessOpts = {}) {
     }),
     briefing: makeGetBriefing({ tasks: fakes.tasks, profiles: fakes.profiles, clock: fakes.clock }),
     webOrigin: WEB_ORIGIN,
+    ...(opts.processMessage !== undefined ? { processMessage: opts.processMessage } : {}),
   });
   return { app, fakes };
 }

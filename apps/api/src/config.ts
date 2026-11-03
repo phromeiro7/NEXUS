@@ -1,4 +1,12 @@
-export type Config = { supabaseUrl: string; serviceRoleKey: string; port: number; webOrigin: string };
+export type Config = {
+  supabaseUrl: string;
+  serviceRoleKey: string;
+  port: number;
+  webOrigin: string;
+  /** Opcional: ausente = assistente indisponível ('configuracao'). Nunca logar. */
+  anthropicApiKey?: string;
+  assistantModel: string;
+};
 
 /** Lê a configuração do ambiente. Nunca inclui valores (só nomes) nas mensagens de erro. */
 export function loadConfig(env: Record<string, string | undefined>): Config {
@@ -28,10 +36,16 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     throw new Error('WEB_ORIGIN inválida: esperada uma URL absoluta, como https://painel.example.com');
   }
 
+  // A chave é opcional: sem ela a API sobe e o assistente responde 503 'configuracao'.
+  const anthropicApiKey = env.ANTHROPIC_API_KEY?.trim() || undefined;
+  const assistantModel = env.ASSISTANT_MODEL?.trim() || 'claude-haiku-5-5';
+
   return {
     supabaseUrl: env.SUPABASE_URL as string,
     serviceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY as string,
     port,
     webOrigin,
+    assistantModel,
+    ...(anthropicApiKey !== undefined ? { anthropicApiKey } : {}),
   };
 }
