@@ -169,7 +169,7 @@ Regras que o enviador precisa cumprir, porque a API do Plano 2 depende delas:
 2. **Reagendamento durante o envio:** ao terminar um lembrete `enviando`, se a data, a hora ou o `fatal` da tarefa mudaram desde a reserva, o enviador roda de novo a substituição dos lembretes dessa tarefa. `replace_pending_reminders` pula o rascunho cujo tipo está `enviando`; sem esse passo, uma remarcação feita durante o envio deixaria a tarefa sem lembrete para o novo horário.
 3. **Passado não é recriado:** a reconstrução nunca recria lembretes cujo instante já passou. Um lembrete `pendente` vencido (enviador fora do ar) é responsabilidade do enviador: envia atrasado, com a marca "(atrasado)", dentro da regra de 24h acima.
 4. **Tarefa só com data criada no próprio dia:** criada depois das 08h do dia do prazo, não ganha lembrete `no_dia` (o instante já passou); quem a cobre é o briefing.
-5. **Questão de produto em aberto (decidir antes do Plano 5):** hoje uma tarefa `fatal` COM hora recebe só `antecipado` e `no_horario` (sem 3 dias antes nem dia anterior). Confirmar se é o comportamento desejado.
+5. **Decisão de produto (2026-11-03): tarefa `fatal` com hora: manter como está.** Uma tarefa `fatal` COM hora recebe só `antecipado` e `no_horario` (sem 3 dias antes nem dia anterior); `buildReminders` não muda.
 
 ### Briefing
 - **Painel:** no topo, calculado ao abrir, sem custo de IA.
