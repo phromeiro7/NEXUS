@@ -6,7 +6,17 @@ import { createApp } from '../app.js';
 import { makeCalculateDeadline } from '../application/calculate-deadline.js';
 import { getSupabaseEnv } from '../../test/db/supabase-env.js';
 import { createSupabaseAuthVerifier } from './supabase-auth.js';
+import { makeGetBriefing } from '../application/briefing.js';
+import { makeCaseUseCases } from '../application/cases.js';
+import { makeHolidayUseCases } from '../application/holidays.js';
+import { makeSettingsUseCases } from '../application/settings.js';
+import { makeSyncReminders } from '../application/sync-reminders.js';
+import { makeTaskUseCases } from '../application/tasks.js';
+import { createSupabaseCaseRepository } from './supabase-case-repository.js';
 import { createSupabaseHolidayRepository } from './supabase-holiday-repository.js';
+import { createSupabaseProfileRepository } from './supabase-profile-repository.js';
+import { createSupabaseReminderRepository } from './supabase-reminder-repository.js';
+import { createSupabaseTaskRepository } from './supabase-task-repository.js';
 
 // A: feriado municipal em 2026-11-05 (quinta, dentro do prazo) -> 2026-11-18.
 // B: feriado em 2026-12-08 (terca, FORA do intervalo do prazo), logo B so
@@ -35,7 +45,33 @@ async function makeUser(label: string) {
 
 const verifyToken = createSupabaseAuthVerifier(admin);
 const holidays = createSupabaseHolidayRepository(admin);
-const app = createApp({ verifyToken, calculateDeadline: makeCalculateDeadline({ holidays }) });
+const calculateDeadline = makeCalculateDeadline({ holidays });
+const taskRepo = createSupabaseTaskRepository(admin);
+const caseRepo = createSupabaseCaseRepository(admin);
+const profileRepo = createSupabaseProfileRepository(admin);
+const reminderRepo = createSupabaseReminderRepository(admin);
+const clock = { now: () => new Date() };
+const app = createApp({
+  verifyToken,
+  calculateDeadline,
+  tasks: makeTaskUseCases({
+    tasks: taskRepo,
+    cases: caseRepo,
+    profiles: profileRepo,
+    reminders: reminderRepo,
+    calculateDeadline,
+    clock,
+  }),
+  cases: makeCaseUseCases({ cases: caseRepo }),
+  holidays: makeHolidayUseCases({ holidays }),
+  settings: makeSettingsUseCases({
+    profiles: profileRepo,
+    tasks: taskRepo,
+    syncReminders: makeSyncReminders({ reminders: reminderRepo, clock }),
+  }),
+  briefing: makeGetBriefing({ tasks: taskRepo, profiles: profileRepo, clock }),
+  webOrigin: 'http://localhost:3000',
+});
 
 const calc = (headers: Record<string, string>) =>
   app.request('/deadlines/calculate', {
