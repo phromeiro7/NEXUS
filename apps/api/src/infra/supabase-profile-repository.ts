@@ -3,7 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ProfileRepository } from '../application/ports.js';
 import { definedOnly, toHourMinute } from './mappers.js';
 
-const COLUMNS = 'timezone, uf, city, early_reminder_minutes, briefing_time, telegram_chat_id';
+const COLUMNS = 'timezone, uf, city, early_reminder_minutes, briefing_time, telegram_chat_id, channel_paused';
 
 function settingsFromRow(row: Record<string, unknown>): SettingsDto {
   return {
@@ -13,6 +13,7 @@ function settingsFromRow(row: Record<string, unknown>): SettingsDto {
     earlyReminderMinutes: row.early_reminder_minutes as number,
     briefingTime: toHourMinute(row.briefing_time)!,
     telegramLinked: row.telegram_chat_id !== null && row.telegram_chat_id !== undefined,
+    channelPaused: row.channel_paused === true,
   };
 }
 

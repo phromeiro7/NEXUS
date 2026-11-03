@@ -6,6 +6,11 @@ pronto, o que falta, o que depende de decisão ou de conta externa e o que ainda
 Referências: especificação em `docs/superpowers/specs/2026-10-26-assistente-juridico-design.md`;
 planos de implementação em `docs/superpowers/plans/` (um por etapa, numerados de 1 a 6).
 
+> **Rumo do produto (2026-11-03):** o projeto está migrando de assistente jurídico para o **Nexus**, assistente
+> pessoal de tarefas com Telegram como canal principal. Decisões abertas, ordem do trabalho e alterações
+> previstas em `docs/ROTEIRO-NEXUS.md`. O desenho do Mini App está em
+> `docs/superpowers/specs/2026-11-03-mini-app-telegram-design.md`.
+
 ## Visão geral
 
 | Plano | Escopo | Situação |
@@ -14,7 +19,7 @@ planos de implementação em `docs/superpowers/plans/` (um por etapa, numerados 
 | 2 | API de tarefas, processos, feriados, configurações, briefing | Concluído |
 | 3 | Painel web (login, Dia/Semana/Mês, formulários, calculadora, histórico, configurações) | Concluído; **nunca visto num navegador real** |
 | 4 | Assistente de IA (barra de comando) e briefing em texto | **Implementado e revisado**, falta a execução com o modelo real (rascunho de PR; ver abaixo) |
-| 5 | Telegram, envio de lembretes e agendador | Não iniciado (plano escrito) |
+| 5 | Telegram, envio de lembretes e agendador | **Implementado e revisado** (revisão final do ramo feita); falta Telegram, agendador e hospedagem reais |
 | 6 | Acabamento, avaliação da IA, segurança, publicação | Não iniciado (plano escrito) |
 
 Os PRs formam uma pilha: o PR do Plano 1 aponta para `main`, o do Plano 2 para o ramo do Plano 1, e
@@ -52,37 +57,37 @@ execução do roteiro com o modelo real**, que aguarda a sua chave da API e a ap
   de custo. Instruções, premissas de preço e a lista do que verificar (schemas `strict`, `format`,
   cache, `effort` baixo): `docs/superpowers/notes/2026-assistente-custos.md`.
 
-## Plano 5 — Telegram, lembretes e agendador (não iniciado)
+## Plano 5 — Telegram, lembretes e agendador (implementado; falta o ambiente real)
 
-Depende do Plano 4 (`processMessage`, repositórios de conversa e eventos, `renderBriefing`). Inclui: nota
-de verificações obrigatórias da spec §12 (pg_cron/pg_net, pausa de projetos gratuitos, hospedagem, Bot API),
-funções SQL de fila (reserva com `FOR UPDATE SKIP LOCKED`), enviador de lembretes com nova tentativa e
-recuperação, envio do briefing pelo Telegram, endpoint interno do agendador, vínculo por código, webhook e
-tela de vínculo no painel. Decisão já tomada: tarefa `fatal` com hora **mantém** só `antecipado` e
-`no_horario`. O texto "Vínculo disponível em breve" em Configurações é um espaço reservado até lá.
+Ramo `feat/plano-5-telegram-e-lembretes`. Tarefas 1 a 10 concluídas e revisadas, com revisão final do ramo
+e uma rodada de correções. Testes: shared 80, API 905, painel 334 (unitários); suíte de banco com 251.
 
-**Requisito (vindo do Plano 4): job de recuperação de eventos presos.** Eventos parados em `processando`
-(ou `recebido`) por mais de ~2 minutos hoje respondem "em processamento" a cada reenvio. O job deve:
-- para evento em `processando` **com chamada ao modelo registrada** (`attempt_count >= 1`; ferramentas podem
-  ter gravado): gravar uma resposta terminal ("Sua mensagem pode ter sido processada só em parte; confira
-  suas tarefas e envie de novo o que faltar") e marcar `processado`;
-- só evento em `recebido` **sem** chamada ao modelo pode ser marcado `falhou` (reenviável);
-- também apagar de `assistant_model_calls` registros com mais de ~2 dias;
-- a resposta do Telegram precisa listar `affectedTasks` (o texto "Confira abaixo" depende disso).
+**O que existe:** funções SQL da fila e do envio (migração 0006: reserva com `FOR UPDATE SKIP LOCKED`,
+trava de arrendamento, recuperação de eventos presos, limpezas); enviador de lembretes com nova tentativa e
+pausa do canal; briefing diário pelo Telegram (janela de 4 h); endpoint interno do agendador
+(`POST /internal/reminders/run`, segredo em tempo constante) e `reminders:tick`; vínculo por código de 8
+caracteres com validade de 10 min; webhook (`POST /telegram/webhook`), `/desvincular`; tela de vínculo nas
+Configurações; teste de ponta a ponta com Telegram falso; roteiro de publicação no README.
 
-Demais pré-requisitos do Plano 5, vindos do Plano 4:
-- Se `markProcessed` falhar depois de uma gravação, o evento fica `processando`; até o job existir, um
-  evento travado responde 409 `em_processamento` para sempre àquele texto exato, porque o painel mantém o
-  mesmo `clientMessageId` até o texto mudar.
-- A resposta do Telegram deve renderizar `affectedTasks` e ser enviada só como texto **simples** (sem
-  `parse_mode`), pois títulos e o briefing são texto arbitrário.
-- O limite de 30 mensagens/hora é por **usuário**, em todos os canais: o webhook deve chamar
-  `processMessage` com o `userId` vinculado.
-- O caminho `targetTaskIds` (responder a um lembrete) está implementado e testado em unidade no
-  `processMessage`, mas nunca foi exercitado de ponta a ponta: a rota não o aceita; o webhook do Plano 5 é
-  seu primeiro chamador real e precisa de teste próprio.
-- O Telegram reenvia o webhook: o `externalId` deve ser o id da atualização (`update_id`) do Telegram, e um
-  `ForeignEventError` ali precisa de tratamento definido.
+**O que NÃO foi verificado:** nada rodou contra o Telegram real, a API real da Anthropic ou uma hospedagem.
+O banco NEXUS (Supabase) recebeu as 6 migrações, o bot @NexusAssistant_bot existe e o webhook não está
+registrado.
+
+**Limitações conhecidas (para o Plano 6):**
+- Uma mudança de configuração (antecedência ou fuso) feita durante o envio de um lembrete pode deixar
+  aquela tarefa sem o lembrete do novo horário até a próxima edição. A correção certa é na função
+  `replace_pending_reminders`, que hoje apaga lembretes `pendente` atrasados.
+- `inbound_events`, `task_confirmations` e lembretes terminais crescem sem limpeza; falta índice na
+  varredura de `recover_stuck_events`.
+- O webhook responde 200 quando falha depois de registrar o evento (`process_failed`) e não avisa o usuário.
+- O resumo diário é "no máximo uma vez" só para falha após a reserva; falha transitória libera e pode
+  reenviar no minuto seguinte.
+- Um /start ou /desvincular reenviado pelo Telegram depois de ~2 min pode repetir uma resposta inofensiva.
+- Botões do painel têm 40 px (alvo de 44 a 48 px); relógio do cliente na contagem do código; foco após
+  trocar o código.
+- Tempo do agendador: o pior caso real é ~45 s; o `pg_net` deve usar `timeout_milliseconds` de 60000, e a
+  função da Vercel precisa de `maxDuration` de pelo menos 60 s.
+- A API é um servidor Node; falta o adaptador de função para a Vercel.
 
 ## Plano 6 — acabamento e publicação (não iniciado)
 
@@ -98,6 +103,14 @@ Backlog herdado do Plano 4 para este plano:
 - `listar_tarefas` carrega tudo antes de cortar em 50.
 - Um 400 BadRequest da API real hoje vira a mensagem de 'configuracao': confirmar na execução real.
 - A própria execução do roteiro com o modelo real (aguarda a chave e a aprovação do gasto do usuário).
+
+## Plano 7 (7a e 7b) — Mini App do Telegram completo e convites (desenhado; não iniciado)
+
+Decisão de 03/11/2026: uso pessoal e de poucos convidados, então o Telegram vira a entrada principal
+(Mini App sem senha), os convidados entram por convite e o login por e-mail e senha fica como porta de
+reserva do administrador. Desenho completo e perguntas em aberto em
+`docs/superpowers/specs/2026-11-03-mini-app-telegram-design.md`. Depende do Plano 5 e do bot/painel
+hospedados.
 
 ## Depende de você (decisões e contas)
 
