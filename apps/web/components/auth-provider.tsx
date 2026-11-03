@@ -18,14 +18,12 @@ import { createSupabase, readApiUrl, type AuthApiError, type AuthClient } from "
 export type AuthStatus = "loading" | "signedIn" | "signedOut";
 
 export type AuthResult = { error: string | null };
-export type SignUpResult = AuthResult & { needsConfirmation: boolean };
 
 export type AuthContextValue = {
   status: AuthStatus;
   /** Sessão aberta pelo link de recuperação de senha (evento PASSWORD_RECOVERY). */
   recovery: boolean;
   signIn(email: string, password: string): Promise<AuthResult>;
-  signUp(email: string, password: string): Promise<SignUpResult>;
   sendReset(email: string): Promise<AuthResult>;
   /** Define a nova senha da sessão atual (a de recuperação, vinda do link do e-mail). */
   updatePassword(password: string): Promise<AuthResult>;
@@ -52,14 +50,6 @@ function loginMessage(e: AuthApiError): string {
     return "Muitas tentativas. Aguarde um pouco e tente novamente.";
   }
   return GENERIC;
-}
-
-function signUpMessage(e: AuthApiError): string {
-  if (e.code === "weak_password") return "A senha deve ter pelo menos 8 caracteres.";
-  if (e.status === 429 || e.code === "over_request_rate_limit") {
-    return "Muitas tentativas. Aguarde um pouco e tente novamente.";
-  }
-  return "Não foi possível criar a conta com esses dados.";
 }
 
 function passwordMessage(e: AuthApiError): string {
@@ -191,7 +181,7 @@ export function AuthProvider({
     redirected.current = true;
     const path = pathRef.current ?? "/";
     const here = typeof window === "undefined" ? "" : window.location.search;
-    const onAuthPage = /^\/(entrar|cadastro|recuperar|nova-senha)(\/|$)/.test(path);
+    const onAuthPage = /^\/(entrar|recuperar|nova-senha)(\/|$)/.test(path);
     routerRef.current.replace(
       onAuthPage ? "/entrar" : `/entrar?next=${encodeURIComponent(path + here)}`,
     );
@@ -236,21 +226,6 @@ export function AuthProvider({
     }
   }, []);
 
-  const signUp = useCallback(async (email: string, password: string): Promise<SignUpResult> => {
-    const client = clientRef.current;
-    if (!client) return { error: GENERIC, needsConfirmation: false };
-    try {
-      const { data, error } = await client.auth.signUp({ email, password });
-      if (error) return { error: signUpMessage(error), needsConfirmation: false };
-      return { error: null, needsConfirmation: data.session === null };
-    } catch {
-      return {
-        error: "Sem conexão. Verifique sua internet e tente novamente.",
-        needsConfirmation: false,
-      };
-    }
-  }, []);
-
   const sendReset = useCallback(async (email: string): Promise<AuthResult> => {
     const client = clientRef.current;
     if (!client) return { error: GENERIC };
@@ -285,7 +260,6 @@ export function AuthProvider({
       status,
       recovery,
       signIn,
-      signUp,
       sendReset,
       updatePassword,
       signOut,
@@ -294,7 +268,7 @@ export function AuthProvider({
       api,
       configError,
     }),
-    [status, recovery, signIn, signUp, sendReset, updatePassword, signOut, getToken, redirectToLogin, api, configError],
+    [status, recovery, signIn, sendReset, updatePassword, signOut, getToken, redirectToLogin, api, configError],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

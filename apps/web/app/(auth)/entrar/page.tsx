@@ -47,12 +47,9 @@ function EntrarForm() {
           autoComplete="current-password"
         />
       </AuthForm>
-      <p className="mt-4 flex justify-between text-sm">
+      <p className="mt-4 text-sm">
         <Link href="/recuperar" className="underline">
           Esqueci a senha
-        </Link>
-        <Link href="/cadastro" className="underline">
-          Criar conta
         </Link>
       </p>
     </AuthCard>
