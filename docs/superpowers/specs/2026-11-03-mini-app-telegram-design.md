@@ -88,6 +88,16 @@ precisem do painel web. Lista de telas e consequências em `docs/ROTEIRO-NEXUS.m
 
 - Janela de validade do `auth_date` e duração da sessão do Mini App.
 - Usuário sem e-mail no Supabase Auth (ver §4).
-- Quantos convidados, e se haverá perfis de administrador além do dono.
+- Se haverá perfis de administrador além do dono (hoje: só o dono).
 - Mini App no mesmo app Next.js (rotas mobile-first) ou app separado? Recomendação inicial: mesmo app.
 - (Resolvido em 2026-11-03) Escopo do Mini App: o mais completo possível; ver §6.
+
+## 9. Decisões do usuário (2026-11-03, segunda rodada)
+
+- **Convidados:** cerca de 10 pessoas no início. Consequência: o limite de 30 mensagens/hora de IA por usuário
+  vale para cada uma, e é preciso um **teto de gasto total** da chave da Anthropic (a definir no plano, com
+  alerta ao se aproximar).
+- **Acesso dos convidados: só pelo Telegram.** Nenhum convidado cria conta com e-mail e senha no painel web;
+  só o administrador (dono) mantém o login por e-mail. O cadastro aberto do painel deve ser desligado ou
+  restrito quando o Mini App entrar no ar (o plano decide como: bloquear `/cadastro` no painel e/ou
+  desativar o cadastro público no Supabase Auth).
