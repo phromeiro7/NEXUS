@@ -91,3 +91,22 @@ precisem do painel web. Lista de telas e consequências em `docs/ROTEIRO-NEXUS.m
 - Quantos convidados, e se haverá perfis de administrador além do dono.
 - Mini App no mesmo app Next.js (rotas mobile-first) ou app separado? Recomendação inicial: mesmo app.
 - (Resolvido em 2026-11-03) Escopo do Mini App: o mais completo possível; ver §6.
+
+## 10. Decisão do usuário (2026-11-03, terceira rodada): login com Telegram também no painel web
+
+Os convidados podem usar o painel web, **sempre entrando pelo Telegram** (sem e-mail nem senha). Substitui
+"o painel só atende ao administrador" da §1 e a parte "só Mini App" da §9: convidados usam o Mini App e o
+painel web, com a mesma conta.
+
+- **Botão "Entrar com Telegram"** na tela de login do painel (Telegram Login Widget): o Telegram assina os
+  dados; a API confere a assinatura (chave derivada do token do bot, comparação em tempo constante,
+  `auth_date` recente, sem reuso) e abre a sessão da conta ligada àquele `telegram_user_id`. A validação é
+  parente da do Mini App (`initData` usa outra derivação de chave): mesmo módulo, duas funções.
+- **Primeiro login só com convite:** se o `telegram_user_id` não tem conta nem convite válido, nada é criado
+  (senão qualquer pessoa com Telegram entraria). O convite é o do §2; no widget, o código de convite precisa ser
+  informado antes ou o convidado aceita o convite pelo bot (`/start CONVITE`) e só depois entra no painel.
+- **Mesma conta** no Mini App e no painel web.
+- Exige `/setdomain` no BotFather apontando para o endereço do painel (funciona com `*.vercel.app`) e o painel
+  em HTTPS.
+- Entra no Plano 7a, compartilhando a sessão e a validação com o Mini App.
+- O administrador mantém e-mail e senha; o cadastro por e-mail continua removido.
