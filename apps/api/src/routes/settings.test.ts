@@ -8,6 +8,7 @@ const defaults = {
   earlyReminderMinutes: 15,
   briefingTime: '08:00',
   telegramLinked: false,
+  channelPaused: false,
 };
 
 describe('settings routes', () => {

@@ -22,6 +22,20 @@ export class ForeignEventError extends Error {
   }
 }
 
+/**
+ * Falha de infraestrutura ANTES de o update do Telegram ser registrado (consulta do vínculo ou registro
+ * do evento): nada foi feito nem respondido, então a rota devolve 500 e o Telegram reenvia. Guarda só o
+ * nome do erro original, nunca a mensagem.
+ */
+export class UpdateNotRegisteredError extends Error {
+  readonly causeName: string;
+  constructor(cause: unknown) {
+    super('Update do Telegram não registrado');
+    this.name = 'UpdateNotRegisteredError';
+    this.causeName = cause instanceof Error ? cause.name : 'desconhecido';
+  }
+}
+
 /** Transição de evento inválida: evento inexistente, estado que não a permite, ou usuário ausente. */
 export class EventStateError extends Error {
   constructor(readonly code: 'evento_inexistente' | 'evento_em_estado_invalido' | 'usuario_obrigatorio') {
@@ -75,6 +89,33 @@ export class EventInProgressError extends Error {
   constructor() {
     super('Evento em processamento');
     this.name = 'EventInProgressError';
+  }
+}
+
+/**
+ * A reserva do lembrete foi perdida (inexistente, fora de `enviando` ou reservado por outro
+ * envio). O remetente trata como benigno: registra o código e descarta, sem nova tentativa.
+ */
+export class ReminderLeaseError extends Error {
+  constructor(readonly code: 'lembrete_inexistente' | 'lembrete_reservado_por_outro' | 'lembrete_em_estado_invalido') {
+    super(`Lembrete: ${code}`);
+    this.name = 'ReminderLeaseError';
+  }
+}
+
+/** O código de vínculo gerado já existe (violação de unicidade em `link_codes`): gere outro. */
+export class LinkCodeCollisionError extends Error {
+  constructor() {
+    super('Código de vínculo já existe');
+    this.name = 'LinkCodeCollisionError';
+  }
+}
+
+/** Sem `TELEGRAM_BOT_USERNAME` não há link de vínculo (→ 503). */
+export class TelegramNotConfiguredError extends Error {
+  constructor() {
+    super('Telegram não configurado');
+    this.name = 'TelegramNotConfiguredError';
   }
 }
 

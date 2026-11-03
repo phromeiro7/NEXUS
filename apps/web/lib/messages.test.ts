@@ -14,6 +14,7 @@ describe('messageFor', () => {
     [409, 'numero_ja_cadastrado', 'Já existe um processo com este número.'],
     [409, 'feriado_ja_cadastrado', 'Este feriado já está cadastrado.'],
     [413, 'corpo_muito_grande', 'Os dados enviados são grandes demais.'],
+    [503, 'telegram_nao_configurado', 'O Telegram ainda não está configurado neste servidor.'],
     [0, 'rede', 'Sem conexão com o servidor.'],
     [500, 'erro_interno', 'Algo deu errado. Tente novamente.'],
     [418, 'qualquer_coisa', 'Algo deu errado. Tente novamente.'],

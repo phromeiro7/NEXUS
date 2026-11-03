@@ -9,6 +9,7 @@ import type {
   CreateTaskInput,
   DeadlineRule,
   HolidayDto,
+  LinkCodeDto,
   ListTasksQuery,
   MeDto,
   SettingsDto,
@@ -113,6 +114,8 @@ export function createApiClient(opts: ApiClientOptions) {
     listHolidays: () => request<HolidayDto[]>('GET', '/holidays'),
     createHoliday: (input: CreateHolidayInput) => request<HolidayDto>('POST', '/holidays', input),
     deleteHoliday: (id: string) => request<void>('DELETE', `/holidays/${encodeURIComponent(id)}`),
+    createLinkCode: () => request<LinkCodeDto>('POST', '/telegram/link-codes'),
+    unlinkTelegram: () => request<void>('DELETE', '/telegram/link'),
     getBriefing: () => request<BriefingDto>('GET', '/briefing'),
     sendAssistantMessage: (input: AssistantMessageInput) =>
       request<AssistantReplyDto>('POST', '/assistant/message', input),

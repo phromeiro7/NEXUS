@@ -27,5 +27,8 @@ export type CalculateDeadlineResultDto = {
   feriadosDescontados: Holiday[];
 };
 
+/** Resposta de `POST /telegram/link-codes`: código de uso único, válido por 10 minutos. */
+export type LinkCodeDto = { code: string; deepLink: string; expiresAt: string };
+
 /** Resposta de `GET /me`. */
 export type MeDto = { userId: string };
