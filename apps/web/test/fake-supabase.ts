@@ -26,9 +26,6 @@ export function fakeSupabase(o: Overrides = {}) {
     signInWithPassword: vi.fn(() =>
       Promise.resolve({ data: { session: null }, error: null as unknown }),
     ),
-    signUp: vi.fn(() =>
-      Promise.resolve({ data: { session: null }, error: null as unknown }),
-    ),
     resetPasswordForEmail: vi.fn(() =>
       Promise.resolve({ data: {}, error: null as unknown }),
     ),
