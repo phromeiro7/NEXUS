@@ -288,13 +288,16 @@ projeto: é o botão "Reabrir" do Histórico.
 `dev` e `build` usam `--webpack`: o Turbopack não resolve os imports `./x.js` que apontam para
 `.ts` dentro de `@aj/shared`. O motivo e como reverter estão em `apps/web/next.config.ts`.
 
-**Auth local.** Em `supabase/config.toml`, `[auth.email]` está com `enable_confirmations = false`:
-o cadastro entra direto, sem confirmar e-mail. Se você ligar a confirmação, o painel avisa para
+**Auth local.** Não há cadastro público: o painel não tem tela de criar conta e `supabase/config.toml`
+está com `enable_signup = false`. Enquanto o convite pelo Telegram não existe, a conta do dono é criada
+no painel do Supabase (Authentication > Users > Add user). Em produção, desligue também a opção
+"Allow new users to sign up" do projeto Supabase (configuração remota, feita à mão). Em
+`[auth.email]`, `enable_confirmations = false`; se você ligar a confirmação, o painel avisa para
 confirmar e os e-mails de teste aparecem na interface web do servidor de e-mail local (porta 55324). A recuperação de senha envia o
 link para `/nova-senha`; essa URL está em `additional_redirect_urls` do mesmo arquivo (reinicie
 o Supabase local depois de alterar o `config.toml`).
 
-**O que está implementado:** entrar, cadastro, recuperação e redefinição de senha; Painel com
+**O que está implementado:** entrar, recuperação e redefinição de senha; Painel com
 adição rápida e visões Dia, Semana e Mês (hoje no fuso das configurações), resumo lateral,
 troca de status otimista, criação, edição e exclusão de tarefas (prazo, audiência, vínculo a
 processo existente); calculadora de prazos com criação de tarefa a partir do resultado;

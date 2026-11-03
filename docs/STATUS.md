@@ -30,7 +30,7 @@ assim por diante. Revise e integre na ordem.
 - **API** (Hono, porta 3001): tarefas, processos, feriados locais, configurações, briefing e cálculo de
   prazos em dias úteis/corridos, com isolamento por usuário (filtro explícito + RLS) e lembretes gravados
   na fila (`reminders`). Rotas e erros: README, seção "API".
-- **Painel** (Next.js, porta 3000): entrar, criar conta, recuperar e redefinir senha; Painel com adição
+- **Painel** (Next.js, porta 3000): entrar, recuperar e redefinir senha (sem cadastro público: contas são criadas pelo dono em Authentication > Users > Add user do Supabase, até existir o convite pelo Telegram; em produção, desligar "Allow new users to sign up"); Painel com adição
   rápida e visões Dia, Semana e Mês; troca de status com um clique; criar, editar e excluir tarefas;
   calculadora de prazos; histórico; configurações e feriados locais. Como subir tudo localmente: README,
   seção "Painel".
