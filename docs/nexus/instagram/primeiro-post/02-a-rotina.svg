@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080">
+  <rect width="1080" height="1350" fill="#F5F6F2"/>
+  <rect x="90" y="94" width="48" height="5" rx="2.5" fill="#C05640"/>
+  <text x="90" y="146" fill="#142D3A" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" letter-spacing="4">NEXUS · A IDEIA</text>
+  <text x="90" y="292" fill="#142D3A" font-family="Inter, Arial, sans-serif" font-size="67" font-weight="700" letter-spacing="-2">A tarefa</text>
+  <text x="90" y="372" fill="#142D3A" font-family="Inter, Arial, sans-serif" font-size="67" font-weight="700" letter-spacing="-2">aparece.</text>
+  <text x="90" y="478" fill="#142D3A" font-family="Inter, Arial, sans-serif" font-size="67" font-weight="700" letter-spacing="-2">A rotina</text>
+  <text x="90" y="558" fill="#142D3A" font-family="Inter, Arial, sans-serif" font-size="67" font-weight="700" letter-spacing="-2">atropela.</text>
+  <rect x="91" y="584" width="130" height="8" rx="4" fill="#C05640"/>
+  <text x="90" y="662" fill="#52616A" font-family="Inter, Arial, sans-serif" font-size="26">Você pensa “depois eu anoto”…</text>
+  <text x="90" y="704" fill="#52616A" font-family="Inter, Arial, sans-serif" font-size="26">e a tarefa some no meio de conversas,</text>
+  <text x="90" y="746" fill="#52616A" font-family="Inter, Arial, sans-serif" font-size="26">compromissos e notificações.</text>
+  <g transform="translate(90 813)">
+    <rect width="900" height="120" rx="22" fill="#FFFFFF"/>
+    <circle cx="58" cy="60" r="22" fill="#F3E3D9"/>
+    <path d="M58 47V60L68 67" fill="none" stroke="#8C4D3D" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="105" y="55" fill="#142D3A" font-family="Inter, Arial, sans-serif" font-size="25" font-weight="700">“Depois eu lembro.”</text>
+    <text x="105" y="88" fill="#52616A" font-family="Inter, Arial, sans-serif" font-size="20">Uma frase comum. Um plano que nem sempre funciona.</text>
+  </g>
+  <text x="90" y="1000" fill="#52616A" font-family="Inter, Arial, sans-serif" font-size="16">NEXUS · SUA ROTINA, CONECTADA</text>
+  <text x="990" y="1000" text-anchor="end" fill="#142D3A" font-family="Inter, Arial, sans-serif" font-size="16" font-weight="700">02 / 05</text>
+</svg>
