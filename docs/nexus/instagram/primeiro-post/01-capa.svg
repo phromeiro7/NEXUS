@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080">
+  <rect width="1080" height="1350" fill="#142D3A"/>
+  <circle cx="960" cy="196" r="250" fill="#1D3B49"/>
+  <circle cx="104" cy="1120" r="210" fill="#1D3B49"/>
+  <rect x="90" y="94" width="48" height="5" rx="2.5" fill="#C05640"/>
+  <text x="90" y="146" fill="#F5F6F2" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" letter-spacing="4">NEXUS</text>
+  <text x="90" y="315" fill="#F5F6F2" font-family="Inter, Arial, sans-serif" font-size="68" font-weight="700" letter-spacing="-2">Sua cabeça</text>
+  <text x="90" y="397" fill="#F5F6F2" font-family="Inter, Arial, sans-serif" font-size="68" font-weight="700" letter-spacing="-2">não precisa</text>
+  <text x="90" y="479" fill="#F5F6F2" font-family="Inter, Arial, sans-serif" font-size="68" font-weight="700" letter-spacing="-2">guardar</text>
+  <text x="90" y="561" fill="#F0A38B" font-family="Inter, Arial, sans-serif" font-size="82" font-weight="700" letter-spacing="-3">tudo.</text>
+  <text x="94" y="622" fill="#D7E2DE" font-family="Inter, Arial, sans-serif" font-size="25">Tarefas e lembretes com mais clareza.</text>
+  <g transform="translate(95 706)">
+    <path d="M36 118V41C36 33 46 30 52 36L100 92C106 99 116 95 116 86V41" fill="none" stroke="#F5F6F2" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="131" cy="41" r="7.5" fill="#C05640"/>
+  </g>
+  <text x="290" y="765" fill="#F5F6F2" font-family="Inter, Arial, sans-serif" font-size="27" font-weight="700">Conheça o Nexus</text>
+  <text x="290" y="807" fill="#B8C9C5" font-family="Inter, Arial, sans-serif" font-size="20">Uma ideia para organizar o dia</text>
+  <text x="290" y="840" fill="#B8C9C5" font-family="Inter, Arial, sans-serif" font-size="20">sem depender só da memória.</text>
+  <line x1="90" y1="955" x2="990" y2="955" stroke="#36515C" stroke-width="2"/>
+  <text x="90" y="1000" fill="#B8C9C5" font-family="Inter, Arial, sans-serif" font-size="16">DESLIZE PARA CONHECER</text>
+  <text x="990" y="1000" text-anchor="end" fill="#F5F6F2" font-family="Inter, Arial, sans-serif" font-size="16" font-weight="700">01 / 05</text>
+</svg>
