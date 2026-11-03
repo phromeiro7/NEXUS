@@ -86,7 +86,7 @@ Para disparar uma passada localmente (a API precisa estar no ar):
 (padrão `http://localhost:3001`) aponta para outra API; `http:` só é aceito para localhost, e qualquer outro
 destino precisa de `https:`. O script não segue redirecionamentos, imprime só o status HTTP e as contagens
 (em erro, só o código conhecido da API) e sai com código diferente de zero se o status não for 200. Em produção, um agendador externo deve chamar a rota a
-cada minuto (detalhes no runbook da Task 10).
+cada minuto (veja "Telegram e lembretes: runbook", abaixo).
 
 ### Telegram (vínculo e webhook)
 
@@ -117,6 +117,83 @@ aparece em respostas nem em logs. `/comando@outro_bot` só é comando se o sufix
 (`TELEGRAM_BOT_USERNAME`, sem distinguir maiúsculas); os comandos também não distinguem maiúsculas. Um chat só pode estar ligado a uma conta (`Este Telegram já está ligado a outra conta.`).
 
 Variáveis (só os nomes): `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET`.
+
+### Telegram e lembretes: runbook
+
+Fatos verificados de infraestrutura (limites do `pg_net`, Vault, Vercel, Bot API):
+[docs/superpowers/notes/2026-verificacoes-infra.md](docs/superpowers/notes/2026-verificacoes-infra.md).
+
+**1. Criar o bot.** No Telegram, abra o @BotFather, envie `/newbot` e escolha nome e username (termina em
+`bot`). O BotFather devolve o token: ele vai **só** para variável de ambiente, nunca para o repositório,
+logs, issues ou mensagens. Se vazar, use `/revoke` no BotFather e gere outro.
+
+**2. Variáveis de ambiente** (só os nomes; valores ficam fora do Git):
+
+- `TELEGRAM_BOT_TOKEN`: token do BotFather.
+- `TELEGRAM_BOT_USERNAME`: username do bot **sem** `@` (monta o link `https://t.me/<bot>?start=<código>`).
+- `TELEGRAM_WEBHOOK_SECRET`: segredo que você inventa (1 a 256 caracteres de `A-Z a-z 0-9 _ -`; gere com
+  `openssl rand -hex 32`). Sem ele o webhook responde `503`.
+- `INTERNAL_SECRET`: segredo do agendador (também `openssl rand -hex 32`). Sem ele a rota interna responde `503`.
+
+**3. Registrar o webhook** (depois que a API estiver no ar em HTTPS, no domínio de produção). Com o token e o
+segredo nas variáveis do shell e `<API>` o endereço público:
+
+```sh
+curl -sS "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
+  -d "url=<API>/telegram/webhook" \
+  -d "secret_token=$TELEGRAM_WEBHOOK_SECRET" \
+  -d 'allowed_updates=["message"]'
+```
+
+`getWebhookInfo` mostra o estado e o último erro; `deleteWebhook` desfaz. Com `secret_token`, o Telegram
+envia `X-Telegram-Bot-Api-Secret-Token` em cada chamada, e a API compara com `TELEGRAM_WEBHOOK_SECRET`.
+
+**4. Testar sem bot real.** Os testes usam Telegram falso (`apps/api/test/fakes.ts`) e modelo falso: nada sai
+para a internet e nada gasta dinheiro. A jornada completa (código, `/start`, mensagem que cria tarefa, resposta
+que a altera, lembrete enviado uma vez, conclusão) é o teste `apps/api/test/db/telegram-e2e.db.test.ts`, contra o
+Supabase local e com relógio fixo: `pnpm --filter @aj/api test:db`.
+
+**5. Rodar uma passada do agendador localmente.** Com a API no ar e `INTERNAL_SECRET` em `apps/api/.env`:
+`pnpm --filter @aj/api reminders:tick` (veja "Agendador interno").
+
+**6. Apontar o agendador em produção** (uma chamada por minuto). Opção A, preferida: `pg_cron` + `pg_net` + Vault
+no Supabase. Guarde o segredo e a URL no Vault (os valores reais só no SQL Editor do projeto, nunca no Git):
+
+```sql
+select vault.create_secret('<INTERNAL_SECRET>', 'internal_secret');
+select vault.create_secret('https://<dominio-de-producao-da-api>', 'api_base_url');
+
+select cron.schedule('reminders-tick', '* * * * *', $job$
+  select net.http_post(
+    url := (select decrypted_secret from vault.decrypted_secrets where name = 'api_base_url')
+           || '/internal/reminders/run',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'X-Internal-Secret', (select decrypted_secret from vault.decrypted_secrets where name = 'internal_secret')
+    ),
+    body := '{}'::jsonb,
+    timeout_milliseconds := 30000
+  );
+$job$);
+```
+
+`timeout_milliseconds` precisa ser explícito: o padrão do `pg_net` é 2000 ms e o endpoint pode levar cerca de
+45 s no pior caso. Se a resposta for descartada ou a execução for cortada, o resultado parcial é seguro:
+lembretes que ficaram `enviando` voltam a `pendente` depois de 5 minutos e são reenviados (garantia "pelo menos
+uma vez"). Já o briefing é "no máximo uma vez": se a execução cair depois de reservar o briefing do dia, o
+briefing daquele dia se perde. Confirme que `pg_cron` e `pg_net` estão habilitados no projeto (a documentação
+oficial não confirma a disponibilidade no plano gratuito).
+
+Opção B: um cron externo (qualquer serviço) que faça o mesmo `POST <dominio-de-producao>/internal/reminders/run`
+a cada minuto com o cabeçalho `X-Internal-Secret: <INTERNAL_SECRET>`; o código não muda.
+
+Em qualquer opção, o agendador deve apontar para o **domínio de produção**, nunca para URLs de preview (a
+proteção de implantação da Vercel as bloqueia; o domínio de produção fica de fora da proteção padrão).
+
+**Hospedagem.** O alvo é a Vercel (domínio gratuito `*.vercel.app`; o plano Hobby é só para uso não comercial).
+**Ainda falta** o adaptador que expõe a API Hono como função da Vercel (um entrypoint de função): ele **não foi
+construído**. Hoje a API só sobe como servidor Node (`src/server.ts`); sem o adaptador, o webhook e o agendador
+não têm onde receber chamadas em produção.
 
 ### Assistente de IA
 
