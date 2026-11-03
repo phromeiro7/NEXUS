@@ -1,25 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from 'vitest';
 import type { Holiday, IsoDate } from '@aj/shared';
-import { createApp } from './app.js';
-import { makeCalculateDeadline } from './application/calculate-deadline.js';
 import type { HolidayRepository } from './application/ports.js';
+import { buildApp, WEB_ORIGIN } from '../test/harness.js';
 
 function build(opts: { rows?: Holiday[]; explode?: boolean; verifierThrows?: boolean } = {}) {
   const seen: string[] = [];
-  const holidays: HolidayRepository = {
+  const calcHolidays: HolidayRepository = {
     async listByUser(userId, from, to) {
       seen.push(userId);
       if (opts.explode) throw new Error('segredo interno: db password');
       return (opts.rows ?? []).filter((h) => h.date >= from && h.date <= to);
     },
   };
-  const app = createApp({
-    verifyToken: async (t) => {
-      if (opts.verifierThrows) throw new Error('auth provider fora do ar');
-      return t === 'token-ok' ? { userId: 'u1' } : null;
-    },
-    calculateDeadline: makeCalculateDeadline({ holidays }),
-  });
+  const { app } = buildApp({ calcHolidays, verifierThrows: opts.verifierThrows });
   return { app, seen };
 }
 
@@ -136,6 +129,122 @@ describe('app', () => {
       expect(res.status).toBe(500);
       expect(await res.json()).toEqual({ error: 'erro_interno' });
       expect(errorSpy).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('CORS', () => {
+    const preflight = (origin: string) =>
+      build().app.request('/tasks', {
+        method: 'OPTIONS',
+        headers: {
+          Origin: origin,
+          'Access-Control-Request-Method': 'POST',
+          'Access-Control-Request-Headers': 'authorization,content-type',
+        },
+      });
+
+    it('preflight from the allowed origin is 204 with the origin echoed, without a token', async () => {
+      const res = await preflight(WEB_ORIGIN);
+      expect(res.status).toBe(204);
+      expect(res.headers.get('access-control-allow-origin')).toBe(WEB_ORIGIN);
+      expect(res.headers.get('access-control-allow-methods')).toBe('GET,POST,PATCH,DELETE,OPTIONS');
+      expect(res.headers.get('access-control-allow-headers')).toBe('Authorization,Content-Type');
+      expect(res.headers.get('access-control-allow-credentials')).toBeNull();
+    });
+
+    it('preflight from another origin gets no access-control-allow-origin', async () => {
+      const res = await preflight('https://evil.example');
+      expect(res.headers.get('access-control-allow-origin')).toBeNull();
+    });
+
+    it('an authenticated GET from the allowed origin carries the header; from another origin it does not', async () => {
+      const { app } = build();
+      const ok = await app.request('/tasks', { headers: { ...auth, Origin: WEB_ORIGIN } });
+      expect(ok.status).toBe(200);
+      expect(ok.headers.get('access-control-allow-origin')).toBe(WEB_ORIGIN);
+      const other = await app.request('/tasks', { headers: { ...auth, Origin: 'https://evil.example' } });
+      expect(other.status).toBe(200);
+      expect(other.headers.get('access-control-allow-origin')).toBeNull();
+    });
+
+    it('CORS does not bypass auth: an unauthenticated normal request is still 401', async () => {
+      const res = await build().app.request('/tasks', { headers: { Origin: WEB_ORIGIN } });
+      expect(res.status).toBe(401);
+    });
+  });
+
+  describe('body limit (64 KB)', () => {
+    // ~70 KB de JSON válido, acima do limite.
+    const bigBody = JSON.stringify({ title: 'Grande', notes: 'x'.repeat(70 * 1024) });
+
+    it('a 70 KB body to POST /tasks with a valid token is 413 corpo_muito_grande and creates nothing', async () => {
+      const { app, fakes } = buildApp();
+      expect(bigBody.length).toBeGreaterThan(64 * 1024);
+      const res = await app.request('/tasks', { method: 'POST', headers: auth, body: bigBody });
+      expect(res.status).toBe(413);
+      expect(await res.json()).toEqual({ error: 'corpo_muito_grande' });
+      expect(await fakes.tasks.list('u1', {})).toEqual([]);
+    });
+
+    it('the limit runs before auth: the same body without a token is 413, not 401', async () => {
+      const { app, fakes } = buildApp();
+      const res = await app.request('/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: bigBody,
+      });
+      expect(res.status).toBe(413);
+      expect(await res.json()).toEqual({ error: 'corpo_muito_grande' });
+      expect(await fakes.tasks.list('u1', {})).toEqual([]);
+    });
+
+    it('a normal-size body still works', async () => {
+      const { app, fakes } = buildApp();
+      const res = await app.request('/tasks', {
+        method: 'POST',
+        headers: auth,
+        body: JSON.stringify({ title: 'Pequena', dueDate: '2026-10-30' }),
+      });
+      expect(res.status).toBe(201);
+      expect((await fakes.tasks.list('u1', {})).map((t) => t.title)).toEqual(['Pequena']);
+    });
+
+    it('GET requests are unaffected', async () => {
+      const res = await build().app.request('/tasks', { headers: auth });
+      expect(res.status).toBe(200);
+    });
+
+    it('a preflight is unaffected', async () => {
+      const res = await build().app.request('/tasks', {
+        method: 'OPTIONS',
+        headers: {
+          Origin: WEB_ORIGIN,
+          'Access-Control-Request-Method': 'POST',
+          'Access-Control-Request-Headers': 'authorization,content-type',
+        },
+      });
+      expect(res.status).toBe(204);
+      expect(res.headers.get('access-control-allow-origin')).toBe(WEB_ORIGIN);
+    });
+  });
+
+  describe('notFound', () => {
+    it('an unknown path returns JSON 404 with and without a token', async () => {
+      const { app } = build();
+      for (const headers of [{}, auth]) {
+        const res = await app.request('/nao-existe', { headers });
+        expect(res.status).toBe(404);
+        expect(await res.json()).toEqual({ error: 'nao_encontrado' });
+      }
+    });
+
+    it('an unknown /tasks sub-path stays behind auth', async () => {
+      const { app } = build();
+      const anon = await app.request('/tasks/a/b/c');
+      expect(anon.status).toBe(401);
+      const logged = await app.request('/tasks/a/b/c', { headers: auth });
+      expect(logged.status).toBe(404);
+      expect(await logged.json()).toEqual({ error: 'nao_encontrado' });
     });
   });
 });

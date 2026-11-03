@@ -1,13 +1,9 @@
-import type { CalculateDeadlineInput, Holiday, IsoDate } from '@aj/shared';
+import type { CalculateDeadlineInput, CalculateDeadlineResultDto, Holiday, IsoDate } from '@aj/shared';
 import { assertValidDeadlineDays, calculateDeadline } from '../domain/deadline.js';
 import { nationalHolidays } from '../domain/holidays.js';
 import type { HolidayRepository } from './ports.js';
 
-export type CalculateDeadlineOutput = {
-  dueDate: IsoDate;
-  prorrogado: boolean;
-  feriadosDescontados: Holiday[];
-};
+export type CalculateDeadlineOutput = CalculateDeadlineResultDto;
 
 export function makeCalculateDeadline(deps: { holidays: HolidayRepository }) {
   return async (userId: string, input: CalculateDeadlineInput): Promise<CalculateDeadlineOutput> => {
