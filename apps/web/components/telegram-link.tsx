@@ -31,6 +31,7 @@ export function TelegramLink({ linked, paused }: { linked: boolean; paused: bool
   const mounted = useRef(true);
   const generating = useRef(false);
   const unlinking = useRef(false);
+  const rootRef = useRef<HTMLDivElement>(null);
   const returnRef = useRef<HTMLElement | null>(null);
 
   const [code, setCode] = useState<LinkCodeDto | null>(null);
@@ -49,16 +50,18 @@ export function TelegramLink({ linked, paused }: { linked: boolean; paused: bool
     };
   }, []);
 
-  // Vinculado (detectado pelo polling): o código não vale mais.
+  // Vinculado e sem pausa (detectado pelo polling): o código não vale mais.
+  // Vinculado e pausado ainda precisa de um código novo para retomar.
+  const settled = linked && !paused;
   useEffect(() => {
-    if (linked) {
+    if (settled) {
       setCode(null);
       setExpired(false);
       setCopyMsg(null);
     }
-  }, [linked]);
+  }, [settled]);
 
-  const activeCode = linked ? null : code;
+  const activeCode = settled ? null : code;
   const expiresAtMs = activeCode ? Date.parse(activeCode.expiresAt) : null;
 
   useEffect(() => {
@@ -121,6 +124,8 @@ export function TelegramLink({ linked, paused }: { linked: boolean; paused: bool
     try {
       await api.unlinkTelegram();
       await client.invalidateQueries({ queryKey: queryKeys.settings });
+      // O botão Desvincular some com o vínculo; o foco volta ao contêiner, sempre montado.
+      returnRef.current = rootRef.current;
     } catch (err) {
       if (mounted.current) setError(messageFor(err));
     } finally {
@@ -136,17 +141,17 @@ export function TelegramLink({ linked, paused }: { linked: boolean; paused: bool
   const link = activeCode && activeCode.deepLink.startsWith(TELEGRAM_PREFIX) ? activeCode.deepLink : null;
 
   return (
-    <div className="flex flex-col gap-3">
+    <div ref={rootRef} tabIndex={-1} data-testid="telegram-link" className="flex flex-col gap-3 outline-none">
       {paused && (
         <p
           role="alert"
           className="rounded border-2 border-[var(--color-fatal)] p-3 text-sm font-semibold text-[var(--color-texto)]"
         >
-          O envio pelo Telegram está pausado (o bot foi bloqueado). Gere um novo código para retomar.
+          O envio está pausado (bot bloqueado). Gere um novo código para retomar.
         </p>
       )}
 
-      {linked ? (
+      {linked && (
         <div className="flex flex-col gap-2">
           <p className="text-sm font-medium">
             <span aria-hidden="true">✓ </span>Telegram vinculado
@@ -180,9 +185,11 @@ export function TelegramLink({ linked, paused }: { linked: boolean; paused: bool
             onCancel={() => setConfirming(false)}
           />
         </div>
-      ) : (
+      )}
+
+      {(!linked || paused) && (
         <div className="flex flex-col gap-2">
-          <p className="text-sm">Telegram não vinculado</p>
+          {!linked && <p className="text-sm">Telegram não vinculado</p>}
           {activeCode === null ? (
             <div>
               <button type="button" className={btnPrimary} disabled={pending} onClick={() => void generate()}>
