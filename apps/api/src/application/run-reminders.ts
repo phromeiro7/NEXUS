@@ -107,10 +107,16 @@ export function makeRunReminders(deps: RunRemindersDeps) {
           });
         }
       };
-      const resyncIfChanged = (): Promise<void> =>
+      /** `always`: depois de um envio, refaz mesmo sem mudança de data/hora (ex.: antecedência ou fuso mudaram durante o envio). */
+      const resyncIfChanged = (always = false): Promise<void> =>
         bestEffort(async () => {
           const after = await tasks.get(r.userId, r.taskId);
-          if (after !== null && after.status !== 'concluida' && after.status !== 'cancelada' && changedSince(r, after)) {
+          if (
+            after !== null &&
+            after.status !== 'concluida' &&
+            after.status !== 'cancelada' &&
+            (always || changedSince(r, after))
+          ) {
             await syncReminders(r.userId, after, await profiles.get(r.userId));
           }
         });
@@ -171,7 +177,9 @@ export function makeRunReminders(deps: RunRemindersDeps) {
           attempts: r.attempts,
           durationMs: clock.now().getTime() - sendStartedAt,
         });
-        await resyncIfChanged();
+        // Mudança de configuração (antecedência, fuso) durante o envio: o rascunho do novo lembrete foi barrado
+        // pelo 'enviando'. A ressincronização é idempotente, então sempre refaz depois de um envio.
+        await resyncIfChanged(true);
         return;
       }
 

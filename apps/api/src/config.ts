@@ -57,6 +57,15 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
   if (telegramWebhookSecret !== undefined && !/^[A-Za-z0-9_-]{1,256}$/.test(telegramWebhookSecret)) {
     throw new Error('TELEGRAM_WEBHOOK_SECRET inválida: use de 1 a 256 caracteres entre letras, dígitos, _ e -');
   }
+  // Segredos curtos são adivinháveis (a rota interna não tem limite de tentativas): mínimo de 16.
+  for (const [name, value] of [
+    ['TELEGRAM_WEBHOOK_SECRET', telegramWebhookSecret],
+    ['INTERNAL_SECRET', internalSecret],
+  ] as const) {
+    if (value !== undefined && value.length < 16) {
+      throw new Error(`${name} inválida: use pelo menos 16 caracteres (gere com openssl rand -hex 32)`);
+    }
+  }
   if (telegramBotUsername !== undefined && !/^[A-Za-z0-9_]{3,64}$/.test(telegramBotUsername)) {
     throw new Error('TELEGRAM_BOT_USERNAME inválida: use de 3 a 64 letras, dígitos ou _, sem @');
   }

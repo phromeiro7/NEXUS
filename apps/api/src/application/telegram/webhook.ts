@@ -8,6 +8,7 @@ import {
   MessageTooLongError,
   RateLimitedError,
   TargetTasksGoneError,
+  UpdateNotRegisteredError,
 } from '../errors.js';
 import type {
   Clock,
@@ -159,13 +160,23 @@ export function makeHandleTelegramUpdate(deps: HandleTelegramUpdateDeps) {
     const chatId = message.chat.id;
     const now = clock.now();
 
-    const userId = await links.userForChat(chatId);
+    // Falhas de infraestrutura antes do registro do evento viram UpdateNotRegisteredError (a rota responde 500).
+    const beforeRegistration = async <T>(work: () => Promise<T>): Promise<T> => {
+      try {
+        return await work();
+      } catch (error) {
+        if (error instanceof ForeignEventError) throw error;
+        throw new UpdateNotRegisteredError(error);
+      }
+    };
+
+    const userId = await beforeRegistration(() => links.userForChat(chatId));
     const text = message.text;
     const command = text === undefined ? null : parseCommand(text, deps.botUsername);
 
     /** Idempotência dos ramos sem modelo (Ruling 21): `false` = já tratado, nada a fazer. */
     const firstTime = async (): Promise<boolean> =>
-      (await events.register(userId, 'telegram', String(updateId), now)).firstTime;
+      (await beforeRegistration(() => events.register(userId, 'telegram', String(updateId), now))).firstTime;
 
     if (text === undefined) {
       if (!(await firstTime())) return;

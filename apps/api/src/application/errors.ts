@@ -22,6 +22,20 @@ export class ForeignEventError extends Error {
   }
 }
 
+/**
+ * Falha de infraestrutura ANTES de o update do Telegram ser registrado (consulta do vínculo ou registro
+ * do evento): nada foi feito nem respondido, então a rota devolve 500 e o Telegram reenvia. Guarda só o
+ * nome do erro original, nunca a mensagem.
+ */
+export class UpdateNotRegisteredError extends Error {
+  readonly causeName: string;
+  constructor(cause: unknown) {
+    super('Update do Telegram não registrado');
+    this.name = 'UpdateNotRegisteredError';
+    this.causeName = cause instanceof Error ? cause.name : 'desconhecido';
+  }
+}
+
 /** Transição de evento inválida: evento inexistente, estado que não a permite, ou usuário ausente. */
 export class EventStateError extends Error {
   constructor(readonly code: 'evento_inexistente' | 'evento_em_estado_invalido' | 'usuario_obrigatorio') {

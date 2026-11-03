@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { UpdateNotRegisteredError } from '../application/errors.js';
 import { anon, buildApp, req } from '../../test/harness.js';
 import { secretsMatch } from './secret.js';
 
@@ -147,6 +148,21 @@ describe('POST /telegram/webhook', () => {
     expect(logged).toContain('TypeError');
     expect(logged).not.toContain(SECRET);
     expect(logged).not.toContain('texto do usuário');
+  });
+
+  it('500 with no body when the handler reports the update was not registered, so Telegram retries; logs only the name', async () => {
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { app } = setup({
+      handler: async () => {
+        throw new UpdateNotRegisteredError(new TypeError(`banco ${SECRET}`));
+      },
+    });
+    const res = await hook(app, { 'X-Telegram-Bot-Api-Secret-Token': SECRET });
+    expect(res.status).toBe(500);
+    expect(await res.text()).toBe('');
+    const logged = JSON.stringify(errSpy.mock.calls);
+    expect(logged).toContain('TypeError');
+    expect(logged).not.toContain(SECRET);
   });
 
   it('never echoes the secret in any response', async () => {

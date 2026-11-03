@@ -124,7 +124,8 @@ describe('runReminders', () => {
       },
     ]);
     expect(row(s, id).status).toBe('enviado');
-    expect(s.sync).not.toHaveBeenCalled();
+    // Ruling 24 (M1): depois de um envio sempre refaz os lembretes abertos, mesmo sem mudança na tarefa.
+    expect(s.sync).toHaveBeenCalledTimes(1);
   });
 
   it('atraso de 2 h: texto termina com " (atrasado)"', async () => {
@@ -444,12 +445,22 @@ describe('runReminders', () => {
       expect(events[1]).toBe('sync');
     });
 
-    it.each(outcomes)('$name sem mudança: syncReminders NÃO chamado', async (o) => {
+    it.each(outcomes)('$name sem mudança: syncReminders só é chamado depois de um envio (Ruling 24, M1)', async (o) => {
       const s = setup();
       const { id } = await s.addReminder('u1', { attempts: o.attempts });
       if (o.script !== null) s.f.telegram.failNext(o.script);
       await s.make()();
       expect(row(s, id).status).toBe(o.status);
+      expect(s.sync).toHaveBeenCalledTimes(o.name === 'enviado' ? 1 : 0);
+    });
+
+    it('enviado + tarefa concluída durante o envio: nada a refazer mesmo com o resync sempre ligado', async () => {
+      const s = setup();
+      const { task } = await s.addReminder('u1');
+      s.setOnSend(async () => {
+        await s.f.tasks.update('u1', task.id, { status: 'cancelada' });
+      });
+      await s.make()();
       expect(s.sync).not.toHaveBeenCalled();
     });
 
