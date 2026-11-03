@@ -10,3 +10,4 @@ supabase/.temp
 coverage
 apps/api/.vitest/
 .DS_Store
+graphify-out/
