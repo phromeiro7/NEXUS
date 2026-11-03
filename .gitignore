@@ -11,5 +11,4 @@ coverage
 apps/api/.vitest/
 .DS_Store
 graphify-out/
-apps/api/api/
-apps/api/public/
+apps/api/.vercel/
