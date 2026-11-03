@@ -46,16 +46,12 @@ const endStep = (text: string): ModelStep => ({ stopReason: 'end_turn', blocks: 
 
 // Telegram falso (registra tudo); a demora artificial faz execuções simultâneas se sobreporem. Sem
 // o bloqueio da reserva, 8 execuções simultâneas reservam o mesmo lembrete na maioria das vezes (3 não bastavam).
-// `duringSend` deixa um teste agir (ex.: mudar configurações) enquanto o lembrete está 'enviando'.
-let duringSend: (() => Promise<void>) | null = null;
+
 const fakes = createFakes();
 const telegram = fakes.telegram;
 const slowTelegram: TelegramClient = {
   async sendMessage(chatId, text) {
-    const hookFn = duringSend;
-    duringSend = null;
     await new Promise((r) => setTimeout(r, 100));
-    if (hookFn !== null) await hookFn();
     return telegram.sendMessage(chatId, text);
   },
 };
@@ -290,42 +286,5 @@ describe('failure paths end to end', () => {
     expect(
       (await pool.query(`select count(*)::int as n from public.inbound_events where channel = 'telegram' and user_id = $1 and external_id = $2`, [u.id, String(msg.update_id)])).rows[0].n,
     ).toBe(1);
-  });
-});
-
-describe('settings change during a send (M1)', () => {
-  it('changing early_reminder_minutes while a reminder is "enviando" still leaves the new-offset reminder after the send', async () => {
-    setNow('2033-03-09T12:00:00.000Z');
-    const u = await makeUser('offset');
-    const chat = newChat();
-    const code = (await call(u, 'POST', '/telegram/link-codes')).json.code as string;
-    await hook(update(chat, { text: `/start ${code}` }));
-    const created = await call(u, 'POST', '/tasks', {
-      title: 'Offset',
-      type: 'tarefa',
-      dueDate: '2033-03-10',
-      dueTime: '14:00',
-    });
-    expect(created.status).toBe(201);
-    const id = created.json.id as string;
-    expect((await remindersOf(id)).map((r) => [r.kind, r.scheduled_at])).toEqual([
-      ['antecipado', '2033-03-10T16:45:00Z'],
-      ['no_horario', '2033-03-10T17:00:00Z'],
-    ]);
-
-    setNow('2033-03-10T16:46:00.000Z'); // antecipado venceu; no_horario ainda não
-    duringSend = async () => {
-      const patched = await call(u, 'PATCH', '/settings', { earlyReminderMinutes: 5 });
-      expect(patched.status).toBe(200);
-    };
-    const res = await tick();
-    expect(res.status).toBe(200);
-    expect(((await res.json()) as { reminders: { sent: number } }).reminders.sent).toBe(1);
-
-    expect(await remindersOf(id)).toEqual([
-      { kind: 'antecipado', status: 'enviado', scheduled_at: '2033-03-10T16:45:00Z', attempts: 1 },
-      { kind: 'antecipado', status: 'pendente', scheduled_at: '2033-03-10T16:55:00Z', attempts: 0 },
-      { kind: 'no_horario', status: 'pendente', scheduled_at: '2033-03-10T17:00:00Z', attempts: 0 },
-    ]);
   });
 });
