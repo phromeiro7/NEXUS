@@ -4,7 +4,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeSupabase } from "@/test/fake-supabase";
 import { AuthProvider } from "@/components/auth-provider";
 import EntrarPage from "./page";
-import CadastroPage from "../cadastro/page";
 import RecuperarPage from "../recuperar/page";
 
 const router = { replace: vi.fn(), push: vi.fn() };
@@ -79,36 +78,16 @@ describe("Entrar", () => {
   });
 });
 
-describe("Cadastro", () => {
-  it("valida senha mínima de 8 antes de chamar o Supabase", async () => {
-    const { client, auth } = fakeSupabase();
-    const user = userEvent.setup();
+describe("Entrar sem cadastro público", () => {
+  it("não oferece criar conta, só recuperar a senha", () => {
+    const { client } = fakeSupabase();
     render(
       <AuthProvider client={client}>
-        <CadastroPage />
+        <EntrarPage />
       </AuthProvider>,
     );
-    expect(screen.getByLabelText("Senha")).toHaveAttribute("autocomplete", "new-password");
-    await user.type(screen.getByLabelText("E-mail"), "a@b.co");
-    await user.type(screen.getByLabelText("Senha"), "1234567");
-    await user.click(screen.getByRole("button", { name: "Criar conta" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("pelo menos 8 caracteres");
-    expect(auth.signUp).not.toHaveBeenCalled();
-    expect(screen.getByLabelText("E-mail")).toHaveValue("a@b.co");
-  });
-
-  it("com 8 caracteres chama signUp", async () => {
-    const { client, auth } = fakeSupabase();
-    const user = userEvent.setup();
-    render(
-      <AuthProvider client={client}>
-        <CadastroPage />
-      </AuthProvider>,
-    );
-    await user.type(screen.getByLabelText("E-mail"), "a@b.co");
-    await user.type(screen.getByLabelText("Senha"), "12345678");
-    await user.click(screen.getByRole("button", { name: "Criar conta" }));
-    await waitFor(() => expect(auth.signUp).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("link", { name: "Criar conta" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Esqueci a senha" })).toHaveAttribute("href", "/recuperar");
   });
 });
 
