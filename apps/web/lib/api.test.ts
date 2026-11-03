@@ -112,6 +112,15 @@ describe('createApiClient requests', () => {
     ]);
   });
 
+  it('sendAssistantMessage posts text and clientMessageId only', async () => {
+    const { client, calls } = setup(() => Response.json({ reply: 'ok', affectedTasks: [] }));
+    const input = { text: 'oi', clientMessageId: '3f2b8c1e-5d4a-4b7e-9a10-2c6d8e4f1a77' };
+    await expect(client.sendAssistantMessage(input)).resolves.toEqual({ reply: 'ok', affectedTasks: [] });
+    expect(calls[0]!.url).toBe('http://api.test/assistant/message');
+    expect(calls[0]!.init.method).toBe('POST');
+    expect(JSON.parse(calls[0]!.init.body as string)).toEqual(input);
+  });
+
   it('deleteTask and deleteHoliday handle 204 without reading JSON', async () => {
     const json = vi.fn(() => Promise.reject(new Error('no json')));
     const res = { ok: true, status: 204, json } as unknown as Response;

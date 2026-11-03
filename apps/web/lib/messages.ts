@@ -11,6 +11,8 @@ const BY_CODE: Record<string, string> = {
   feriado_ja_cadastrado: 'Este feriado já está cadastrado.',
   corpo_muito_grande: 'Os dados enviados são grandes demais.',
   rede: 'Sem conexão com o servidor.',
+  em_processamento: 'Sua mensagem anterior ainda está sendo processada. Aguarde um instante e tente de novo.',
+  conflito_de_evento: 'Não foi possível processar esta mensagem. Tente reenviar.',
 };
 
 const HORA_BY_REASON: Record<string, string> = {
@@ -18,8 +20,19 @@ const HORA_BY_REASON: Record<string, string> = {
   hora_ambigua: 'Esta hora ocorre duas vezes no fuso configurado. Escolha outro horário.',
 };
 
+const ASSISTANT_DOWN = 'O assistente está indisponível agora. Nada foi alterado.';
+
 export function messageFor(error: unknown): string {
   if (!(error instanceof ApiError)) return GENERIC;
+  if (error.code === 'limite_de_mensagens') {
+    const secs = (error.body as { retryAfterSeconds?: unknown } | null)?.retryAfterSeconds;
+    const minutes = typeof secs === 'number' && Number.isFinite(secs) ? Math.max(1, Math.ceil(secs / 60)) : 1;
+    return `Limite de 30 mensagens por hora atingido. Tente de novo em ${minutes} min.`;
+  }
+  if (error.code === 'assistente_indisponivel') {
+    const reason = (error.body as { reason?: unknown } | null)?.reason;
+    return reason === 'configuracao' ? 'O assistente ainda não está configurado.' : ASSISTANT_DOWN;
+  }
   if (error.code === 'hora_invalida') {
     const reason = (error.body as { reason?: unknown } | null)?.reason;
     return (typeof reason === 'string' && HORA_BY_REASON[reason]) || 'Esta hora não é válida no fuso configurado.';
