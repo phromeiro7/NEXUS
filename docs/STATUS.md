@@ -87,7 +87,7 @@ registrado.
   trocar o código.
 - Tempo do agendador: o pior caso real é ~45 s; o `pg_net` deve usar `timeout_milliseconds` de 60000, e a
   função da Vercel precisa de `maxDuration` de pelo menos 60 s.
-- A API é um servidor Node; falta o adaptador de função para a Vercel.
+- O adaptador de função da Vercel existe (`apps/api/vercel.json`, bundle esbuild em `api/index.js`; veja o README, "Publicar na Vercel (API)"), mas **nenhum deploy real foi feito** e a primeira publicação pode exigir um ajuste.
 
 ## Plano 6 — acabamento e publicação (não iniciado)
 
