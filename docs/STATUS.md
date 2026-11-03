@@ -6,6 +6,11 @@ pronto, o que falta, o que depende de decisão ou de conta externa e o que ainda
 Referências: especificação em `docs/superpowers/specs/2026-10-26-assistente-juridico-design.md`;
 planos de implementação em `docs/superpowers/plans/` (um por etapa, numerados de 1 a 6).
 
+> **Rumo do produto (2026-11-03):** o projeto está migrando de assistente jurídico para o **Nexus**, assistente
+> pessoal de tarefas com Telegram como canal principal. Decisões abertas, ordem do trabalho e alterações
+> previstas em `docs/ROTEIRO-NEXUS.md`. O desenho do Mini App está em
+> `docs/superpowers/specs/2026-11-03-mini-app-telegram-design.md`.
+
 ## Visão geral
 
 | Plano | Escopo | Situação |
@@ -98,6 +103,14 @@ Backlog herdado do Plano 4 para este plano:
 - `listar_tarefas` carrega tudo antes de cortar em 50.
 - Um 400 BadRequest da API real hoje vira a mensagem de 'configuracao': confirmar na execução real.
 - A própria execução do roteiro com o modelo real (aguarda a chave e a aprovação do gasto do usuário).
+
+## Plano 7 (7a e 7b) — Mini App do Telegram completo e convites (desenhado; não iniciado)
+
+Decisão de 03/11/2026: uso pessoal e de poucos convidados, então o Telegram vira a entrada principal
+(Mini App sem senha), os convidados entram por convite e o login por e-mail e senha fica como porta de
+reserva do administrador. Desenho completo e perguntas em aberto em
+`docs/superpowers/specs/2026-11-03-mini-app-telegram-design.md`. Depende do Plano 5 e do bot/painel
+hospedados.
 
 ## Depende de você (decisões e contas)
 
