@@ -251,6 +251,6 @@ describe("SettingsForm", () => {
 
   it("channelPaused mostra o alerta de pausa na seção Telegram", () => {
     setup({ ...SETTINGS, channelPaused: true });
-    expect(screen.getByRole("alert")).toHaveTextContent("O envio pelo Telegram está pausado");
+    expect(screen.getByRole("alert")).toHaveTextContent("O envio está pausado (bot bloqueado). Gere um novo código para retomar.");
   });
 });

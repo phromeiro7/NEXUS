@@ -270,6 +270,20 @@ describe("TelegramLink vinculado", () => {
     expect(spy).toHaveBeenCalledWith({ queryKey: ["settings"] });
   });
 
+  it("fecha o diálogo e devolve o foco a um elemento montado após desvincular", async () => {
+    setup({ linked: true });
+    fireEvent.click(screen.getByRole("button", { name: "Desvincular" }));
+    const dialog = document.querySelector("dialog")!;
+    expect(dialog.open).toBe(true);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Sim, desvincular" }));
+    });
+    expect(dialog.open).toBe(false);
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement?.isConnected).toBe(true);
+    expect(screen.getByTestId("telegram-link")).toBe(document.activeElement);
+  });
+
   it("erro ao desvincular aparece em alert e mantém o estado vinculado", async () => {
     api.unlinkTelegram.mockRejectedValue(new ApiError(0, "rede", null));
     const { spy } = setup({ linked: true });
@@ -284,16 +298,41 @@ describe("TelegramLink vinculado", () => {
 });
 
 describe("TelegramLink pausado", () => {
-  const MSG = "O envio pelo Telegram está pausado (o bot foi bloqueado). Gere um novo código para retomar.";
+  const MSG = "O envio está pausado (bot bloqueado). Gere um novo código para retomar.";
 
   it("mostra o alerta quando não vinculado", () => {
     setup({ paused: true });
     expect(screen.getByRole("alert")).toHaveTextContent(MSG);
   });
 
-  it("mostra o alerta quando vinculado", () => {
+  it("vinculado e pausado: alerta, Desvincular e Gerar código juntos", () => {
     setup({ linked: true, paused: true });
-    expect(screen.getByRole("alert")).toHaveTextContent(MSG);
+    expect(screen.getByRole("alert").textContent).toBe(MSG);
+    expect(screen.getByRole("button", { name: "Desvincular" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Gerar código" })).toBeInTheDocument();
+  });
+
+  it("vinculado e pausado: gerar mostra código, link, contagem e faz polling", async () => {
+    const { spy } = setup({ linked: true, paused: true });
+    await generate();
+    expect(screen.getByText("ABC123XY")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Abrir no Telegram" })).toHaveAttribute(
+      "href",
+      "https://t.me/assistente_bot?start=ABC123XY",
+    );
+    expect(screen.getByText("Válido por 10:00")).toBeInTheDocument();
+    await advance(10_000);
+    expect(settingsCalls(spy)).toBe(2);
+  });
+
+  it("depois de consumir o código (paused: false) volta ao estado vinculado simples", async () => {
+    const { rerender } = setup({ linked: true, paused: true });
+    await generate();
+    rerender({ linked: true, paused: false });
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByText("ABC123XY")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Gerar código" })).toBeNull();
+    expect(screen.getByText("Telegram vinculado")).toBeInTheDocument();
   });
 
   it("sem pausa não há alerta", () => {
