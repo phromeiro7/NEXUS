@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
@@ -6,30 +6,59 @@ import { build } from 'esbuild';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 /**
- * Empacota src/vercel.ts (com @aj/shared e todas as dependências) em um único api/index.js ESM, que a Vercel serve
- * como função Node. Assim não há TypeScript nem resolução de workspace em tempo de execução.
+ * Gera `.vercel/output` (Build Output API v3) com uma única função Node em `functions/api.func`, atendendo a
+ * todos os caminhos. O handler é um bundle CommonJS autocontido (inclui @aj/shared e todas as dependências):
+ * não há TypeScript nem resolução de workspace em tempo de execução. Devolve o caminho do bundle.
  */
-export async function buildVercelBundle(): Promise<string> {
-  const outfile = resolve(root, 'api/index.js');
+export async function buildVercelOutput(): Promise<string> {
+  const output = resolve(root, '.vercel/output');
+  const func = resolve(output, 'functions/api.func');
+  rmSync(output, { recursive: true, force: true });
+  mkdirSync(func, { recursive: true });
+  mkdirSync(resolve(output, 'static'), { recursive: true });
+
+  const bundle = resolve(func, 'index.js');
   await build({
     entryPoints: [resolve(root, 'src/vercel.ts')],
-    outfile,
+    outfile: bundle,
     bundle: true,
     platform: 'node',
     target: 'node22',
-    format: 'esm',
+    format: 'cjs',
     sourcemap: false,
     logLevel: 'warning',
-    // Dependências CommonJS empacotadas podem chamar require(); ESM puro não o define.
-    banner: { js: "import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);" },
+    // `export default listener` vira `module.exports = listener` (o launcher da Vercel faz require do handler).
+    footer: { js: 'module.exports = module.exports.default;' },
   });
-  // O projeto da Vercel exige um diretório de saída; a API não serve arquivos estáticos.
-  mkdirSync(resolve(root, 'public'), { recursive: true });
-  writeFileSync(resolve(root, 'public/.gitkeep'), '');
-  return outfile;
+
+  writeFileSync(
+    resolve(func, '.vc-config.json'),
+    `${JSON.stringify(
+      {
+        runtime: 'nodejs22.x',
+        handler: 'index.js',
+        launcherType: 'Nodejs',
+        maxDuration: 60,
+        regions: ['gru1'],
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  // Marca o bundle como CommonJS (o package.json do app é "type": "module").
+  writeFileSync(resolve(func, 'package.json'), '{ "type": "commonjs" }\n');
+  writeFileSync(
+    resolve(output, 'config.json'),
+    `${JSON.stringify(
+      { version: 3, routes: [{ handle: 'filesystem' }, { src: '/(.*)', dest: '/api' }] },
+      null,
+      2,
+    )}\n`,
+  );
+  return bundle;
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const out = await buildVercelBundle();
-  console.log(`bundle gerado: ${out}`);
+  const out = await buildVercelOutput();
+  console.log(`saída gerada: ${out}`);
 }
