@@ -44,12 +44,18 @@ const toolStep = (name: string, input: unknown): ModelStep => ({
 });
 const endStep = (text: string): ModelStep => ({ stopReason: 'end_turn', blocks: [{ type: 'text', text }], usage });
 
-// Telegram falso (registra tudo); a demora artificial faz duas execuções simultâneas se sobreporem.
+// Telegram falso (registra tudo); a demora artificial faz execuções simultâneas se sobreporem. Sem
+// o bloqueio da reserva, 8 execuções simultâneas reservam o mesmo lembrete na maioria das vezes (3 não bastavam).
+// `duringSend` deixa um teste agir (ex.: mudar configurações) enquanto o lembrete está 'enviando'.
+let duringSend: (() => Promise<void>) | null = null;
 const fakes = createFakes();
 const telegram = fakes.telegram;
 const slowTelegram: TelegramClient = {
   async sendMessage(chatId, text) {
-    await new Promise((r) => setTimeout(r, 25));
+    const hookFn = duringSend;
+    duringSend = null;
+    await new Promise((r) => setTimeout(r, 100));
+    if (hookFn !== null) await hookFn();
     return telegram.sendMessage(chatId, text);
   },
 };
@@ -205,14 +211,15 @@ describe('journey: link -> create by message -> reschedule by reply -> reminder 
     ]);
   });
 
-  it('two SIMULTANEOUS scheduler calls at the early time send the new-time reminder exactly once', async () => {
+  it('eight SIMULTANEOUS scheduler calls at the early time send the new-time reminder exactly once', async () => {
     setNow('2033-03-10T18:46:00.000Z'); // 15:46 local: antecipado venceu há 1 min; no_horario ainda não
     const before = telegram.sent.length;
-    const [a, b] = await Promise.all([tick(), tick()]);
-    expect([a.status, b.status]).toEqual([200, 200]);
-    const ja = (await a.json()) as { reminders: { sent: number } };
-    const jb = (await b.json()) as { reminders: { sent: number } };
-    expect(ja.reminders.sent + jb.reminders.sent).toBe(1);
+    const results = await Promise.all(Array.from({ length: 8 }, () => tick()));
+    expect(results.map((r) => r.status)).toEqual(Array(8).fill(200));
+    const sentCounts = await Promise.all(
+      results.map(async (r) => ((await r.json()) as { reminders: { sent: number } }).reminders.sent),
+    );
+    expect(sentCounts.reduce((x, y) => x + y, 0)).toBe(1);
 
     expect(telegram.sent.slice(before)).toEqual([{ chatId: chat, text: 'Tarefa às 16:00 (em breve): Reunião' }]);
     const rows = await remindersOf(taskId);
@@ -279,10 +286,46 @@ describe('failure paths end to end', () => {
     expect(await tasksOf(u.id)).toHaveLength(1);
     // O reenvio do Telegram recebe a mesma resposta, sem efeito novo.
     const replies = sentTo(chat).slice(afterFirst);
-    expect(replies.length).toBeLessThanOrEqual(1);
-    for (const r of replies) expect(r).toBe(sentTo(chat)[afterFirst - 1]);
+    expect(replies).toEqual([sentTo(chat)[afterFirst - 1]]);
     expect(
       (await pool.query(`select count(*)::int as n from public.inbound_events where channel = 'telegram' and user_id = $1 and external_id = $2`, [u.id, String(msg.update_id)])).rows[0].n,
     ).toBe(1);
+  });
+});
+
+describe('settings change during a send (M1)', () => {
+  it('changing early_reminder_minutes while a reminder is "enviando" still leaves the new-offset reminder after the send', async () => {
+    setNow('2033-03-09T12:00:00.000Z');
+    const u = await makeUser('offset');
+    const chat = newChat();
+    const code = (await call(u, 'POST', '/telegram/link-codes')).json.code as string;
+    await hook(update(chat, { text: `/start ${code}` }));
+    const created = await call(u, 'POST', '/tasks', {
+      title: 'Offset',
+      type: 'tarefa',
+      dueDate: '2033-03-10',
+      dueTime: '14:00',
+    });
+    expect(created.status).toBe(201);
+    const id = created.json.id as string;
+    expect((await remindersOf(id)).map((r) => [r.kind, r.scheduled_at])).toEqual([
+      ['antecipado', '2033-03-10T16:45:00Z'],
+      ['no_horario', '2033-03-10T17:00:00Z'],
+    ]);
+
+    setNow('2033-03-10T16:46:00.000Z'); // antecipado venceu; no_horario ainda não
+    duringSend = async () => {
+      const patched = await call(u, 'PATCH', '/settings', { earlyReminderMinutes: 5 });
+      expect(patched.status).toBe(200);
+    };
+    const res = await tick();
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { reminders: { sent: number } }).reminders.sent).toBe(1);
+
+    expect(await remindersOf(id)).toEqual([
+      { kind: 'antecipado', status: 'enviado', scheduled_at: '2033-03-10T16:45:00Z', attempts: 1 },
+      { kind: 'antecipado', status: 'pendente', scheduled_at: '2033-03-10T16:55:00Z', attempts: 0 },
+      { kind: 'no_horario', status: 'pendente', scheduled_at: '2033-03-10T17:00:00Z', attempts: 0 },
+    ]);
   });
 });

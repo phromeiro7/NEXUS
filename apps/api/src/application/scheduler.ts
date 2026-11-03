@@ -9,7 +9,7 @@ export type SchedulerResult = {
   purged: { chatMessages: number; linkCodes: number; modelCalls: number };
 };
 
-/** Orçamentos dos sub-passos (a soma deixa folga para a recuperação e as limpezas dentro de ~30 s). */
+/** Orçamentos dos sub-passos (o pior caso real é de ~45 s: cada orçamento é checado antes de cada item, então o último ainda envia e ressincroniza; o `timeout_milliseconds` do `pg_net` é 60000). */
 export const SCHEDULER_BUDGETS_MS = { reminders: 15_000, briefings: 8_000 } as const;
 
 export type RunSchedulerDeps = {

@@ -99,13 +99,13 @@ describe('loadConfig', () => {
       ...base,
       TELEGRAM_BOT_TOKEN: ' TEST_TOKEN_123 ',
       TELEGRAM_BOT_USERNAME: ' meu_bot ',
-      TELEGRAM_WEBHOOK_SECRET: ' abc-DEF_123 ',
-      INTERNAL_SECRET: ' interno-teste ',
+      TELEGRAM_WEBHOOK_SECRET: ' abc-DEF_123-abcdef ',
+      INTERNAL_SECRET: ' interno-teste-1234 ',
     });
     expect(c.telegramBotToken).toBe('TEST_TOKEN_123');
     expect(c.telegramBotUsername).toBe('meu_bot');
-    expect(c.telegramWebhookSecret).toBe('abc-DEF_123');
-    expect(c.internalSecret).toBe('interno-teste');
+    expect(c.telegramWebhookSecret).toBe('abc-DEF_123-abcdef');
+    expect(c.internalSecret).toBe('interno-teste-1234');
   });
   it.each(['com espaço', 'acentuação', 'a/b', 'x'.repeat(257), 'a+b'])(
     'rejects an invalid TELEGRAM_WEBHOOK_SECRET %j naming only the variable',
@@ -124,6 +124,25 @@ describe('loadConfig', () => {
   it('accepts a TELEGRAM_WEBHOOK_SECRET of exactly 256 valid characters', () => {
     const secret = 'a'.repeat(256);
     expect(loadConfig({ ...base, TELEGRAM_WEBHOOK_SECRET: secret }).telegramWebhookSecret).toBe(secret);
+  });
+  it.each([
+    ['TELEGRAM_WEBHOOK_SECRET', 'a'.repeat(15)],
+    ['INTERNAL_SECRET', 'b'.repeat(15)],
+  ])('rejects a short %s naming only the variable', (name, v) => {
+    expect.assertions(3);
+    try {
+      loadConfig({ ...base, [name as string]: v });
+    } catch (e) {
+      const message = (e as Error).message;
+      expect(message).toContain(name);
+      expect(message).not.toContain(v);
+      expect(message).toMatch(/16/);
+    }
+  });
+  it('accepts secrets of exactly 16 characters', () => {
+    const c = loadConfig({ ...base, TELEGRAM_WEBHOOK_SECRET: 'a'.repeat(16), INTERNAL_SECRET: 'b'.repeat(16) });
+    expect(c.telegramWebhookSecret).toHaveLength(16);
+    expect(c.internalSecret).toHaveLength(16);
   });
   it.each(['ab', 'com-hifen', '@meu_bot', 'x'.repeat(65), 'bot com espaço'])(
     'rejects an invalid TELEGRAM_BOT_USERNAME %j naming only the variable',

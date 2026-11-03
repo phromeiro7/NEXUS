@@ -12,6 +12,7 @@ import {
   MessageTooLongError,
   RateLimitedError,
   TargetTasksGoneError,
+  UpdateNotRegisteredError,
 } from '../errors.js';
 import type { AssistantModel, ModelStep } from '../ports.js';
 import { makeTaskUseCases } from '../tasks.js';
@@ -648,5 +649,47 @@ describe('logs never carry user text, titles or codes', () => {
     expect(all).not.toContain('BADCODE9');
     logSpy.mockRestore();
     errSpy.mockRestore();
+  });
+});
+
+describe('infrastructure errors before the event is registered', () => {
+  it('userForChat failing rethrows as UpdateNotRegisteredError carrying only the cause name; nothing is sent', async () => {
+    const s = setup();
+    vi.spyOn(s.fakes.links, 'userForChat').mockRejectedValueOnce(new TypeError(`rede ${SECRET_TEXT}`));
+    const err = await s.handle(s.msg(CHAT1, { text: 'oi' })).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(UpdateNotRegisteredError);
+    expect((err as UpdateNotRegisteredError).causeName).toBe('TypeError');
+    expect((err as Error).message).not.toContain(SECRET_TEXT);
+    expect(s.fakes.telegram.sent).toEqual([]);
+  });
+
+  it('events.register failing rethrows as UpdateNotRegisteredError (no reply, so Telegram can retry)', async () => {
+    const s = setup();
+    vi.spyOn(s.fakes.inboundEvents, 'register').mockRejectedValueOnce(new RangeError('banco'));
+    const err = await s.handle(s.msg(CHAT1, { text: '/desvincular' })).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(UpdateNotRegisteredError);
+    expect((err as UpdateNotRegisteredError).causeName).toBe('RangeError');
+    expect(s.fakes.telegram.sent).toEqual([]);
+    expect(s.fakes.links.chatFor(U1)).toBe(CHAT1);
+  });
+
+  it('a ForeignEventError from register stays silent (not retryable)', async () => {
+    const s = setup();
+    vi.spyOn(s.fakes.inboundEvents, 'register').mockRejectedValueOnce(new ForeignEventError());
+    await s.handle(s.msg(CHAT2, { text: 'oi' }));
+    expect(s.fakes.telegram.sent).toEqual([]);
+  });
+
+  it('errors after registration are not wrapped (process_failed stays silent and resolves)', async () => {
+    const s = setup();
+    s.processMessage.mockRejectedValueOnce(new TypeError('x'));
+    await expect(s.handle(s.msg(CHAT1, { text: 'oi' }))).resolves.toBeUndefined();
+  });
+
+  it('a send failure after registration does not reject', async () => {
+    const s = setup();
+    vi.spyOn(s.fakes.telegram, 'sendMessage').mockRejectedValueOnce(new TypeError('envio'));
+    const err = await s.handle(s.msg(CHAT2, { text: 'oi' })).catch((e: unknown) => e);
+    expect(err).not.toBeInstanceOf(UpdateNotRegisteredError);
   });
 });

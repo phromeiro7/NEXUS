@@ -1,5 +1,6 @@
 import { Hono, type MiddlewareHandler } from 'hono';
 import type { LinkCodeDto } from '@aj/shared';
+import { UpdateNotRegisteredError } from '../application/errors.js';
 import type { AssistantLogger } from '../application/assistant/process-message.js';
 import { secretsMatch } from './secret.js';
 
@@ -16,6 +17,7 @@ export type TelegramRoutesDeps = {
  * Rotas do Telegram. `link-codes` e `link` exigem usuário autenticado; o webhook NÃO: ele exige o
  * cabeçalho `X-Telegram-Bot-Api-Secret-Token`. Depois do segredo, a resposta é sempre 200
  * (erros do tratamento viram log só com o nome do erro), senão o Telegram reenviaria para sempre.
+ * Exceção: falha de infraestrutura antes do registro do evento responde 500 sem corpo, e o Telegram reenvia.
  */
 export function telegramRoutes(deps: TelegramRoutesDeps, auth: MiddlewareHandler): Hono<{ Variables: { userId: string } }> {
   const routes = new Hono<{ Variables: { userId: string } }>();
@@ -44,7 +46,14 @@ export function telegramRoutes(deps: TelegramRoutesDeps, auth: MiddlewareHandler
     try {
       await deps.handleUpdate(update);
     } catch (error) {
-      const name = error instanceof Error ? error.name : 'desconhecido';
+      const notRegistered = error instanceof UpdateNotRegisteredError;
+      const name = notRegistered ? error.causeName : error instanceof Error ? error.name : 'desconhecido';
+      // Nada foi registrado nem respondido: 500 sem corpo para o Telegram reenviar (idempotente).
+      if (notRegistered) {
+        if (deps.logger) deps.logger.error('telegram.webhook_not_registered', { errorName: name });
+        else console.error(JSON.stringify({ level: 'error', event: 'telegram.webhook_not_registered', errorName: name }));
+        return c.body(null, 500);
+      }
       if (deps.logger) deps.logger.error('telegram.webhook_failed', { errorName: name });
       else console.error(JSON.stringify({ level: 'error', event: 'telegram.webhook_failed', errorName: name }));
     }
