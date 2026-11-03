@@ -208,19 +208,20 @@ Em qualquer opção, o agendador deve apontar para o **domínio de produção**,
 proteção de implantação da Vercel as bloqueia; o domínio de produção fica de fora da proteção padrão).
 
 **Hospedagem.** O alvo é a Vercel (domínio gratuito `*.vercel.app`; o plano Hobby é só para uso não comercial).
-O adaptador existe (`apps/api/src/vercel.ts`, empacotado por esbuild em `apps/api/api/index.js`; veja
+O adaptador existe (`apps/api/src/vercel.ts`, empacotado por esbuild em `apps/api/.vercel/output`, Build Output API v3; veja
 "Publicar na Vercel (API)" abaixo), mas **nenhum deploy real foi feito ainda** e a primeira publicação pode exigir um ajuste.
 
 #### Publicar na Vercel (API)
 
-O `apps/api/vercel.json` já traz o `buildCommand` (`pnpm run build`, que gera o bundle único `api/index.js`),
-a região `gru1` (São Paulo), `maxDuration` de 60 s e o rewrite que manda **todos** os caminhos (`/health`, `/me`,
-`/tasks`, `/telegram/webhook`, `/internal/reminders/run`...) para essa única função. Localmente nada muda:
+O `apps/api/vercel.json` só define o `buildCommand` (`pnpm run build`). O build gera `apps/api/.vercel/output`
+(Build Output API v3): uma única função Node em `functions/api.func` (bundle esbuild, runtime `nodejs22.x`,
+`maxDuration` de 60 s, região `gru1`/São Paulo) e uma rota que manda **todos** os caminhos (`/health`, `/me`,
+`/tasks`, `/telegram/webhook`, `/internal/reminders/run`...) para ela. Localmente nada muda:
 `pnpm --filter @aj/api dev`/`start` seguem subindo o servidor Node.
 
 1. **Criar o projeto.** Na Vercel: *Add New > Project*, importe o repositório do GitHub e, em *Root Directory*,
    escolha `apps/api`. Deixe ligada a opção *Include source files outside of the Root Directory in the Build Step*
-   (já vem ligada em projetos novos; o build precisa de `packages/shared`). Framework Preset: *Other*.
+   (já vem ligada em projetos novos; o build precisa de `packages/shared`). Framework Preset: *Other*; não defina *Output Directory* nem sobrescreva o *Build Command* (o `vercel.json` já manda).
 2. **Variáveis de ambiente** (*Settings > Environment Variables*, ambiente Production; só os nomes, valores nunca vão
    para o Git):
    - `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY`: no painel do Supabase, *Project Settings > API* (a chave
