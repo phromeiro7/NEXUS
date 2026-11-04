@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Avatar Nexus</title>
+  <desc id="desc">N contínuo claro com ponto terracota sobre fundo azul petróleo.</desc>
+  <rect width="256" height="256" rx="72" fill="#142D3A"/>
+  <path d="M62 194V70C62 57 76 52 85 63L159 151C168 162 184 155 184 140V70" fill="none" stroke="#F5F6F2" stroke-width="23" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="207" cy="70" r="11" fill="#C05640"/>
+</svg>
