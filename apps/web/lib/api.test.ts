@@ -112,6 +112,15 @@ describe('createApiClient requests', () => {
     ]);
   });
 
+  it('interpretCapture posts only the text', async () => {
+    const result = { today: '2026-11-04', proposal: null };
+    const { client, calls } = setup(() => Response.json(result));
+    await expect(client.interpretCapture({ text: 'oi' })).resolves.toEqual(result);
+    expect(calls[0]!.url).toBe('http://api.test/capture/interpret');
+    expect(calls[0]!.init.method).toBe('POST');
+    expect(JSON.parse(String(calls[0]!.init.body))).toEqual({ text: 'oi' });
+  });
+
   it('sendAssistantMessage posts text and clientMessageId only', async () => {
     const { client, calls } = setup(() => Response.json({ reply: 'ok', affectedTasks: [] }));
     const input = { text: 'oi', clientMessageId: '3f2b8c1e-5d4a-4b7e-9a10-2c6d8e4f1a77' };
