@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build": "tsx scripts/build-vercel.ts",
     "dev": "tsx watch src/server.ts",
     "start": "tsx --env-file-if-exists=.env src/server.ts",
     "reminders:tick": "tsx --env-file-if-exists=.env scripts/reminders-tick.ts",
@@ -25,6 +26,7 @@
   "devDependencies": {
     "@types/node": "^26.6.5",
     "@types/pg": "^8.23.1",
+    "esbuild": "^0.28.2",
     "pg": "^8.23.1",
     "supabase": "^2.122.0",
     "tsx": "^4.23.15"
