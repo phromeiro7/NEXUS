@@ -210,4 +210,18 @@ describe('makeRunScheduler chat captures', () => {
   it('leaves the key out when the chat capture is off', async () => {
     expect((await makeRunScheduler(base)()).purged).toEqual({ chatMessages: 0, linkCodes: 0, modelCalls: 0 });
   });
+
+  it('purges the Telegram login records when the login is on, and a failure counts zero', async () => {
+    const seen: Date[] = [];
+    const run = makeRunScheduler({ ...base, purgeTelegramAuth: async (at) => (seen.push(at), 3) });
+    expect((await run()).purged).toEqual({ chatMessages: 0, linkCodes: 0, modelCalls: 0, telegramAuth: 3 });
+    expect(seen).toEqual([NOW]);
+    const failing = makeRunScheduler({
+      ...base,
+      purgeTelegramAuth: async () => {
+        throw new Error('boom');
+      },
+    });
+    expect((await failing()).purged.telegramAuth).toBe(0);
+  });
 });

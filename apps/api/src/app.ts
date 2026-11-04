@@ -20,6 +20,7 @@ import { errorResponse } from './http-errors.js';
 import { telegramRoutes } from './routes/telegram.js';
 import { internalRoutes } from './routes/internal.js';
 import { assistantRoutes, type ProcessMessage } from './routes/assistant.js';
+import { authRoutes, type AuthRoutesDeps } from './routes/auth.js';
 import { briefingRoutes } from './routes/briefing.js';
 import { casesRoutes } from './routes/cases.js';
 import { financeRoutes } from './routes/finance.js';
@@ -49,6 +50,8 @@ export type AppDeps = {
   handleTelegramUpdate?: (update: unknown) => Promise<void>;
   /** Nunca logar. */
   telegramWebhookSecret?: string;
+  /** Login do Mini App pelo `initData`; ausente = desligado (503 'login_desabilitado'). */
+  telegramLogin?: AuthRoutesDeps['telegramLogin'];
 };
 
 export function createApp(deps: AppDeps) {
@@ -84,6 +87,7 @@ export function createApp(deps: AppDeps) {
       if (
         c.req.path.startsWith('/assistant') ||
         c.req.path.startsWith('/internal') ||
+        c.req.path.startsWith('/auth') ||
         c.req.path.startsWith('/telegram')
       ) {
         console.error('[api] erro não tratado', err instanceof Error ? err.name : 'desconhecido');
@@ -127,6 +131,9 @@ export function createApp(deps: AppDeps) {
   app.route('/settings', settingsRoutes({ settings: deps.settings }, auth));
   app.route('/briefing', briefingRoutes({ briefing: deps.briefing }, auth));
   app.route('/assistant', assistantRoutes({ processMessage: deps.processMessage }, auth));
+
+  // Sem Bearer: a prova de identidade é a assinatura do `initData` (dentro do caso de uso).
+  app.route('/auth', authRoutes({ ...(deps.telegramLogin !== undefined ? { telegramLogin: deps.telegramLogin } : {}) }));
 
   // `link-codes` e `link` com autenticação; o webhook sem usuário (segredo do cabeçalho, dentro da rota).
   app.route(

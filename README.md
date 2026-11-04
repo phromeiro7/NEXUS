@@ -146,6 +146,25 @@ proposta e botões; nada vai para tarefas nem lançamentos antes de **Confirmar*
 Variáveis (só os nomes): `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET`, `MINI_APP_URL`
 (opcional, origem https do Mini App; habilita "Ver no Nexus").
 
+### Login automático do Mini App pelo Telegram
+
+`POST /auth/telegram` (sem Bearer) recebe `{ "initData": "..." }`, o que o Telegram entrega ao Mini App, e
+devolve `{ "tokenHash": "..." }`. O cliente troca o token por sessão com
+`supabase.auth.verifyOtp({ token_hash, type: 'magiclink' })`. Como funciona e o que garante:
+
+- A assinatura é validada com HMAC-SHA256 (chave derivada de `WebAppData` + token do bot), em tempo constante,
+  **antes** de ler qualquer campo; `auth_date` precisa estar dentro da janela (`TELEGRAM_LOGIN_MAX_AGE_SECONDS`,
+  padrão 3600, de 60 a 86400).
+- Só entra quem já tem o Telegram **vinculado** (o vínculo de Configurações). O usuário da sessão vem só do
+  vínculo guardado no servidor. Telegram não vinculado recebe `403 telegram_nao_vinculado` e o `initData` não é
+  consumido. A entrada de convidados por convite é outro fluxo, ainda não construído.
+- Cada `initData` abre **uma** sessão (tabela `telegram_auth_replays`; limpeza pelo agendador); repetir dá
+  `401 ja_utilizado`. O token de sessão também é de uso único. `admin.generateLink` não envia e-mail algum.
+- Limite de tentativas: 30 por IP e 10 por usuário do Telegram a cada 10 minutos, em memória (vale por
+  instância). Atrás de proxy ou túnel vale o primeiro IP de `cf-connecting-ip`/`x-forwarded-for`.
+- Sem `TELEGRAM_BOT_TOKEN` a rota responde `503 login_desabilitado`. Nada disso registra `initData`, token ou
+  tokens de sessão em log.
+
 ### Telegram e lembretes: runbook
 
 Fatos verificados de infraestrutura (limites do `pg_net`, Vault, Vercel, Bot API):
@@ -163,6 +182,7 @@ logs, issues ou mensagens. Se vazar, use `/revoke` no BotFather e gere outro.
   `openssl rand -hex 32`). Sem ele o webhook responde `503`.
 - `INTERNAL_SECRET`: segredo do agendador (mínimo de 16 caracteres; também `openssl rand -hex 32`). Sem ele a rota interna responde `503`.
 - `MINI_APP_URL` (opcional): origem https do Mini App, para o botão "Ver no Nexus" nas respostas do bot.
+- `TELEGRAM_LOGIN_MAX_AGE_SECONDS` (opcional): janela do `auth_date` do login automático (padrão 3600).
 
 **3. Registrar o webhook** (depois que a API estiver no ar em HTTPS, no domínio de produção). Com o token e o
 segredo nas variáveis do shell e `<API>` o endereço público:
