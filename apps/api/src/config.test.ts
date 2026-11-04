@@ -191,3 +191,16 @@ describe('loadConfig', () => {
     }
   });
 });
+
+describe('loadConfig MINI_APP_URL', () => {
+  it('keeps only the https origin', () => {
+    expect(loadConfig({ ...base, MINI_APP_URL: 'https://nexus.example.com/mini/' }).miniAppUrl).toBe('https://nexus.example.com');
+  });
+  it('is optional, and empty means absent', () => {
+    expect(loadConfig(base).miniAppUrl).toBeUndefined();
+    expect(loadConfig({ ...base, MINI_APP_URL: '  ' }).miniAppUrl).toBeUndefined();
+  });
+  it.each(['http://nexus.example.com', 'nexus.example.com', 'ftp://x'])('rejects %s and names the variable', (value) => {
+    expect(() => loadConfig({ ...base, MINI_APP_URL: value })).toThrow('MINI_APP_URL');
+  });
+});

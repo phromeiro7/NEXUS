@@ -123,7 +123,28 @@ Se você não reconhece esta conta, envie /desvincular agora.`; sem e-mail dispo
 aparece em respostas nem em logs. `/comando@outro_bot` só é comando se o sufixo for o nome do nosso bot
 (`TELEGRAM_BOT_USERNAME`, sem distinguir maiúsculas); os comandos também não distinguem maiúsculas. Um chat só pode estar ligado a uma conta (`Este Telegram já está ligado a outra conta.`).
 
-Variáveis (só os nomes): `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET`.
+**Registro pelo chat (regras, sem IA).** Antes do assistente, a mensagem de texto de um chat vinculado passa por
+um interpretador de regras em português (`apps/api/src/domain/chat-capture.ts`): `gastei 100 em roupa`,
+`recebi 1500 do freela`, `luz 187,40 vence dia 8`, `ligar pra vidinha hoje 14h`. O bot responde com uma
+proposta e botões; nada vai para tarefas nem lançamentos antes de **Confirmar**.
+
+- Gasto e entrada: Confirmar, Mudar categoria, Mudar data. Conta a pagar: também Mudar horário; sem data não há
+  Confirmar até a pessoa escolher o dia. Tarefa: Confirmar, Mudar dia, Mudar horário (só com data). O aviso da
+  tarefa segue as configurações da pessoa (`earlyReminderMinutes`), não é escolhido por tarefa.
+- Depois de confirmar: "Pronto, anotado." com **Desfazer** (vale 24 h) e, com `MINI_APP_URL`, **Ver no Nexus**.
+- As propostas ficam em `chat_captures` (migração `0008`, só `service_role`): 1 h para confirmar; o agendador
+  apaga as expiradas (`purged.chatCaptures`). Confirmar e desfazer são trocas atômicas de estado: dois toques
+  seguidos criam uma só entrada. O botão só vale para o dono da proposta e do chat.
+- Nunca assume o que a pessoa não disse: tarefa sem data fica "sem data" e o bot pergunta; "de manhã/tarde/noite"
+  não vira horário. Dois valores, duas datas ou verbo de dinheiro sem valor = não entendeu.
+- O que as regras não entendem vai ao assistente de IA, se `ANTHROPIC_API_KEY` estiver configurada; senão o bot
+  responde com exemplos (`/ajuda` também). Perguntas (`?`) e frases soltas vão para o assistente, nunca viram tarefa.
+- Não cobre: "semana que vem", "daqui a 2 dias", valores por extenso, parcelas, mais de um lançamento por mensagem.
+- Os botões exigem `allowed_updates` com `callback_query` no `setWebhook` (veja o runbook).
+- Lembretes das **contas a pagar** ainda não saem pelo chat: o formulário só guarda o horário.
+
+Variáveis (só os nomes): `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET`, `MINI_APP_URL`
+(opcional, origem https do Mini App; habilita "Ver no Nexus").
 
 ### Telegram e lembretes: runbook
 
@@ -141,6 +162,7 @@ logs, issues ou mensagens. Se vazar, use `/revoke` no BotFather e gere outro.
 - `TELEGRAM_WEBHOOK_SECRET`: segredo que você inventa (16 a 256 caracteres de `A-Z a-z 0-9 _ -`; gere com
   `openssl rand -hex 32`). Sem ele o webhook responde `503`.
 - `INTERNAL_SECRET`: segredo do agendador (mínimo de 16 caracteres; também `openssl rand -hex 32`). Sem ele a rota interna responde `503`.
+- `MINI_APP_URL` (opcional): origem https do Mini App, para o botão "Ver no Nexus" nas respostas do bot.
 
 **3. Registrar o webhook** (depois que a API estiver no ar em HTTPS, no domínio de produção). Com o token e o
 segredo nas variáveis do shell e `<API>` o endereço público:
@@ -149,7 +171,7 @@ segredo nas variáveis do shell e `<API>` o endereço público:
 curl -sS "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
   -d "url=<API>/telegram/webhook" \
   -d "secret_token=$TELEGRAM_WEBHOOK_SECRET" \
-  -d 'allowed_updates=["message"]'
+  -d 'allowed_updates=["message","callback_query"]'
 
 curl -sS "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo"
 ```

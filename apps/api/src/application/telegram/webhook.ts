@@ -17,6 +17,7 @@ import type {
   LinkCodeRepository,
   TelegramClient,
 } from '../ports.js';
+import { CAPTURE_HELP, type CaptureFlow } from './capture.js';
 import { createFailedStartLimiter, type FailedStartLimiter } from './failed-start-limiter.js';
 import { formatAssistantReply } from './reply-format.js';
 
@@ -29,6 +30,13 @@ const updateSchema = z.object({
       chat: z.object({ id: z.number().int(), type: z.string() }),
       text: z.string().optional(),
       reply_to_message: z.object({ message_id: z.number().int() }).optional(),
+    })
+    .optional(),
+  callback_query: z
+    .object({
+      id: z.string(),
+      data: z.string().optional(),
+      message: z.object({ message_id: z.number().int(), chat: z.object({ id: z.number().int(), type: z.string() }) }).optional(),
     })
     .optional(),
 });
@@ -48,6 +56,9 @@ const TEXT = {
   tooLong: 'Sua mensagem é longa demais (limite de 1.000 caracteres).',
   unavailable: 'O assistente está indisponível agora. Nada foi alterado.',
   inProgress: 'Sua mensagem anterior ainda está sendo processada. Aguarde um instante.',
+  captureFailed: 'Não consegui anotar agora. Nada foi salvo. Tente de novo.',
+  linkFirst: 'Vincule sua conta primeiro: gere um código no Nexus e envie /start CÓDIGO.',
+  help: `Eu anoto gastos, contas e tarefas por mensagem. Exemplos:\n• gastei 42 no almoço\n• luz 187,40 vence dia 8\n• ligar pra Ana amanhã 14h\nNada é salvo antes de você tocar em Confirmar.`,
 } as const;
 
 /**
@@ -61,20 +72,26 @@ function linkedText(accountHint: string | null): string {
 
 const CODE_FORMAT =/^[A-Z0-9]{8}$/;
 /** `/comando`, `/comando@bot` e `/comando argumentos`; o comando não distingue maiúsculas. */
-const COMMAND = /^\/(start|desvincular)(?:@([A-Za-z0-9_]+))?(?:\s+([\s\S]*))?$/i;
+const COMMAND = /^\/(start|desvincular|ajuda)(?:@([A-Za-z0-9_]+))?(?:\s+([\s\S]*))?$/i;
 
 /**
  * Comando para o NOSSO bot: sem sufixo, ou com `@<nome>` igual ao nome configurado (sem distinguir
  * maiúsculas). Sufixo de outro bot (ou nome não configurado) não é comando: vira texto comum.
  */
-function parseCommand(text: string, botUsername: string | undefined): { name: 'start' | 'desvincular'; args: string } | null {
+function parseCommand(
+  text: string,
+  botUsername: string | undefined,
+  withHelp: boolean,
+): { name: 'start' | 'desvincular' | 'ajuda'; args: string } | null {
   const m = COMMAND.exec(text.trim());
   if (m === null) return null;
+  // `/ajuda` só existe com o registro por regras ligado; sem ele continua sendo texto comum.
+  if (m[1]!.toLowerCase() === 'ajuda' && !withHelp) return null;
   const suffix = m[2];
   if (suffix !== undefined && (botUsername === undefined || suffix.toLowerCase() !== botUsername.toLowerCase())) {
     return null;
   }
-  return { name: m[1]!.toLowerCase() as 'start' | 'desvincular', args: m[3] ?? '' };
+  return { name: m[1]!.toLowerCase() as 'start' | 'desvincular' | 'ajuda', args: m[3] ?? '' };
 }
 
 const errorName = (e: unknown) => (e instanceof Error ? e.name : 'desconhecido');
@@ -90,6 +107,10 @@ export type HandleTelegramUpdateDeps = {
   failedStartLimiter?: FailedStartLimiter;
   /** Nome do NOSSO bot (sem @). `/comando@outro_bot` só é comando se o sufixo for este nome. */
   botUsername?: string;
+  /** Registro por regras (propostas com botões). Ausente = tudo vai para o assistente, como antes. */
+  capture?: CaptureFlow;
+  /** O assistente de IA está configurado? Sem ele, o que as regras não entendem recebe a ajuda curta. */
+  assistantEnabled?: boolean;
 };
 
 /*
@@ -151,28 +172,56 @@ export function makeHandleTelegramUpdate(deps: HandleTelegramUpdateDeps) {
     }
   }
 
+  /** Toque num botão da proposta do chat. Só existe com o registro por regras ligado. */
+  async function handleCallbackQuery(
+    updateId: number,
+    callback: NonNullable<z.infer<typeof updateSchema>['callback_query']>,
+  ): Promise<void> {
+    const capture = deps.capture;
+    const target = callback.message;
+    if (capture === undefined || target === undefined || target.chat.type !== 'private' || callback.data === undefined) return;
+    const chatId = target.chat.id;
+    const now = clock.now();
+    const userId = await beforeRegistration(() => links.userForChat(chatId));
+    if (userId === null) {
+      const result = await telegram.answerCallbackQuery(callback.id, TEXT.linkFirst);
+      if (!result.ok) logger.error('telegram.capture_answer_failed', { code: 'sem_vinculo' });
+      return;
+    }
+    const first = await beforeRegistration(() => events.register(userId, 'telegram', String(updateId), now));
+    if (!first.firstTime) return;
+    try {
+      await capture.handleCallback(userId, { id: callback.id, chatId, messageId: target.message_id, data: callback.data });
+    } catch (error) {
+      logger.error('telegram.capture_callback_failed', { errorName: errorName(error) });
+    }
+  }
+
+  // Falhas de infraestrutura antes do registro do evento viram UpdateNotRegisteredError (a rota responde 500).
+  const beforeRegistration = async <T>(work: () => Promise<T>): Promise<T> => {
+    try {
+      return await work();
+    } catch (error) {
+      if (error instanceof ForeignEventError) throw error;
+      throw new UpdateNotRegisteredError(error);
+    }
+  };
+
   async function handle(update: unknown): Promise<void> {
     const parsed = updateSchema.safeParse(update);
     if (!parsed.success) return;
-    const { update_id: updateId, message } = parsed.data;
-    if (message === undefined) return; // edited_message, channel_post, callback_query...
+    const { update_id: updateId, message, callback_query: callbackQuery } = parsed.data;
+    if (message === undefined) {
+      if (callbackQuery !== undefined) await handleCallbackQuery(updateId, callbackQuery);
+      return; // edited_message, channel_post...
+    }
     if (message.chat.type !== 'private') return;
     const chatId = message.chat.id;
     const now = clock.now();
 
-    // Falhas de infraestrutura antes do registro do evento viram UpdateNotRegisteredError (a rota responde 500).
-    const beforeRegistration = async <T>(work: () => Promise<T>): Promise<T> => {
-      try {
-        return await work();
-      } catch (error) {
-        if (error instanceof ForeignEventError) throw error;
-        throw new UpdateNotRegisteredError(error);
-      }
-    };
-
     const userId = await beforeRegistration(() => links.userForChat(chatId));
     const text = message.text;
-    const command = text === undefined ? null : parseCommand(text, deps.botUsername);
+    const command = text === undefined ? null : parseCommand(text, deps.botUsername, deps.capture !== undefined);
 
     /** Idempotência dos ramos sem modelo (Ruling 21): `false` = já tratado, nada a fazer. */
     const firstTime = async (): Promise<boolean> =>
@@ -181,6 +230,12 @@ export function makeHandleTelegramUpdate(deps: HandleTelegramUpdateDeps) {
     if (text === undefined) {
       if (!(await firstTime())) return;
       await say(chatId, TEXT.onlyText);
+      return;
+    }
+
+    if (command?.name === 'ajuda') {
+      if (!(await firstTime())) return;
+      await say(chatId, TEXT.help);
       return;
     }
 
@@ -223,6 +278,28 @@ export function makeHandleTelegramUpdate(deps: HandleTelegramUpdateDeps) {
       } else if (found.deletedCount > 0) {
         if (!(await firstTime())) return;
         await say(chatId, TEXT.taskGone);
+        return;
+      }
+    }
+
+    // Registro por regras: entendeu -> proposta com botões (nada é gravado antes de Confirmar). Não entendeu ->
+    // assistente de IA, se houver; senão a ajuda curta. Resposta a uma confirmação do assistente continua com ele.
+    const capture = deps.capture;
+    if (capture !== undefined && targets === undefined) {
+      const proposal = await beforeRegistration(() => capture.interpret(userId, text));
+      if (proposal !== null) {
+        if (!(await firstTime())) return;
+        try {
+          await capture.propose(userId, chatId, proposal);
+        } catch (error) {
+          logger.error('telegram.capture_failed', { errorName: errorName(error) });
+          await say(chatId, TEXT.captureFailed);
+        }
+        return;
+      }
+      if (deps.assistantEnabled !== true) {
+        if (!(await firstTime())) return;
+        await say(chatId, CAPTURE_HELP);
         return;
       }
     }

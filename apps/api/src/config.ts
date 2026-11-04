@@ -14,6 +14,8 @@ export type Config = {
   telegramWebhookSecret?: string;
   /** Opcional: ausente = rotas internas desabilitadas (503). Nunca logar. */
   internalSecret?: string;
+  /** Opcional: origem https do Mini App; habilita o botão "Ver no Nexus" nas respostas do bot. */
+  miniAppUrl?: string;
 };
 
 /** Lê a configuração do ambiente. Nunca inclui valores (só nomes) nas mensagens de erro. */
@@ -70,6 +72,22 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     throw new Error('TELEGRAM_BOT_USERNAME inválida: use de 3 a 64 letras, dígitos ou _, sem @');
   }
 
+  // O botão web_app do Telegram só aceita https; guardamos a origem (sem barra final nem caminho).
+  const rawMiniApp = env.MINI_APP_URL?.trim() || undefined;
+  let miniAppUrl: string | undefined;
+  if (rawMiniApp !== undefined) {
+    let parsedMiniApp: URL | undefined;
+    try {
+      parsedMiniApp = new URL(rawMiniApp);
+    } catch {
+      parsedMiniApp = undefined;
+    }
+    if (parsedMiniApp === undefined || parsedMiniApp.protocol !== 'https:') {
+      throw new Error('MINI_APP_URL inválida: esperada uma URL https absoluta, como https://nexus.example.com');
+    }
+    miniAppUrl = parsedMiniApp.origin;
+  }
+
   return {
     supabaseUrl: env.SUPABASE_URL as string,
     serviceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY as string,
@@ -81,5 +99,6 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     ...(telegramBotUsername !== undefined ? { telegramBotUsername } : {}),
     ...(telegramWebhookSecret !== undefined ? { telegramWebhookSecret } : {}),
     ...(internalSecret !== undefined ? { internalSecret } : {}),
+    ...(miniAppUrl !== undefined ? { miniAppUrl } : {}),
   };
 }

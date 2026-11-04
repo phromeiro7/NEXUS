@@ -195,5 +195,5 @@ export function tipoLabel(l: Lancamento): string {
   return l.tipo === "conta" ? "Conta paga" : "Gasto";
 }
 
-export const CATEGORIAS_GASTO = ["Moradia", "Mercado", "Transporte", "Lazer", "Saúde", "Outra"] as const;
+export const CATEGORIAS_GASTO = ["Moradia", "Mercado", "Transporte", "Lazer", "Saúde", "Roupas", "Outra"] as const;
 export const CATEGORIAS_ENTRADA = ["Salário", "Freela", "Outra"] as const;
