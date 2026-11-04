@@ -8,6 +8,7 @@ import {
   NotFoundError,
   RateLimitedError,
   TargetTasksGoneError,
+  TelegramAuthError,
   TelegramNotConfiguredError,
 } from './application/errors.js';
 import { HoraInvalidaError } from './domain/reminders.js';
@@ -22,7 +23,7 @@ export class ValidationError extends Error {
 }
 
 export type ErrorResponse = {
-  status: 400 | 404 | 409 | 422 | 429 | 500 | 503;
+  status: 400 | 401 | 403 | 404 | 409 | 422 | 429 | 500 | 503;
   body: unknown;
   headers?: Record<string, string>;
 };
@@ -56,6 +57,15 @@ export function errorResponse(err: unknown): ErrorResponse {
   // O que já foi gravado vira resposta 200 (parcial) no caso de uso; aqui só falhas sem escrita.
   if (err instanceof AssistantUnavailableError) {
     return { status: 503, body: { error: 'assistente_indisponivel', reason: err.reason } };
+  }
+  if (err instanceof TelegramAuthError) {
+    if (err.code === 'login_desabilitado') return { status: 503, body: { error: err.code } };
+    if (err.code === 'telegram_nao_vinculado') return { status: 403, body: { error: err.code } };
+    if (err.code === 'muitas_tentativas') {
+      const wait = err.retryAfterSeconds ?? 60;
+      return { status: 429, body: { error: err.code, retryAfterSeconds: wait }, headers: { 'Retry-After': String(wait) } };
+    }
+    return { status: 401, body: { error: err.code } };
   }
   if (err instanceof TelegramNotConfiguredError) return { status: 503, body: { error: 'telegram_nao_configurado' } };
   return { status: 500, body: { error: 'erro_interno' } };

@@ -10,6 +10,9 @@ import { makeHandleTelegramUpdate } from './application/telegram/webhook.js';
 import { createSupabaseCaptureRepository } from './infra/supabase-capture-repository.js';
 import { createSupabaseConfirmationRepository } from './infra/supabase-confirmation-repository.js';
 import { createSupabaseLinkRepository } from './infra/supabase-link-repository.js';
+import { makeTelegramLogin } from './application/telegram/login.js';
+import { makeRateLimiter } from './application/telegram/rate-limit.js';
+import { createSupabaseSessionIssuer, createSupabaseTelegramAuthRepository } from './infra/supabase-telegram-auth-repository.js';
 import type { AssistantModel } from './application/ports.js';
 import { createAnthropicAssistantModel } from './infra/anthropic-assistant-model.js';
 import { createJsonLogger } from './infra/json-logger.js';
@@ -122,9 +125,11 @@ export function buildApp(
   });
   const captures = createSupabaseCaptureRepository(client);
   const financeUseCases = makeFinanceUseCases({ finance, clock });
+  const telegramAuth = createSupabaseTelegramAuthRepository(client);
   const scheduler = makeRunScheduler({
     maintenance: createSupabaseMaintenanceRepository(client),
     purgeCaptures: (at) => captures.purgeExpired(at),
+    purgeTelegramAuth: (at) => telegramAuth.purgeExpired(at),
     runReminders: () => runReminders({ budgetMs: SCHEDULER_BUDGETS_MS.reminders }),
     sendDailyBriefings,
     clock,
@@ -167,7 +172,24 @@ export function buildApp(
         })
       : undefined;
 
+  // Login do Mini App pelo initData: só liga com o token do bot. O limite por IP é folgado (vários
+  // aparelhos atrás do mesmo NAT); o por usuário do Telegram é curto.
+  const telegramLogin =
+    config.telegramBotToken !== undefined
+      ? makeTelegramLogin({
+          botToken: config.telegramBotToken,
+          maxAgeSeconds: config.telegramLoginMaxAgeSeconds ?? 3600,
+          replays: telegramAuth,
+          links,
+          sessions: createSupabaseSessionIssuer(client),
+          ipLimiter: makeRateLimiter({ max: 30, windowMs: 10 * 60_000, clock }),
+          userLimiter: makeRateLimiter({ max: 10, windowMs: 10 * 60_000, clock }),
+          clock,
+        })
+      : undefined;
+
   return createApp({
+    ...(telegramLogin !== undefined ? { telegramLogin } : {}),
     telegramLink,
     ...(handleTelegramUpdate !== undefined ? { handleTelegramUpdate } : {}),
     ...(config.telegramWebhookSecret !== undefined ? { telegramWebhookSecret: config.telegramWebhookSecret } : {}),

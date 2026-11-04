@@ -27,6 +27,7 @@ export type HarnessOpts = {
   internalSecret?: AppDeps['internalSecret'];
   handleTelegramUpdate?: AppDeps['handleTelegramUpdate'];
   telegramWebhookSecret?: AppDeps['telegramWebhookSecret'];
+  telegramLogin?: AppDeps['telegramLogin'];
   /** Padrão 'meu_bot'; `null` = sem nome de bot (vínculo indisponível). */
   botUsername?: string | null;
 };
@@ -70,6 +71,7 @@ export function buildApp(opts: HarnessOpts = {}) {
       botUsername: opts.botUsername === null ? undefined : (opts.botUsername ?? 'meu_bot'),
       clock: fakes.clock,
     }),
+    ...(opts.telegramLogin !== undefined ? { telegramLogin: opts.telegramLogin } : {}),
     ...(opts.handleTelegramUpdate !== undefined ? { handleTelegramUpdate: opts.handleTelegramUpdate } : {}),
     ...(opts.telegramWebhookSecret !== undefined ? { telegramWebhookSecret: opts.telegramWebhookSecret } : {}),
     ...(opts.processMessage !== undefined ? { processMessage: opts.processMessage } : {}),

@@ -126,3 +126,23 @@ export class TargetTasksGoneError extends Error {
     this.name = 'TargetTasksGoneError';
   }
 }
+
+/**
+ * Falha do login pelo Telegram. `code` é o que o cliente recebe; nada aqui carrega `initData`, token ou
+ * identificador do usuário. `retryAfterSeconds` só vale para 'muitas_tentativas'.
+ */
+export class TelegramAuthError extends Error {
+  constructor(
+    readonly code:
+      | 'login_desabilitado'
+      | 'assinatura_invalida'
+      | 'sessao_expirada'
+      | 'ja_utilizado'
+      | 'telegram_nao_vinculado'
+      | 'muitas_tentativas',
+    readonly retryAfterSeconds?: number,
+  ) {
+    super(`Login pelo Telegram: ${code}`);
+    this.name = 'TelegramAuthError';
+  }
+}

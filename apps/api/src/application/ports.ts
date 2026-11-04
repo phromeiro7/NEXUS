@@ -360,3 +360,17 @@ export interface MaintenanceRepository {
   purgeOldModelCalls(now: Date): Promise<number>;
   recoverStuckEvents(now: Date): Promise<{ recovered: number; failed: number }>;
 }
+
+/** Guarda dos `initData` já usados: cada assinatura só abre uma sessão (anti-reuso). */
+export interface TelegramAuthReplayRepository {
+  /** Registra o hash; `false` se ele já tinha sido usado. Atômico: dois pedidos simultâneos, um só vence. */
+  claim(hash: string, now: Date): Promise<boolean>;
+  /** Apaga os registros que já não podem ser reaproveitados (a janela do `auth_date` passou); devolve quantos. */
+  purgeExpired(now: Date): Promise<number>;
+}
+
+/** Emite o que o cliente troca por uma sessão da conta `userId`. Nunca envia e-mail. */
+export interface SessionIssuer {
+  /** `tokenHash` de uso único para `verifyOtp`, ou `null` se a conta não pode receber sessão (sem e-mail, etc.). */
+  issue(userId: string): Promise<{ tokenHash: string } | null>;
+}

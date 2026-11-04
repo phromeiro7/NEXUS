@@ -14,6 +14,8 @@ export type Config = {
   telegramWebhookSecret?: string;
   /** Opcional: ausente = rotas internas desabilitadas (503). Nunca logar. */
   internalSecret?: string;
+  /** Janela do `auth_date` do login pelo Telegram, em segundos (ausente = 3600). */
+  telegramLoginMaxAgeSeconds?: number;
   /** Opcional: origem https do Mini App; habilita o botão "Ver no Nexus" nas respostas do bot. */
   miniAppUrl?: string;
 };
@@ -72,6 +74,17 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     throw new Error('TELEGRAM_BOT_USERNAME inválida: use de 3 a 64 letras, dígitos ou _, sem @');
   }
 
+  // Janela do `auth_date`: curta de propósito (o initData é um comprovante de quem abriu o app agora).
+  let telegramLoginMaxAgeSeconds: number | undefined;
+  const rawMaxAge = env.TELEGRAM_LOGIN_MAX_AGE_SECONDS?.trim();
+  if (rawMaxAge !== undefined && rawMaxAge !== '') {
+    const n = /^\d+$/.test(rawMaxAge) ? Number.parseInt(rawMaxAge, 10) : Number.NaN;
+    if (!(n >= 60 && n <= 86_400)) {
+      throw new Error('TELEGRAM_LOGIN_MAX_AGE_SECONDS inválida: use um inteiro de 60 a 86400');
+    }
+    telegramLoginMaxAgeSeconds = n;
+  }
+
   // O botão web_app do Telegram só aceita https; guardamos a origem (sem barra final nem caminho).
   const rawMiniApp = env.MINI_APP_URL?.trim() || undefined;
   let miniAppUrl: string | undefined;
@@ -94,6 +107,7 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     port,
     webOrigin,
     assistantModel,
+    ...(telegramLoginMaxAgeSeconds !== undefined ? { telegramLoginMaxAgeSeconds } : {}),
     ...(anthropicApiKey !== undefined ? { anthropicApiKey } : {}),
     ...(telegramBotToken !== undefined ? { telegramBotToken } : {}),
     ...(telegramBotUsername !== undefined ? { telegramBotUsername } : {}),

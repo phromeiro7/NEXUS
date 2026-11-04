@@ -204,3 +204,14 @@ describe('loadConfig MINI_APP_URL', () => {
     expect(() => loadConfig({ ...base, MINI_APP_URL: value })).toThrow('MINI_APP_URL');
   });
 });
+
+describe('loadConfig TELEGRAM_LOGIN_MAX_AGE_SECONDS', () => {
+  it('is optional and keeps the integer', () => {
+    expect(loadConfig(base).telegramLoginMaxAgeSeconds).toBeUndefined();
+    expect(loadConfig({ ...base, TELEGRAM_LOGIN_MAX_AGE_SECONDS: ' ' }).telegramLoginMaxAgeSeconds).toBeUndefined();
+    expect(loadConfig({ ...base, TELEGRAM_LOGIN_MAX_AGE_SECONDS: '900' }).telegramLoginMaxAgeSeconds).toBe(900);
+  });
+  it.each(['59', '86401', '1h', '-5', '1.5'])('rejects %s and names the variable', (value) => {
+    expect(() => loadConfig({ ...base, TELEGRAM_LOGIN_MAX_AGE_SECONDS: value })).toThrow('TELEGRAM_LOGIN_MAX_AGE_SECONDS');
+  });
+});
