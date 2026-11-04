@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeSupabase } from "@/test/fake-supabase";
 import { AuthProvider } from "@/components/auth-provider";
 import EntrarPage from "./page";
@@ -19,10 +19,16 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(search),
 }));
 
+// Sem o login por Telegram configurado na API (503), a tela de entrada abre direto no e-mail e senha.
 beforeEach(() => {
   router.replace.mockReset();
   search = "";
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response(JSON.stringify({ error: "login_desabilitado" }), { status: 503 })),
+  );
 });
+afterEach(() => vi.unstubAllGlobals());
 
 describe("Entrar", () => {
   it("credenciais erradas: mostra mensagem e mantém o e-mail", async () => {
@@ -37,7 +43,7 @@ describe("Entrar", () => {
         <EntrarPage />
       </AuthProvider>,
     );
-    await user.type(screen.getByLabelText("E-mail"), "ana@exemplo.com");
+    await user.type(await screen.findByLabelText("E-mail"), "ana@exemplo.com");
     await user.type(screen.getByLabelText("Senha"), "errada123");
     await user.click(screen.getByRole("button", { name: "Entrar" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("E-mail ou senha incorretos.");
@@ -55,7 +61,7 @@ describe("Entrar", () => {
         <EntrarPage />
       </AuthProvider>,
     );
-    expect(screen.getByLabelText("E-mail")).toHaveAttribute("autocomplete", "email");
+    expect(await screen.findByLabelText("E-mail")).toHaveAttribute("autocomplete", "email");
     expect(screen.getByLabelText("Senha")).toHaveAttribute("autocomplete", "current-password");
     await user.type(screen.getByLabelText("E-mail"), "a@b.co");
     await user.type(screen.getByLabelText("Senha"), "x");
@@ -76,7 +82,7 @@ describe("Entrar", () => {
         <EntrarPage />
       </AuthProvider>,
     );
-    await user.type(screen.getByLabelText("E-mail"), "a@b.co");
+    await user.type(await screen.findByLabelText("E-mail"), "a@b.co");
     await user.type(screen.getByLabelText("Senha"), "senha1234");
     await user.click(screen.getByRole("button", { name: "Entrar" }));
     await waitFor(() => expect(router.replace).toHaveBeenCalledWith(expected));
@@ -97,7 +103,7 @@ describe("Cadastro fechado", () => {
         <EntrarPage />
       </AuthProvider>,
     );
-    expect(screen.getByRole("status")).toHaveTextContent("O acesso ao Nexus é por convite.");
+    expect(screen.getAllByRole("status").some((el) => el.textContent === "O acesso ao Nexus é por convite.")).toBe(true);
   });
 
   it("sem o parâmetro não há aviso nem link para criar conta", () => {
@@ -107,7 +113,7 @@ describe("Cadastro fechado", () => {
         <EntrarPage />
       </AuthProvider>,
     );
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByText("O acesso ao Nexus é por convite.")).not.toBeInTheDocument();
     expect(screen.queryByText(/criar conta/i)).not.toBeInTheDocument();
   });
 });
