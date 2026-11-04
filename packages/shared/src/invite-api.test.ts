@@ -22,6 +22,7 @@ describe('inviteDtoSchema', () => {
       createdAt: '2026-11-04T12:00:00.000Z',
       expiresAt: '2026-11-11T12:00:00.000Z',
       usedAt: null,
+      label: null,
     });
     expect(ok.success).toBe(true);
   });
