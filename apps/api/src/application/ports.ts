@@ -385,11 +385,13 @@ export type InviteRecord = {
   usedAt: Date | null;
   /** Conta criada com este convite (`null` enquanto não foi usado). */
   usedBy?: string | null;
+  /** Nome dado pelo administrador (só para controle). */
+  label?: string | null;
 };
 
 export interface InviteRepository {
   /** Lança `InviteCodeCollisionError` se o código já existe. */
-  create(createdBy: string, code: string, createdAt: Date, expiresAt: Date): Promise<void>;
+  create(createdBy: string, code: string, createdAt: Date, expiresAt: Date, label?: string): Promise<void>;
   /** Os mais recentes primeiro. */
   list(limit: number): Promise<InviteRecord[]>;
   /** Revoga só um convite ainda não usado nem revogado; `false` = nada a revogar. */

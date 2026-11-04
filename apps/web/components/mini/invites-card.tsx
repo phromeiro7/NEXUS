@@ -79,6 +79,7 @@ export function InvitesCard() {
   const invites = useInvites();
   const create = useCreateInvite();
   const remove = useDeleteInvite();
+  const [label, setLabel] = useState("");
   const [fresh, setFresh] = useState<InviteDto | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -91,7 +92,8 @@ export function InvitesCard() {
     setError(null);
     setNotice(null);
     try {
-      const invite = await create.mutateAsync();
+      const invite = await create.mutateAsync(label.trim() === "" ? undefined : label.trim());
+      setLabel("");
       setFresh(invite);
       setNotice(`Convite criado. Vale por ${validityDays(invite)} dias e abre uma conta só.`);
     } catch (err) {
@@ -145,6 +147,17 @@ export function InvitesCard() {
         </div>
       )}
 
+      <label htmlFor="mini-inv-label" className="mini-tg-text">
+        Nome da pessoa (opcional, só para o seu controle)
+      </label>
+      <input
+        id="mini-inv-label"
+        className="mini-field"
+        maxLength={60}
+        autoComplete="off"
+        value={label}
+        onChange={(e) => setLabel(e.target.value)}
+      />
       <button
         type="button"
         className="mini-btn primary"
@@ -190,7 +203,10 @@ export function InvitesCard() {
         <ul className="mini-inv-list" aria-label="Convites criados">
           {list.map((invite) => (
             <li key={invite.code} className="mini-inv-row">
-              <p className="mini-tg-state">{statusLabel(invite)}</p>
+              <p className="mini-tg-state">
+                {invite.label !== null && <strong>{invite.label}: </strong>}
+                {statusLabel(invite)}
+              </p>
               {confirming === invite.code ? (
                 <div role="group" aria-label="Apagar este convite?" className="mini-tg-actions">
                   <p className="mini-tg-text">{deleteWarning(invite)}</p>
