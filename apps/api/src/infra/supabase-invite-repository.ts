@@ -12,6 +12,7 @@ type Row = {
   revoked_at: string | null;
   used_at: string | null;
   used_by: string | null;
+  label: string | null;
 };
 
 const toRecord = (row: Row): InviteRecord => ({
@@ -22,16 +23,18 @@ const toRecord = (row: Row): InviteRecord => ({
   revokedAt: row.revoked_at === null ? null : new Date(row.revoked_at),
   usedAt: row.used_at === null ? null : new Date(row.used_at),
   usedBy: row.used_by,
+  label: row.label,
 });
 
 export function createSupabaseInviteRepository(client: SupabaseClient): InviteRepository {
   return {
-    async create(createdBy, code, createdAt, expiresAt) {
+    async create(createdBy, code, createdAt, expiresAt, label) {
       const { error } = await client.from('invites').insert({
         code,
         created_by: createdBy,
         created_at: createdAt.toISOString(),
         expires_at: expiresAt.toISOString(),
+        ...(label !== undefined ? { label } : {}),
       });
       if (error?.code === UNIQUE_VIOLATION) throw new InviteCodeCollisionError();
       if (error) throw new Error(`Falha ao gravar convite: ${error.message}`);
@@ -40,7 +43,7 @@ export function createSupabaseInviteRepository(client: SupabaseClient): InviteRe
     async list(limit) {
       const { data, error } = await client
         .from('invites')
-        .select('code, created_by, created_at, expires_at, revoked_at, used_at, used_by')
+        .select('code, created_by, created_at, expires_at, revoked_at, used_at, used_by, label')
         .order('created_at', { ascending: false })
         .limit(limit);
       if (error) throw new Error(`Falha ao listar convites: ${error.message}`);
@@ -62,7 +65,7 @@ export function createSupabaseInviteRepository(client: SupabaseClient): InviteRe
     async find(code) {
       const { data, error } = await client
         .from('invites')
-        .select('code, created_by, created_at, expires_at, revoked_at, used_at, used_by')
+        .select('code, created_by, created_at, expires_at, revoked_at, used_at, used_by, label')
         .eq('code', code)
         .maybeSingle();
       if (error) throw new Error(`Falha ao buscar convite: ${error.message}`);

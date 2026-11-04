@@ -14,6 +14,7 @@ export function InvitesPanel() {
   const invites = useInvites();
   const create = useCreateInvite();
   const remove = useDeleteInvite();
+  const [label, setLabel] = useState("");
   const [fresh, setFresh] = useState<InviteDto | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -44,7 +45,8 @@ export function InvitesPanel() {
     setError(null);
     setNotice(null);
     try {
-      const invite = await create.mutateAsync();
+      const invite = await create.mutateAsync(label.trim() === "" ? undefined : label.trim());
+      setLabel("");
       setFresh(invite);
       setNotice(`Convite criado. Vale por ${validityDays(invite)} dias e abre uma conta só.`);
     } catch (err) {
@@ -96,6 +98,10 @@ export function InvitesPanel() {
           </div>
         )}
 
+        <label className="mini-label" style={{ maxWidth: 360, marginBottom: 12 }}>
+          Nome da pessoa (opcional, só para o seu controle)
+          <input className="mini-field" maxLength={60} autoComplete="off" value={label} onChange={(e) => setLabel(e.target.value)} />
+        </label>
         <button type="button" className="mini-btn primary" disabled={create.isPending} onClick={() => void generate()}>
           {create.isPending ? "Gerando…" : "Gerar convite"}
         </button>
@@ -142,6 +148,7 @@ export function InvitesPanel() {
             <caption style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap" }}>Convites gerados</caption>
             <thead>
               <tr>
+                <th scope="col">Nome</th>
                 <th scope="col">Convite</th>
                 <th scope="col">Criado</th>
                 <th scope="col">Situação</th>
@@ -153,7 +160,8 @@ export function InvitesPanel() {
             <tbody>
               {list.map((invite) => (
                 <tr key={invite.code}>
-                  <td style={{ fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{invite.code}</td>
+                  <td style={{ fontWeight: 600 }}>{invite.label ?? "—"}</td>
+                  <td className="pn-sub" style={{ fontVariantNumeric: "tabular-nums" }}>{invite.code}</td>
                   <td className="pn-sub">{created(invite.createdAt)}</td>
                   <td>{statusLabel(invite)}</td>
                   <td className="act">

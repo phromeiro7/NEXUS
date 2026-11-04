@@ -20,6 +20,7 @@ const holder = vi.hoisted(() => ({
 vi.mock("@/components/auth-provider", () => ({ useApi: () => holder.api }));
 
 const invite = (over: Record<string, unknown> = {}) => ({
+  label: null,
   code: "ABCDEFGHJKMN",
   link: "https://t.me/NexusAssitant_bot?start=ABCDEFGHJKMN",
   status: "ativo",
@@ -71,6 +72,24 @@ describe("InvitesCard", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Gerar convite" }));
     expect(await screen.findByRole("status")).toHaveTextContent("Convite criado. Vale por 7 dias e abre uma conta só.");
     expect(screen.getByLabelText("Link do convite")).toHaveValue("https://t.me/NexusAssitant_bot?start=ABCDEFGHJKMN");
+  });
+
+  it("envia o nome digitado e mostra o nome na lista", async () => {
+    holder.api.listInvites.mockResolvedValue(listOf([invite({ label: "Maria" })]));
+    holder.api.createInvite.mockResolvedValue(invite({ label: "Maria" }));
+    wrap();
+    expect(await screen.findByText("Maria:")).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText(/Nome da pessoa/), "  Maria ");
+    await userEvent.click(screen.getByRole("button", { name: "Gerar convite" }));
+    await waitFor(() => expect(holder.api.createInvite).toHaveBeenCalledWith("Maria"));
+  });
+
+  it("sem nome, gera o convite sem nome", async () => {
+    holder.api.listInvites.mockResolvedValue(listOf([]));
+    holder.api.createInvite.mockResolvedValue(invite());
+    wrap();
+    await userEvent.click(await screen.findByRole("button", { name: "Gerar convite" }));
+    await waitFor(() => expect(holder.api.createInvite).toHaveBeenCalledWith(undefined));
   });
 
   it("copia o link", async () => {
