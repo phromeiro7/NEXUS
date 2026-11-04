@@ -40,7 +40,8 @@ autenticação. Veja `.env.example` para as variáveis.
 | `GET/POST /holidays`, `DELETE /holidays/:id` | Feriados do usuário |
 | `GET/PATCH /settings` | Configurações (o `PATCH` reconstrói lembretes quando preciso) |
 | `GET /briefing` | Briefing diário |
-| `POST /assistant/message` | Mensagem ao assistente de IA (painel) |
+| `POST /capture/interpret` | Lê uma frase ("gastei 100 em roupa") com as regras do bot e devolve a proposta, sem gravar |
+| `POST /assistant/message` | Mensagem ao assistente de IA |
 | `POST /telegram/link-codes` | Gera o código de vínculo do Telegram (`{ code, deepLink, expiresAt }`) |
 | `DELETE /telegram/link` | Desvincula o Telegram da conta (`204`) |
 | `POST /telegram/webhook` | Webhook do bot (sem token de usuário; exige `X-Telegram-Bot-Api-Secret-Token`) |
@@ -431,18 +432,22 @@ confirmar e os e-mails de teste aparecem na interface web do servidor de e-mail 
 link para `/nova-senha`; essa URL está em `additional_redirect_urls` do mesmo arquivo (reinicie
 o Supabase local depois de alterar o `config.toml`).
 
-**O que está implementado:** entrar, cadastro, recuperação e redefinição de senha; Painel com
-adição rápida e visões Dia, Semana e Mês (hoje no fuso das configurações), resumo lateral,
-troca de status otimista, criação, edição e exclusão de tarefas (prazo, audiência, vínculo a
-processo existente); calculadora de prazos com criação de tarefa a partir do resultado;
-histórico de tarefas concluídas (com canceladas opcionais); configurações (fuso, UF, cidade,
-antecedência do lembrete, horário do resumo, aviso de tarefas que mantiveram lembretes antigos
-quando a API devolve `skipped`), vínculo com o Telegram por código (gerar, desvincular, aviso de canal
-pausado; o envio dos lembretes e do resumo pelo Telegram existe) e feriados locais.
+**O que está implementado:** entrar (QR code pelo Telegram, ou e-mail e senha), recuperação e
+redefinição de senha; o **painel para computador** (menu lateral que vira só ícones abaixo de
+1180 px): **Hoje** em duas colunas (tarefas atrasadas, de hoje, sem data e dos próximos dias, com
+concluir, adiar, editar, cancelar e excluir; contas a pagar com "Paguei"; frase do mês; "Ver
+concluídas"), **Finanças** (tabela do mês com busca, filtros, ordenação, dar baixa, excluir e
+novo lançamento), **Configurações** (nome, fuso, antecedência, horário do resumo, vínculo do
+Telegram, sessão) e **Convites** (só administradores). A **barra de captura** (Hoje e Finanças)
+lê a frase com as mesmas regras do bot (`POST /capture/interpret`), mostra a proposta e só grava ao
+**Confirmar**. Atalhos: `N` nova tarefa, `/` barra de captura, `?` lista de atalhos, `Esc` fecha.
 
-**O que não está:** barra de comando e IA (Plano 4; há um espaço reservado no cabeçalho),
-tela de Processos (fora do escopo; o processo só aparece como referência na tarefa). A paleta de cores
-é provisória e está isolada em tokens CSS em `apps/web/app/globals.css` para troca posterior.
+**O que não está:** e-mail e senha opcionais e "sair de todos os aparelhos" nas Configurações (o
+cliente de autenticação do app ainda não troca e-mail nem encerra as outras sessões); a IA no
+painel (a barra de comando do plano 4 saiu da interface; a rota `POST /assistant/message` segue na
+API). O painel antigo do projeto jurídico (calculadora de prazos, histórico, feriados locais,
+processos) saiu da interface: `/calculadora` e `/historico` levam a Hoje. Os endpoints
+`/deadlines/calculate`, `/cases`, `/holidays` e `/briefing` continuam na API, sem tela.
 
 ## Banco local (testes de banco)
 

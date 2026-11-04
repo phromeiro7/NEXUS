@@ -252,12 +252,12 @@
 }
 .pn-grid2 {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
-  gap: 56px;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: 48px;
   align-items: start;
 }
 .pn-col-bills {
-  padding-left: 56px;
+  padding-left: 48px;
   border-left: 1px solid var(--linha);
 }
 .pn-title-row {
