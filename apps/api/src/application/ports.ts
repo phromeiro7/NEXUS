@@ -383,6 +383,8 @@ export type InviteRecord = {
   expiresAt: Date;
   revokedAt: Date | null;
   usedAt: Date | null;
+  /** Conta criada com este convite (`null` enquanto não foi usado). */
+  usedBy?: string | null;
 };
 
 export interface InviteRepository {
@@ -392,6 +394,10 @@ export interface InviteRepository {
   list(limit: number): Promise<InviteRecord[]>;
   /** Revoga só um convite ainda não usado nem revogado; `false` = nada a revogar. */
   revoke(code: string, now: Date): Promise<boolean>;
+  /** Um convite pelo código, ou `null`. */
+  find(code: string): Promise<InviteRecord | null>;
+  /** Apaga o convite (qualquer estado); `false` = não existia. */
+  remove(code: string): Promise<boolean>;
   /** Reserva o código para UM chamador (atômico); `false` = inexistente, vencido, revogado ou já reservado. */
   claim(code: string, now: Date): Promise<boolean>;
   /** Marca o código reservado como usado pela conta criada. */
@@ -408,6 +414,8 @@ export interface AccountProvisioner {
   createForTelegram(telegramUserId: number): Promise<{ userId: string; created: boolean }>;
   /** Liga o chat à conta; lança `ChatAlreadyLinkedError` se o chat já é de outra conta. */
   linkChat(userId: string, chatId: number): Promise<void>;
+  /** Tira o acesso da conta na hora: bloqueia o login e desvincula o Telegram. Os dados ficam guardados. */
+  block(userId: string): Promise<void>;
   /** Desfaz uma conta criada nesta tentativa (a ligação falhou). */
   remove(userId: string): Promise<void>;
 }

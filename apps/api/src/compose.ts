@@ -165,6 +165,7 @@ export function buildApp(
   // Convites: administradores vêm de ADMIN_TELEGRAM_USER_IDS; sem token do bot não há link para compartilhar.
   const inviteUseCases = makeInviteUseCases({
     invites: createSupabaseInviteRepository(client),
+    accounts: createSupabaseAccountProvisioner(client),
     adminTelegramIds: new Set(config.adminTelegramUserIds ?? []),
     botUsername: config.telegramBotUsername,
     ...(config.inviteTtlDays !== undefined ? { ttlDays: config.inviteTtlDays } : {}),

@@ -467,16 +467,26 @@ export function createFakes(seed: { now?: Date } = {}) {
       row.revokedAt = at;
       return true;
     },
+    async find(code) {
+      return inviteRows.find((r) => r.code === code) ?? null;
+    },
+    async remove(code) {
+      const index = inviteRows.findIndex((r) => r.code === code);
+      if (index < 0) return false;
+      inviteRows.splice(index, 1);
+      return true;
+    },
     async claim(code, at) {
       const row = inviteRows.find((r) => r.code === code);
       if (!row || row.claimed || row.revokedAt !== null || row.expiresAt <= at) return false;
       row.claimed = true;
       return true;
     },
-    async finish(code, _userId, at) {
+    async finish(code, userId, at) {
       const row = inviteRows.find((r) => r.code === code && r.claimed && r.usedAt === null);
       if (!row) return false;
       row.usedAt = at;
+      row.usedBy = userId;
       return true;
     },
     async release(code) {
@@ -564,12 +574,14 @@ export function createFakes(seed: { now?: Date } = {}) {
   const accounts: AccountProvisioner & {
     created: string[];
     removed: string[];
+    blocked: string[];
     /** Faz a próxima ligação de chat falhar com este erro (simula corrida). */
     failLinkWith: Error | null;
     failCreateWith: Error | null;
   } = {
     created: [],
     removed: [],
+    blocked: [],
     failLinkWith: null,
     failCreateWith: null,
     async createForTelegram(telegramUserId) {
@@ -586,6 +598,10 @@ export function createFakes(seed: { now?: Date } = {}) {
       if (ownerOfChat(chatId, userId) !== null) throw new ChatAlreadyLinkedError();
       chatOf.set(userId, chatId);
       profileRows.set(userId, { ...profileOf(userId), telegramLinked: true });
+    },
+    async block(userId) {
+      accounts.blocked.push(userId);
+      chatOf.delete(userId);
     },
     async remove(userId) {
       accounts.removed.push(userId);

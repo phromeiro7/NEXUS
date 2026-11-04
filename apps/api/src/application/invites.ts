@@ -1,13 +1,13 @@
 import { randomBytes as nodeRandomBytes } from 'node:crypto';
-import { INVITE_CODE_LENGTH, type InviteDto, type InviteStatus } from '@aj/shared';
-import { ForbiddenError, InviteCodeCollisionError, NotFoundError } from './errors.js';
+import { INVITE_CODE_LENGTH, type InviteDto, type InviteStatus, type InviteSummaryDto } from '@aj/shared';
+import { ConflictError, ForbiddenError, InviteCodeCollisionError, NotFoundError } from './errors.js';
 import type { AccountProvisioner, Clock, InviteRecord, InviteRepository, LinkCodeRepository } from './ports.js';
 import { generateCode } from './telegram/link.js';
 
 /** Convites ficam 7 dias por padrão; a config pode mudar (1 a 90 dias). */
 export const INVITE_DEFAULT_TTL_DAYS = 7;
 /** Quantos convites a lista devolve (os mais recentes). */
-export const INVITE_LIST_LIMIT = 50;
+export const INVITE_LIST_LIMIT = 200;
 const MAX_COLLISION_RETRIES = 3;
 const DAY_MS = 24 * 60 * 60_000;
 
@@ -30,6 +30,7 @@ export function inviteShareUrl(link: string): string {
 
 export type InviteDeps = {
   invites: InviteRepository;
+  accounts: Pick<AccountProvisioner, 'block'>;
   /** Telegram user ids dos administradores (`ADMIN_TELEGRAM_USER_IDS`). Vazio = ninguém administra. */
   adminTelegramIds: ReadonlySet<number>;
   botUsername: string | undefined;
@@ -91,6 +92,40 @@ export function makeInviteUseCases(deps: InviteDeps) {
           if (!(error instanceof InviteCodeCollisionError) || attempt >= MAX_COLLISION_RETRIES) throw error;
         }
       }
+    },
+
+    async summary(userId: string): Promise<InviteSummaryDto> {
+      await requireAdmin(userId);
+      const now = deps.clock.now();
+      const summary: InviteSummaryDto = { total: 0, ativos: 0, usados: 0, expirados: 0, revogados: 0 };
+      for (const record of await deps.invites.list(INVITE_LIST_LIMIT)) {
+        const status = inviteStatus(record, now);
+        summary.total++;
+        if (status === 'ativo') summary.ativos++;
+        else if (status === 'usado') summary.usados++;
+        else if (status === 'expirado') summary.expirados++;
+        else summary.revogados++;
+      }
+      return summary;
+    },
+
+    /**
+     * Apaga o convite. Se já foi usado, a pessoa perde o acesso na hora (conta bloqueada, Telegram
+     * desvinculado; os dados ficam). Nunca alcança a própria conta nem a de outro administrador.
+     */
+    async remove(userId: string, code: string): Promise<void> {
+      await requireAdmin(userId);
+      const record = await deps.invites.find(code);
+      if (record === null) throw new NotFoundError('convite');
+      const guest = record.usedBy ?? null;
+      if (guest !== null) {
+        const guestTelegram = await deps.invites.telegramIdOf(guest);
+        if (guest === userId || (guestTelegram !== null && deps.adminTelegramIds.has(guestTelegram))) {
+          throw new ConflictError('convite_de_administrador');
+        }
+        await deps.accounts.block(guest);
+      }
+      await deps.invites.remove(code);
     },
 
     async list(userId: string): Promise<InviteDto[]> {

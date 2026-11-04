@@ -30,7 +30,7 @@ describe('invite routes', () => {
     expect((await req(app, 'POST', '/invites', undefined, 'token-ok')).status).toBe(403);
   });
 
-  it('administrator creates (201), lists and revokes (204)', async () => {
+  it('administrator creates (201), lists with a summary and deletes (204)', async () => {
     const { app } = buildApp({ invites: { adminIds: [111] } });
     const created = await req(app, 'POST', '/invites', undefined, 'token-ok');
     expect(created.status).toBe(201);
@@ -44,13 +44,17 @@ describe('invite routes', () => {
     expect(listed.status).toBe(200);
     expect(((await listed.json()) as { invites: Array<{ code: string }> }).invites.map((i) => i.code)).toEqual([invite.code]);
 
-    const revoked = await req(app, 'DELETE', `/invites/${invite.code}`, undefined, 'token-ok');
-    expect(revoked.status).toBe(204);
-    const after = (await (await req(app, 'GET', '/invites', undefined, 'token-ok')).json()) as { invites: Array<{ status: string }> };
-    expect(after.invites[0]!.status).toBe('revogado');
+    const deleted = await req(app, 'DELETE', `/invites/${invite.code}`, undefined, 'token-ok');
+    expect(deleted.status).toBe(204);
+    const after = (await (await req(app, 'GET', '/invites', undefined, 'token-ok')).json()) as {
+      invites: unknown[];
+      summary: unknown;
+    };
+    expect(after.invites).toEqual([]);
+    expect(after.summary).toEqual({ total: 0, ativos: 0, usados: 0, expirados: 0, revogados: 0 });
   });
 
-  it('revoking an unknown, malformed or already revoked code is 404', async () => {
+  it('deleting an unknown or malformed code is 404', async () => {
     const { app } = buildApp({ invites: { adminIds: [111] } });
     expect((await req(app, 'DELETE', '/invites/ABCDEFGHJKMN', undefined, 'token-ok')).status).toBe(404);
     expect((await req(app, 'DELETE', '/invites/curto', undefined, 'token-ok')).status).toBe(404);

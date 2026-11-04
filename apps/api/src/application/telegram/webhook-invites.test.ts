@@ -18,6 +18,7 @@ function setup(opts: { withInvites?: boolean; admins?: number[] } = {}) {
   fakes.links.setChat(PLAIN, PLAIN_CHAT);
   const inviteUseCases = makeInviteUseCases({
     invites: fakes.invites,
+    accounts: fakes.accounts,
     adminTelegramIds: new Set(opts.admins ?? [ADMIN_CHAT]),
     botUsername: 'nexus_bot',
     clock: fakes.clock,
