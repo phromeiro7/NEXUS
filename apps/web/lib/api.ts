@@ -138,7 +138,7 @@ export function createApiClient(opts: ApiClientOptions) {
     unlinkTelegram: () => request<void>('DELETE', '/telegram/link'),
     listInvites: () => request<InviteListDto>('GET', '/invites'),
     createInvite: () => request<InviteDto>('POST', '/invites'),
-    revokeInvite: (code: string) => request<void>('DELETE', `/invites/${encodeURIComponent(code)}`),
+    deleteInvite: (code: string) => request<void>('DELETE', `/invites/${encodeURIComponent(code)}`),
     getBriefing: () => request<BriefingDto>('GET', '/briefing'),
     listFinanceEntries: (query: FinanceListQuery = {}) =>
       request<FinanceEntryDto[]>('GET', `/finance-entries${financeQueryString(query)}`),

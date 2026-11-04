@@ -18,5 +18,15 @@ export const inviteDtoSchema = z.object({
 });
 export type InviteDto = z.infer<typeof inviteDtoSchema>;
 
-export const inviteListDtoSchema = z.object({ invites: z.array(inviteDtoSchema) });
+/** Contagem dos convites gerados (só os que ainda existem; apagado some da conta). */
+export const inviteSummaryDtoSchema = z.object({
+  total: z.number().int(),
+  ativos: z.number().int(),
+  usados: z.number().int(),
+  expirados: z.number().int(),
+  revogados: z.number().int(),
+});
+export type InviteSummaryDto = z.infer<typeof inviteSummaryDtoSchema>;
+
+export const inviteListDtoSchema = z.object({ invites: z.array(inviteDtoSchema), summary: inviteSummaryDtoSchema });
 export type InviteListDto = z.infer<typeof inviteListDtoSchema>;

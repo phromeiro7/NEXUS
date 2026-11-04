@@ -1,13 +1,34 @@
 "use client";
 
 import { useState } from "react";
-import type { InviteDto } from "@aj/shared";
-import { isForbidden, useCreateInvite, useInvites, useRevokeInvite } from "@/hooks/use-invites";
+import type { InviteDto, InviteSummaryDto } from "@aj/shared";
+import { isForbidden, useCreateInvite, useInvites, useDeleteInvite } from "@/hooks/use-invites";
 import { messageFor } from "@/lib/messages";
 
 const SHARE_TEXT = "Entre no Nexus, meu assistente de tarefas e lembretes:";
 
 const day = (iso: string) => new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+
+/** "12 gerados: 2 ativos, 9 usados, 1 expirado". Zeros ficam de fora. */
+export function summaryText(summary: InviteSummaryDto): string {
+  const parts = [
+    [summary.ativos, "ativo", "ativos"],
+    [summary.usados, "usado", "usados"],
+    [summary.expirados, "expirado", "expirados"],
+    [summary.revogados, "revogado", "revogados"],
+  ]
+    .filter(([n]) => (n as number) > 0)
+    .map(([n, one, many]) => `${n} ${n === 1 ? one : many}`);
+  const total = `${summary.total} ${summary.total === 1 ? "convite gerado" : "convites gerados"}`;
+  return parts.length === 0 ? total : `${total}: ${parts.join(", ")}`;
+}
+
+/** O que apagar causa, dito antes de confirmar. Só convite usado tira o acesso de alguém. */
+export function deleteWarning(invite: InviteDto): string {
+  return invite.status === "usado"
+    ? "Apagar este convite? A pessoa que entrou por ele perde o acesso ao Nexus agora."
+    : "Apagar este convite? O link deixa de funcionar.";
+}
 
 export function validityDays(invite: InviteDto): number {
   return Math.max(1, Math.round((Date.parse(invite.expiresAt) - Date.parse(invite.createdAt)) / 86_400_000));
@@ -52,12 +73,12 @@ export async function copyLink(invite: InviteDto): Promise<"copiado" | "falhou">
 
 /**
  * Convites do Mini App. Só aparece para administradores: a API responde 403 aos demais e o cartão some.
- * Gerar, copiar, compartilhar e revogar; a lista mostra o estado de cada convite.
+ * Gerar, copiar, compartilhar e apagar; a lista mostra o estado de cada convite.
  */
 export function InvitesCard() {
   const invites = useInvites();
   const create = useCreateInvite();
-  const revoke = useRevokeInvite();
+  const remove = useDeleteInvite();
   const [fresh, setFresh] = useState<InviteDto | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -91,12 +112,12 @@ export function InvitesCard() {
     else setError("Não foi possível copiar. Selecione o link e copie.");
   }
 
-  async function confirmRevoke(code: string) {
+  async function confirmDelete(invite: InviteDto) {
     setError(null);
     try {
-      await revoke.mutateAsync(code);
-      if (fresh?.code === code) setFresh(null);
-      setNotice("Convite revogado.");
+      await remove.mutateAsync(invite.code);
+      if (fresh?.code === invite.code) setFresh(null);
+      setNotice(invite.status === "usado" ? "Convite apagado. A pessoa perdeu o acesso." : "Convite apagado.");
     } catch (err) {
       setError(messageFor(err));
     } finally {
@@ -157,6 +178,12 @@ export function InvitesCard() {
         </div>
       )}
 
+      {invites.data !== undefined && invites.data.summary.total > 0 && (
+        <p className="mini-tg-text" data-testid="invites-summary">
+          {summaryText(invites.data.summary)}
+        </p>
+      )}
+
       {list.length === 0 && !invites.isError && <p className="mini-tg-text">Nenhum convite ainda. Gere o primeiro acima.</p>}
 
       {list.length > 0 && (
@@ -164,31 +191,28 @@ export function InvitesCard() {
           {list.map((invite) => (
             <li key={invite.code} className="mini-inv-row">
               <p className="mini-tg-state">{statusLabel(invite)}</p>
-              {invite.status === "ativo" &&
-                (confirming === invite.code ? (
-                  <div role="group" aria-label="Revogar este convite?" className="mini-tg-actions">
-                    <button
-                      type="button"
-                      className="mini-btn danger"
-                      disabled={revoke.isPending}
-                      onClick={() => void confirmRevoke(invite.code)}
-                    >
-                      {revoke.isPending ? "Revogando…" : "Sim, revogar"}
-                    </button>
-                    <button type="button" className="mini-btn" disabled={revoke.isPending} onClick={() => setConfirming(null)}>
-                      Cancelar
-                    </button>
-                  </div>
-                ) : (
-                  <div className="mini-tg-actions">
+              {confirming === invite.code ? (
+                <div role="group" aria-label="Apagar este convite?" className="mini-tg-actions">
+                  <p className="mini-tg-text">{deleteWarning(invite)}</p>
+                  <button type="button" className="mini-btn danger" disabled={remove.isPending} onClick={() => void confirmDelete(invite)}>
+                    {remove.isPending ? "Apagando…" : "Sim, apagar"}
+                  </button>
+                  <button type="button" className="mini-btn" disabled={remove.isPending} onClick={() => setConfirming(null)}>
+                    Cancelar
+                  </button>
+                </div>
+              ) : (
+                <div className="mini-tg-actions">
+                  {invite.status === "ativo" && (
                     <button type="button" className="mini-btn" onClick={() => void share(invite)}>
                       Compartilhar
                     </button>
-                    <button type="button" className="mini-btn" onClick={() => setConfirming(invite.code)}>
-                      Revogar
-                    </button>
-                  </div>
-                ))}
+                  )}
+                  <button type="button" className="mini-btn" aria-label={`Apagar o convite ${invite.code}`} onClick={() => setConfirming(invite.code)}>
+                    Apagar
+                  </button>
+                </div>
+              )}
             </li>
           ))}
         </ul>

@@ -5,8 +5,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api";
 import { InvitesCard } from "./invites-card";
 
+const summaryOf = (invites: Array<{ status: string }>) => ({
+  total: invites.length,
+  ativos: invites.filter((i) => i.status === "ativo").length,
+  usados: invites.filter((i) => i.status === "usado").length,
+  expirados: invites.filter((i) => i.status === "expirado").length,
+  revogados: invites.filter((i) => i.status === "revogado").length,
+});
+const listOf = <T extends { status: string }>(invites: T[]) => ({ invites, summary: summaryOf(invites) });
+
 const holder = vi.hoisted(() => ({
-  api: { listInvites: vi.fn(), createInvite: vi.fn(), revokeInvite: vi.fn() },
+  api: { listInvites: vi.fn(), createInvite: vi.fn(), deleteInvite: vi.fn() },
 }));
 vi.mock("@/components/auth-provider", () => ({ useApi: () => holder.api }));
 
@@ -32,7 +41,7 @@ function wrap() {
 beforeEach(() => {
   holder.api.listInvites.mockReset();
   holder.api.createInvite.mockReset();
-  holder.api.revokeInvite.mockReset();
+  holder.api.deleteInvite.mockReset();
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -49,14 +58,14 @@ describe("InvitesCard", () => {
   });
 
   it("administrador sem convites vê o estado vazio", async () => {
-    holder.api.listInvites.mockResolvedValue({ invites: [] });
+    holder.api.listInvites.mockResolvedValue(listOf([]));
     wrap();
     expect(await screen.findByRole("heading", { name: "Convites" })).toBeInTheDocument();
     expect(screen.getByText("Nenhum convite ainda. Gere o primeiro acima.")).toBeInTheDocument();
   });
 
   it("gera o convite, mostra o link e avisa a validade", async () => {
-    holder.api.listInvites.mockResolvedValue({ invites: [] });
+    holder.api.listInvites.mockResolvedValue(listOf([]));
     holder.api.createInvite.mockResolvedValue(invite());
     wrap();
     await userEvent.click(await screen.findByRole("button", { name: "Gerar convite" }));
@@ -65,7 +74,7 @@ describe("InvitesCard", () => {
   });
 
   it("copia o link", async () => {
-    holder.api.listInvites.mockResolvedValue({ invites: [] });
+    holder.api.listInvites.mockResolvedValue(listOf([]));
     holder.api.createInvite.mockResolvedValue(invite());
     const writeText = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
@@ -77,7 +86,7 @@ describe("InvitesCard", () => {
   });
 
   it("falha ao copiar: orienta a selecionar o link", async () => {
-    holder.api.listInvites.mockResolvedValue({ invites: [] });
+    holder.api.listInvites.mockResolvedValue(listOf([]));
     holder.api.createInvite.mockResolvedValue(invite());
     vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText: vi.fn().mockRejectedValue(new Error("x")) } });
     wrap();
@@ -87,7 +96,7 @@ describe("InvitesCard", () => {
   });
 
   it("dentro do Telegram, Compartilhar abre a tela de compartilhar dele", async () => {
-    holder.api.listInvites.mockResolvedValue({ invites: [] });
+    holder.api.listInvites.mockResolvedValue(listOf([]));
     holder.api.createInvite.mockResolvedValue(invite());
     const openTelegramLink = vi.fn();
     (window as { Telegram?: unknown }).Telegram = { WebApp: { platform: "ios", openTelegramLink } };
@@ -100,15 +109,13 @@ describe("InvitesCard", () => {
     expect(url.searchParams.get("url")).toBe("https://t.me/NexusAssitant_bot?start=ABCDEFGHJKMN");
   });
 
-  it("lista os convites com o estado em palavras e só os ativos têm ações", async () => {
-    holder.api.listInvites.mockResolvedValue({
-      invites: [
+  it("lista os convites com o estado em palavras e todos têm Apagar e só os ativos compartilham", async () => {
+    holder.api.listInvites.mockResolvedValue(listOf([
         invite(),
         invite({ code: "BBBBBBBBBBBB", status: "usado", usedAt: "2026-11-05T10:00:00.000Z" }),
         invite({ code: "CCCCCCCCCCCC", status: "expirado" }),
         invite({ code: "DDDDDDDDDDDD", status: "revogado" }),
-      ],
-    });
+      ]));
     wrap();
     const items = await screen.findAllByRole("listitem");
     expect(items).toHaveLength(4);
@@ -116,31 +123,43 @@ describe("InvitesCard", () => {
     expect(items[1]).toHaveTextContent("Usado em 05/11");
     expect(items[2]).toHaveTextContent("Expirou em 11/11");
     expect(items[3]).toHaveTextContent("Revogado");
-    expect(screen.getAllByRole("button", { name: "Revogar" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /^Apagar o convite/ })).toHaveLength(4);
+    expect(screen.getAllByRole("button", { name: "Compartilhar" })).toHaveLength(1);
+    expect(screen.getByTestId("invites-summary")).toHaveTextContent("4 convites gerados: 1 ativo, 1 usado, 1 expirado, 1 revogado");
   });
 
-  it("revogar pede confirmação e depois chama a API", async () => {
-    holder.api.listInvites.mockResolvedValue({ invites: [invite()] });
-    holder.api.revokeInvite.mockResolvedValue(undefined);
+  it("apagar pede confirmação e depois chama a API", async () => {
+    holder.api.listInvites.mockResolvedValue(listOf([invite()]));
+    holder.api.deleteInvite.mockResolvedValue(undefined);
     wrap();
-    await userEvent.click(await screen.findByRole("button", { name: "Revogar" }));
-    expect(holder.api.revokeInvite).not.toHaveBeenCalled();
-    await userEvent.click(screen.getByRole("button", { name: "Sim, revogar" }));
-    await waitFor(() => expect(holder.api.revokeInvite).toHaveBeenCalledWith("ABCDEFGHJKMN"));
-    expect(await screen.findByText("Convite revogado.")).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("button", { name: "Apagar o convite ABCDEFGHJKMN" }));
+    expect(holder.api.deleteInvite).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "Sim, apagar" }));
+    await waitFor(() => expect(holder.api.deleteInvite).toHaveBeenCalledWith("ABCDEFGHJKMN"));
+    expect(await screen.findByText("Convite apagado.")).toBeInTheDocument();
   });
 
-  it("cancelar a revogação não chama a API", async () => {
-    holder.api.listInvites.mockResolvedValue({ invites: [invite()] });
+  it("apagar um convite usado avisa que a pessoa perde o acesso", async () => {
+    holder.api.listInvites.mockResolvedValue(listOf([invite({ status: "usado", usedAt: "2026-11-05T10:00:00.000Z" })]));
+    holder.api.deleteInvite.mockResolvedValue(undefined);
     wrap();
-    await userEvent.click(await screen.findByRole("button", { name: "Revogar" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Apagar o convite ABCDEFGHJKMN" }));
+    expect(screen.getByText(/perde o acesso ao Nexus agora/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Sim, apagar" }));
+    expect(await screen.findByText("Convite apagado. A pessoa perdeu o acesso.")).toBeInTheDocument();
+  });
+
+  it("cancelar a exclusão não chama a API", async () => {
+    holder.api.listInvites.mockResolvedValue(listOf([invite()]));
+    wrap();
+    await userEvent.click(await screen.findByRole("button", { name: "Apagar o convite ABCDEFGHJKMN" }));
     await userEvent.click(screen.getByRole("button", { name: "Cancelar" }));
-    expect(holder.api.revokeInvite).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "Revogar" })).toBeInTheDocument();
+    expect(holder.api.deleteInvite).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Apagar o convite ABCDEFGHJKMN" })).toBeInTheDocument();
   });
 
   it("erro ao gerar: avisa e deixa tentar de novo", async () => {
-    holder.api.listInvites.mockResolvedValue({ invites: [] });
+    holder.api.listInvites.mockResolvedValue(listOf([]));
     holder.api.createInvite.mockRejectedValue(new ApiError(500, "erro_interno", null));
     wrap();
     await userEvent.click(await screen.findByRole("button", { name: "Gerar convite" }));
@@ -150,7 +169,7 @@ describe("InvitesCard", () => {
 
   it("erro ao carregar a lista: avisa com 'Tentar de novo'", async () => {
     holder.api.listInvites.mockRejectedValueOnce(new ApiError(500, "erro_interno", null));
-    holder.api.listInvites.mockResolvedValue({ invites: [invite()] });
+    holder.api.listInvites.mockResolvedValue(listOf([invite()]));
     wrap();
     expect(await screen.findByText("Não foi possível carregar os convites.")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Tentar de novo" }));
