@@ -13,6 +13,8 @@ import { makeHolidayUseCases } from '../application/holidays.js';
 import { makeSettingsUseCases } from '../application/settings.js';
 import { makeSyncReminders } from '../application/sync-reminders.js';
 import { makeTaskUseCases } from '../application/tasks.js';
+import { makeLinkUseCases } from '../application/telegram/link.js';
+import { createSupabaseLinkRepository } from './supabase-link-repository.js';
 import { createSupabaseCaseRepository } from './supabase-case-repository.js';
 import { createSupabaseFinanceRepository } from './supabase-finance-repository.js';
 import { createSupabaseHolidayRepository } from './supabase-holiday-repository.js';
@@ -74,6 +76,7 @@ const app = createApp({
   }),
   briefing: makeGetBriefing({ tasks: taskRepo, profiles: profileRepo, clock }),
   webOrigin: 'http://localhost:3000',
+  telegramLink: makeLinkUseCases({ links: createSupabaseLinkRepository(admin), botUsername: undefined, clock }),
 });
 
 const calc = (headers: Record<string, string>) =>

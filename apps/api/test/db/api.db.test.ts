@@ -12,7 +12,7 @@ const env = getSupabaseEnv();
 const opts = { auth: { persistSession: false, autoRefreshToken: false } };
 const admin: SupabaseClient = createClient(env.url, env.serviceRoleKey, opts);
 const app = buildApp(
-  { supabaseUrl: env.url, serviceRoleKey: env.serviceRoleKey, port: 0, webOrigin: WEB_ORIGIN },
+  { supabaseUrl: env.url, serviceRoleKey: env.serviceRoleKey, port: 0, webOrigin: WEB_ORIGIN, assistantModel: 'claude-haiku-5-5' },
   { clock: { now: () => new Date(FIXED_NOW) } },
 );
 
@@ -367,7 +367,7 @@ describe('injected clock reaches every consumer (user D, early clock)', () => {
   // real clock would behave differently on any day. 2026-01-06 is a Tuesday; Sao Paulo
   // is UTC-3, so 08:00 local = 11:00Z and 09:00 local = 12:00Z.
   const earlyApp = buildApp(
-    { supabaseUrl: env.url, serviceRoleKey: env.serviceRoleKey, port: 0, webOrigin: WEB_ORIGIN },
+    { supabaseUrl: env.url, serviceRoleKey: env.serviceRoleKey, port: 0, webOrigin: WEB_ORIGIN, assistantModel: 'claude-haiku-5-5' },
     { clock: { now: () => new Date('2026-01-05T12:00:00.000Z') } },
   );
   const callEarly = async (method: string, path: string, body?: unknown) => {

@@ -112,6 +112,38 @@ describe('createApiClient requests', () => {
     ]);
   });
 
+  it('sendAssistantMessage posts text and clientMessageId only', async () => {
+    const { client, calls } = setup(() => Response.json({ reply: 'ok', affectedTasks: [] }));
+    const input = { text: 'oi', clientMessageId: '3f2b8c1e-5d4a-4b7e-9a10-2c6d8e4f1a77' };
+    await expect(client.sendAssistantMessage(input)).resolves.toEqual({ reply: 'ok', affectedTasks: [] });
+    expect(calls[0]!.url).toBe('http://api.test/assistant/message');
+    expect(calls[0]!.init.method).toBe('POST');
+    expect(JSON.parse(calls[0]!.init.body as string)).toEqual(input);
+  });
+
+  it('createLinkCode posts without a body and unlinkTelegram deletes with 204', async () => {
+    const dto = { code: 'ABC123', deepLink: 'https://t.me/bot?start=ABC123', expiresAt: '2026-10-31T12:10:00.000Z' };
+    const { client, calls } = setup(() => Response.json(dto));
+    await expect(client.createLinkCode()).resolves.toEqual(dto);
+    expect(calls[0]!.url).toBe('http://api.test/telegram/link-codes');
+    expect(calls[0]!.init.method).toBe('POST');
+    expect(calls[0]!.init.body).toBeUndefined();
+    expect(headersOf(calls[0]!).get('Content-Type')).toBeNull();
+
+    const json = vi.fn(() => Promise.reject(new Error('no json')));
+    const res = { ok: true, status: 204, json } as unknown as Response;
+    const second = setup(() => res);
+    await expect(second.client.unlinkTelegram()).resolves.toBeUndefined();
+    expect(json).not.toHaveBeenCalled();
+    expect(second.calls[0]!.url).toBe('http://api.test/telegram/link');
+    expect(second.calls[0]!.init.method).toBe('DELETE');
+  });
+
+  it('createLinkCode surfaces 503 telegram_nao_configurado as ApiError', async () => {
+    const { client } = setup(() => Response.json({ error: 'telegram_nao_configurado' }, { status: 503 }));
+    await expect(client.createLinkCode()).rejects.toMatchObject({ status: 503, code: 'telegram_nao_configurado' });
+  });
+
   it('deleteTask and deleteHoliday handle 204 without reading JSON', async () => {
     const json = vi.fn(() => Promise.reject(new Error('no json')));
     const res = { ok: true, status: 204, json } as unknown as Response;

@@ -1,4 +1,6 @@
 import type {
+  AssistantMessageInput,
+  AssistantReplyDto,
   BriefingDto,
   CalculateDeadlineResultDto,
   CaseDto,
@@ -11,6 +13,7 @@ import type {
   FinanceStatus,
   HolidayDto,
   IsoDate,
+  LinkCodeDto,
   ListTasksQuery,
   MeDto,
   SettingsDto,
@@ -127,6 +130,8 @@ export function createApiClient(opts: ApiClientOptions) {
     listHolidays: () => request<HolidayDto[]>('GET', '/holidays'),
     createHoliday: (input: CreateHolidayInput) => request<HolidayDto>('POST', '/holidays', input),
     deleteHoliday: (id: string) => request<void>('DELETE', `/holidays/${encodeURIComponent(id)}`),
+    createLinkCode: () => request<LinkCodeDto>('POST', '/telegram/link-codes'),
+    unlinkTelegram: () => request<void>('DELETE', '/telegram/link'),
     getBriefing: () => request<BriefingDto>('GET', '/briefing'),
     listFinanceEntries: (query: FinanceListQuery = {}) =>
       request<FinanceEntryDto[]>('GET', `/finance-entries${financeQueryString(query)}`),
@@ -134,6 +139,8 @@ export function createApiClient(opts: ApiClientOptions) {
     updateFinanceEntry: (id: string, input: UpdateFinanceEntryInput) =>
       request<FinanceEntryDto>('PATCH', `/finance-entries/${encodeURIComponent(id)}`, input),
     deleteFinanceEntry: (id: string) => request<void>('DELETE', `/finance-entries/${encodeURIComponent(id)}`),
+    sendAssistantMessage: (input: AssistantMessageInput) =>
+      request<AssistantReplyDto>('POST', '/assistant/message', input),
   };
 }
 

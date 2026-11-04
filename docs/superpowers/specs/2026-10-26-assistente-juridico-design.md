@@ -140,7 +140,7 @@ Vale para Telegram e para a barra de comando.
 9. **Resposta.** Informa o que foi entendido e as suposições ("manhã = 09h"). No painel, a API devolve também as tarefas afetadas para atualizar a tela.
 10. **Várias tarefas.** Permitido; confirmação por item. Item ambíguo gera pergunta só sobre ele.
 11. **Falhas.** IA indisponível: evento preservado, nenhuma tarefa criada, usuário avisado. Resposta inválida da IA não é aplicada. Falha do banco não gera confirmação falsa. Tentativa de prompt injection não executa comandos nem ultrapassa permissões.
-12. **Tempo.** O Telegram reenvia o webhook se a resposta demorar, então o processamento tem orçamento de tempo total (alvo de cerca de 20 s para todo o ciclo, com timeout por chamada à IA). Estourou o orçamento: nenhuma ação parcial é confirmada e o usuário recebe aviso. A idempotência do passo 3 impede duplicatas se o Telegram reenviar. Se a hospedagem escolhida encerrar a função ao responder, o processamento precisa terminar antes da resposta; ver verificação 3 na seção 12.
+12. **Tempo.** O Telegram reenvia o webhook se a resposta demorar, então o processamento tem orçamento de tempo total (alvo de cerca de 20 s para todo o ciclo, com timeout por chamada à IA). Falha ou estouro do orçamento **depois** de o assistente já ter gravado algo: o usuário recebe uma resposta parcial verdadeira (HTTP 200) que lista só o que de fato foi gravado e pede para reenviar apenas o que faltou; o evento fica `processado` e reenviar a mesma mensagem reproduz essa resposta, sem recriar nada. Falha **sem nenhuma gravação**: 503, e o mesmo `clientMessageId` pode ser reenviado. Nada é jamais confirmado falsamente. A idempotência do passo 3 impede duplicatas se o Telegram reenviar. Se a hospedagem escolhida encerrar a função ao responder, o processamento precisa terminar antes da resposta; ver verificação 3 na seção 12.
 
 ### Horários-padrão (a validar)
 Amanhã de manhã = 09:00; à tarde = 15:00; à noite = 20:00; dia da semana sem hora = 09:00; "semana que vem" sem dia = perguntar; sem data = tarefa sem prazo.
@@ -169,7 +169,7 @@ Regras que o enviador precisa cumprir, porque a API do Plano 2 depende delas:
 2. **Reagendamento durante o envio:** ao terminar um lembrete `enviando`, se a data, a hora ou o `fatal` da tarefa mudaram desde a reserva, o enviador roda de novo a substituição dos lembretes dessa tarefa. `replace_pending_reminders` pula o rascunho cujo tipo está `enviando`; sem esse passo, uma remarcação feita durante o envio deixaria a tarefa sem lembrete para o novo horário.
 3. **Passado não é recriado:** a reconstrução nunca recria lembretes cujo instante já passou. Um lembrete `pendente` vencido (enviador fora do ar) é responsabilidade do enviador: envia atrasado, com a marca "(atrasado)", dentro da regra de 24h acima.
 4. **Tarefa só com data criada no próprio dia:** criada depois das 08h do dia do prazo, não ganha lembrete `no_dia` (o instante já passou); quem a cobre é o briefing.
-5. **Questão de produto em aberto (decidir antes do Plano 5):** hoje uma tarefa `fatal` COM hora recebe só `antecipado` e `no_horario` (sem 3 dias antes nem dia anterior). Confirmar se é o comportamento desejado.
+5. **Decisão de produto (2026-11-03): tarefa `fatal` com hora: manter como está.** Uma tarefa `fatal` COM hora recebe só `antecipado` e `no_horario` (sem 3 dias antes nem dia anterior); `buildReminders` não muda.
 
 ### Briefing
 - **Painel:** no topo, calculado ao abrir, sem custo de IA.
@@ -257,6 +257,8 @@ Nenhum item abaixo deve ser tratado como confirmado sem consultar a documentaç�
 6. Limites de envio de e-mail do Supabase Auth.
 7. Detalhes atuais da Telegram Bot API.
 8. Custo estimado por volume de mensagens.
+
+Resultados dos itens 1, 2, 3, 4 e 7 (consulta de 2026-10-30): ver `docs/superpowers/notes/2026-verificacoes-infra.md`.
 
 ---
 

@@ -1,0 +1,179 @@
+# Status do projeto e o que falta
+
+Atualizado em 2026-10-29. Este documento é o ponto de partida para retomar o trabalho: o que está
+pronto, o que falta, o que depende de decisão ou de conta externa e o que ainda não foi verificado.
+
+Referências: especificação em `docs/superpowers/specs/2026-10-26-assistente-juridico-design.md`;
+planos de implementação em `docs/superpowers/plans/` (um por etapa, numerados de 1 a 6).
+
+> **Rumo do produto (2026-11-03):** o projeto está migrando de assistente jurídico para o **Nexus**, assistente
+> pessoal de tarefas com Telegram como canal principal. Decisões abertas, ordem do trabalho e alterações
+> previstas em `docs/ROTEIRO-NEXUS.md`. O desenho do Mini App está em
+> `docs/superpowers/specs/2026-11-03-mini-app-telegram-design.md`.
+
+## Visão geral
+
+| Plano | Escopo | Situação |
+|---|---|---|
+| 1 | Fundação e domínio (monorepo, banco, RLS, calculadora de prazos, lembretes) | Concluído |
+| 2 | API de tarefas, processos, feriados, configurações, briefing | Concluído |
+| 3 | Painel web (login, Dia/Semana/Mês, formulários, calculadora, histórico, configurações) | Concluído; **nunca visto num navegador real** |
+| 4 | Assistente de IA (barra de comando) e briefing em texto | **Implementado e revisado**, falta a execução com o modelo real (rascunho de PR; ver abaixo) |
+| 5 | Telegram, envio de lembretes e agendador | **Implementado e revisado** (revisão final do ramo feita); falta Telegram, agendador e hospedagem reais |
+| 6 | Acabamento, avaliação da IA, segurança, publicação | Não iniciado (plano escrito) |
+
+Os PRs formam uma pilha: o PR do Plano 1 aponta para `main`, o do Plano 2 para o ramo do Plano 1, e
+assim por diante. Revise e integre na ordem.
+
+## O que funciona hoje (Planos 1 a 3)
+
+- **API** (Hono, porta 3001): tarefas, processos, feriados locais, configurações, briefing e cálculo de
+  prazos em dias úteis/corridos, com isolamento por usuário (filtro explícito + RLS) e lembretes gravados
+  na fila (`reminders`). Rotas e erros: README, seção "API".
+- **Painel** (Next.js, porta 3000): entrar, criar conta, recuperar e redefinir senha; Painel com adição
+  rápida e visões Dia, Semana e Mês; troca de status com um clique; criar, editar e excluir tarefas;
+  calculadora de prazos; histórico; configurações e feriados locais. Como subir tudo localmente: README,
+  seção "Painel".
+- **Banco local** (Supabase, projeto `assistente-juridico`, portas 553xx): migrações 0001 a 0005.
+- Testes: shared 80, API 509, painel 301 (unitários); suíte de banco com 143 testes.
+
+## Plano 4 — assistente de IA (implementado; falta a execução com o modelo real)
+
+Ramo `feat/plano-4-assistente-ia`, aberto como rascunho. **Tasks 1 a 8 concluídas e revisadas, EXCETO a
+execução do roteiro com o modelo real**, que aguarda a sua chave da API e a aprovação do gasto.
+
+- Task 1: contratos compartilhados e `renderBriefing` em texto. Task 2: persistência de mensagens e
+  eventos (migração 0005, `assistant_model_calls`, função SQL atômica `begin_model_call`). Task 3:
+  ferramentas e executor. Task 4: prompt e adaptador Anthropic. Task 5: `processMessage`. Task 6: rota
+  `POST /assistant/message`. Task 7: barra de comando no painel. Task 8: roteiro manual, nota de custos e
+  documentação.
+- Limite de 30 mensagens/hora por **usuário** (todos os canais), contado em chamadas ao modelo.
+- Falha depois de gravar algo: resposta parcial verdadeira com HTTP 200 (reenviar reproduz, sem recriar);
+  falha sem gravação: 503 e reenviável. Nada é confirmado falsamente.
+- `max_tokens` do modelo é 4096 (não 1024): o raciocínio adaptativo do Haiku 5.5 conta no limite.
+- Testes: shared 80, API 509, painel 301 (unitários); suíte de banco com 143 testes.
+- **Roteiro com o modelo real: NÃO executado.** `pnpm --filter @aj/api smoke:assistant` (repositórios em
+  memória, só precisa de `ANTHROPIC_API_KEY`) exige `--yes` depois de mostrar o máximo de chamadas e o teto
+  de custo. Instruções, premissas de preço e a lista do que verificar (schemas `strict`, `format`,
+  cache, `effort` baixo): `docs/superpowers/notes/2026-assistente-custos.md`.
+
+## Plano 5 — Telegram, lembretes e agendador (implementado; falta o ambiente real)
+
+Ramo `feat/plano-5-telegram-e-lembretes`. Tarefas 1 a 10 concluídas e revisadas, com revisão final do ramo
+e uma rodada de correções. Testes: shared 80, API 905, painel 334 (unitários); suíte de banco com 251.
+
+**O que existe:** funções SQL da fila e do envio (migração 0006: reserva com `FOR UPDATE SKIP LOCKED`,
+trava de arrendamento, recuperação de eventos presos, limpezas); enviador de lembretes com nova tentativa e
+pausa do canal; briefing diário pelo Telegram (janela de 4 h); endpoint interno do agendador
+(`POST /internal/reminders/run`, segredo em tempo constante) e `reminders:tick`; vínculo por código de 8
+caracteres com validade de 10 min; webhook (`POST /telegram/webhook`), `/desvincular`; tela de vínculo nas
+Configurações; teste de ponta a ponta com Telegram falso; roteiro de publicação no README.
+
+**O que NÃO foi verificado:** nada rodou contra o Telegram real, a API real da Anthropic ou uma hospedagem.
+O banco NEXUS (Supabase) recebeu as 6 migrações, o bot @NexusAssistant_bot existe e o webhook não está
+registrado.
+
+**Limitações conhecidas (para o Plano 6):**
+- Uma mudança de configuração (antecedência ou fuso) feita durante o envio de um lembrete pode deixar
+  aquela tarefa sem o lembrete do novo horário até a próxima edição. A correção certa é na função
+  `replace_pending_reminders`, que hoje apaga lembretes `pendente` atrasados.
+- `inbound_events`, `task_confirmations` e lembretes terminais crescem sem limpeza; falta índice na
+  varredura de `recover_stuck_events`.
+- O webhook responde 200 quando falha depois de registrar o evento (`process_failed`) e não avisa o usuário.
+- O resumo diário é "no máximo uma vez" só para falha após a reserva; falha transitória libera e pode
+  reenviar no minuto seguinte.
+- Um /start ou /desvincular reenviado pelo Telegram depois de ~2 min pode repetir uma resposta inofensiva.
+- Botões do painel têm 40 px (alvo de 44 a 48 px); relógio do cliente na contagem do código; foco após
+  trocar o código.
+- Tempo do agendador: o pior caso real é ~45 s; o `pg_net` deve usar `timeout_milliseconds` de 60000, e a
+  função da Vercel precisa de `maxDuration` de pelo menos 60 s.
+- A API é um servidor Node; falta o adaptador de função para a Vercel.
+
+## Plano 6 — acabamento e publicação (não iniciado)
+
+Decisões do usuário, paleta definitiva, dívidas técnicas, limites de uso nas rotas, revisão de segurança,
+avaliação da IA (~50 frases), testes de navegador, dados de demonstração e runbook de publicação.
+
+Backlog herdado do Plano 4 para este plano:
+- `Retry-After` real, calculado a partir da chamada mais antiga na janela (hoje fixo em 60 s), e exposto via
+  CORS.
+- O limite de 1.000 caracteres conta unidades UTF-16; decidir entre UTF-16 e pontos de código.
+- O limite por hora é verificar-depois-agir e pode estourar sob concorrência.
+- Os retries do SDK podem estourar o orçamento (~24 s por passo).
+- `listar_tarefas` carrega tudo antes de cortar em 50.
+- Um 400 BadRequest da API real hoje vira a mensagem de 'configuracao': confirmar na execução real.
+- A própria execução do roteiro com o modelo real (aguarda a chave e a aprovação do gasto do usuário).
+
+## Plano 7 (7a e 7b) — Mini App do Telegram completo e convites (desenhado; não iniciado)
+
+Decisão de 03/11/2026: uso pessoal e de poucos convidados, então o Telegram vira a entrada principal
+(Mini App sem senha), os convidados entram por convite e o login por e-mail e senha fica como porta de
+reserva do administrador. Desenho completo e perguntas em aberto em
+`docs/superpowers/specs/2026-11-03-mini-app-telegram-design.md`. Depende do Plano 5 e do bot/painel
+hospedados.
+
+## Depende de você (decisões e contas)
+
+- **Chave da API da Anthropic** (console.anthropic.com, créditos pré-pagos): só para o roteiro manual do
+  Plano 4 e a avaliação da IA do Plano 6; os testes automáticos usam modelo falso.
+- **Bot do Telegram** (criar no BotFather): só para uso real; os testes usam Telegram falso.
+- **Paleta e identidade visual definitivas** (hoje provisórias, em tokens CSS `apps/web/app/globals.css`).
+- **Hospedagem** da API e do painel e **plano do Supabase** (spec §12: pausa por inatividade, `pg_cron`).
+- **Retenção de dados e aviso de privacidade/LGPD** (spec §14); provedor de e-mail do Supabase Auth.
+- **Validação por advogado** da regra de contagem de prazos (exclui o dia da publicação, inclui o do
+  vencimento; úteis pulam fins de semana e feriados; corridos prorrogam para o próximo dia útil).
+- Dados reais de clientes não devem entrar no repositório nem em fixtures.
+
+## Ainda não verificado
+
+- O painel **nunca foi aberto num navegador real**: só a API foi exercitada ponta a ponta. Falta conferir
+  layout em 360, 768 e 1280 px, contraste medido, navegação por teclado/leitor de tela e os
+  redirecionamentos do lado do cliente.
+- Nada foi implantado; o runbook de publicação é do Plano 6.
+- O comportamento real do modelo de IA ainda não foi exercitado: o roteiro existe, mas não foi executado
+  (aguarda chave e aprovação do gasto). O do Telegram é do Plano 5.
+
+## Dívidas técnicas conhecidas (backlog)
+
+**Da API (Plano 2):** paginação de `GET /tasks`; regra para tarefa em processo arquivado; comportamento de
+`{ deadline, dueDate: null }` no `update`; `p_drafts` nulo, duplicado e tarefa de outro usuário em
+`replace_pending_reminders`; centralizar o regex de UUID e `UNIQUE_VIOLATION`; teste do argumento do
+`console.error`; limite de requisições nas rotas; nota de produto: tarefa só com data criada depois das 08h do
+próprio dia não ganha o lembrete `no_dia` (o briefing cobre).
+
+**Do painel (Plano 3):** `minimum_password_length = 8` no `supabase/config.toml` (hoje 6 no servidor, 8 no
+painel); verificação de recuperação de senha "fail-closed" e `AuthSession.user.id` obrigatório; mostrar
+`configError` nas telas de login; trava contra duplo clique nas confirmações de exclusão; medir o contraste
+com ferramenta; testes de mudança de fuso e de configurações que chegam tarde; extrair `DeadlineFields`
+compartilhado e unificar `FIELD_MESSAGE`/`errorsFromIssues`; reavaliar o Turbopack (hoje `--webpack`, ver
+`apps/web/next.config.ts`); teste de virada de meia-noite em `todayIn`; ampliar a visão Semana em telas
+largas; teste que fixe o `cancelQueries` ao limpar o cache; varredura de `service_role` também fora de
+`apps/web`.
+
+**Do assistente (Plano 4, menores adiados):**
+- Execução real: confirmar na API real a aceitação do `strict` (anyOf com null, `format` date/uuid, padrão de
+  `dueTime` removido), `strict` + `effort` baixo + raciocínio adaptativo, o mínimo de prefixo cacheável
+  (`cacheReadTokens`), e que montar o adaptador na subida não faz rede; `cache_creation_input_tokens` não é
+  mapeado.
+- `processMessage`: passo com `tool_use` e `max_tokens` ainda executa as ferramentas (falta teste);
+  `retryAfter` fixo em 60 s; limite verificado antes de agir pode estourar sob concorrência; tamanho em
+  UTF-16 conta emoji duas vezes; resposta parcial não diz o que mudou em tarefas alteradas e título com
+  quebra de linha quebra a lista; resultados do 4º passo nunca voltam ao modelo; retries do SDK podem passar
+  do orçamento de ~20 s (pior caso ~24 s por passo); mensagem de chat só com texto vazio.
+- Rota/painel: `Retry-After` não exposto via CORS (o painel lê `retryAfterSeconds` do corpo); `json-logger`
+  pode ter campos sobrescritos; barra de comando: fundo não fecha ao clicar, Ctrl+K abre sobre o diálogo de
+  confirmação, texto digitado durante o envio some ao concluir.
+- Banco: `listar_tarefas` carrega tudo antes de limitar a 50; falta teste de limpeza (`dueDate:null`,
+  `dueTime:null`); índice de `assistant_model_calls` por (user_id, called_at); `apps/api/.vitest/` sem
+  `.gitignore`.
+
+## Como retomar
+
+- Ramos: `pr/plano-1-…`, `pr/plano-2-…`, `pr/plano-3-…` (pilha de PRs, um por plano) e
+  `feat/plano-4-assistente-ia` (rascunho). O processo seguido: um implementador por tarefa e uma revisão por
+  tarefa, correções em rodadas e revisão final do ramo; cada decisão tomada fica registrada como "Ruling".
+- O ledger do Plano 4 (decisões e pendências) ficava em `.superpowers/sdd/` (fora do Git); o essencial está
+  neste documento.
+- Banco local: `./apps/api/node_modules/.bin/supabase start --workdir .` (portas 553xx, projeto
+  `assistente-juridico`). Nunca rode `db reset` nem outros comandos contra outra stack Supabase da máquina.
+- Variáveis: nomes em `.env.example`; valores só em `apps/api/.env` e `apps/web/.env.local` (ignorados pelo Git).
