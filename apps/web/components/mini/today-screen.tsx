@@ -1,16 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import type { IsoDate, TaskDto, TaskStatus } from "@aj/shared";
 import { useFinance } from "@/hooks/finance";
 import { FinanceNotice } from "./finance-notice";
 import { useStatusChange } from "@/hooks/use-status-change";
 import { useSettings, useTasks } from "@/hooks/queries";
+import { useClock } from "@/hooks/use-clock";
 import { useToday } from "@/hooks/use-today";
 import { addDays } from "@/lib/dates";
 import { dueBills, formatBRLShort, hasMonthEntries, monthName, monthOf, monthTotals, type Lancamento } from "@/lib/finance";
-import { clockIn, dayTitle, nextUp, pluralTasks, spokenTime } from "@/lib/mini-tasks";
+import { dayTitle, nextUp, pluralTasks, spokenTime } from "@/lib/mini-tasks";
 import { groupDay } from "@/lib/tasks-view";
 import { BillItem } from "./bill-item";
 import { Capture } from "./capture";
@@ -25,16 +26,6 @@ function dayHeading(date: IsoDate): string {
   return new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC", weekday: "long", day: "numeric", month: "long" }).format(
     new Date(Date.UTC(y, m - 1, d)),
   );
-}
-
-/** Relógio local que se atualiza a cada minuto (para "próxima tarefa"). */
-function useClock(timeZone: string | undefined): string | null {
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 60_000);
-    return () => clearInterval(t);
-  }, []);
-  return timeZone === undefined ? null : clockIn(timeZone, now);
 }
 
 export function TodayScreen() {

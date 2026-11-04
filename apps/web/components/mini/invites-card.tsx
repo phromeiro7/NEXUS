@@ -9,11 +9,11 @@ const SHARE_TEXT = "Entre no Nexus, meu assistente de tarefas e lembretes:";
 
 const day = (iso: string) => new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 
-function validityDays(invite: InviteDto): number {
+export function validityDays(invite: InviteDto): number {
   return Math.max(1, Math.round((Date.parse(invite.expiresAt) - Date.parse(invite.createdAt)) / 86_400_000));
 }
 
-function statusLabel(invite: InviteDto): string {
+export function statusLabel(invite: InviteDto): string {
   if (invite.status === "ativo") return `Ativo, vale até ${day(invite.expiresAt)}`;
   if (invite.status === "usado") return `Usado em ${invite.usedAt === null ? "—" : day(invite.usedAt)}`;
   if (invite.status === "expirado") return `Expirou em ${day(invite.expiresAt)}`;
@@ -24,7 +24,7 @@ function statusLabel(invite: InviteDto): string {
  * Dentro do Telegram abre a tela de compartilhar dele; fora, usa o compartilhamento do aparelho e, sem ele,
  * copia o link. Devolve o que aconteceu, para avisar a pessoa.
  */
-async function shareInvite(invite: InviteDto): Promise<"compartilhado" | "copiado" | "falhou" | "cancelado"> {
+export async function shareInvite(invite: InviteDto): Promise<"compartilhado" | "copiado" | "falhou" | "cancelado"> {
   const tg = typeof window === "undefined" ? undefined : window.Telegram?.WebApp;
   if (tg?.openTelegramLink && tg.platform !== "unknown") {
     tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(invite.link)}&text=${encodeURIComponent(SHARE_TEXT)}`);
@@ -41,7 +41,7 @@ async function shareInvite(invite: InviteDto): Promise<"compartilhado" | "copiad
   return copyLink(invite);
 }
 
-async function copyLink(invite: InviteDto): Promise<"copiado" | "falhou"> {
+export async function copyLink(invite: InviteDto): Promise<"copiado" | "falhou"> {
   try {
     await navigator.clipboard.writeText(invite.link);
     return "copiado";
