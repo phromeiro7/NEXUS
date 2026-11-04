@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { DEFAULT_INTERVAL_SECONDS, loopIntervalMs, runLoop } from './reminders-loop.js';
+import { DEFAULT_INTERVAL_SECONDS, loopIntervalMs, runLoop, withTimeout } from './reminders-loop.js';
 
 describe('loopIntervalMs', () => {
   it('defaults to 60 s when unset or empty', () => {
@@ -45,5 +45,17 @@ describe('runLoop', () => {
       '1970-01-01T00:00:00.000Z tick ok',
     ]);
     expect(JSON.stringify(log.mock.calls)).not.toContain('segredo-vazado');
+  });
+});
+
+describe('withTimeout', () => {
+  it('passes the tick code through when it finishes in time', async () => {
+    expect(await withTimeout(Promise.resolve(0), 1_000)).toBe(0);
+    expect(await withTimeout(Promise.resolve(1), 1_000)).toBe(1);
+  });
+
+  it('turns a hung tick into a failure after the limit, and a rejection into a failure', async () => {
+    expect(await withTimeout(new Promise<number>(() => {}), 20)).toBe(1);
+    expect(await withTimeout(Promise.reject(new Error('x')), 1_000)).toBe(1);
   });
 });
