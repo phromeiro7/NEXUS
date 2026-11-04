@@ -51,11 +51,15 @@ export type AuthContextValue = {
   userId: string | null;
   /** Salva o nome (vazio remove). O nome vive só na conta de autenticação. */
   saveDisplayName(name: string): Promise<AuthResult>;
+  /** Troca o token de uso único (login pelo Telegram ou por QR code) por uma sessão. */
+  exchangeToken(tokenHash: string): Promise<AuthResult>;
   signOut(): Promise<void>;
   getToken(): Promise<string | null>;
   /** Redireciona para /entrar?next=<rota atual>, no máximo uma vez por sessão deslogada. */
   redirectToLogin(): void;
   api: ReturnType<typeof createApiClient>;
+  /** Origem da API que `api` usa; as chamadas sem Bearer (login por QR) devem ir para a mesma. */
+  apiBaseUrl: string;
   configError: string | null;
 };
 
@@ -403,6 +407,17 @@ export function AuthProvider({
     }
   }, []);
 
+  const exchangeToken = useCallback(async (tokenHash: string): Promise<AuthResult> => {
+    const client = clientRef.current;
+    if (!client) return { error: GENERIC };
+    try {
+      const { error } = await client.auth.verifyOtp({ token_hash: tokenHash, type: "magiclink" });
+      return { error: error ? GENERIC : null };
+    } catch {
+      return { error: "Sem conexão. Verifique sua internet e tente novamente." };
+    }
+  }, []);
+
   const telegram = useMemo<TelegramLoginState>(
     () => ({
       available: tgAvailable,
@@ -426,13 +441,15 @@ export function AuthProvider({
       displayName,
       userId,
       saveDisplayName,
+      exchangeToken,
       signOut,
       getToken,
       redirectToLogin,
       api,
+      apiBaseUrl: apiBaseUrl ?? readApiUrl(),
       configError,
     }),
-    [status, telegram, recovery, signIn, signUp, sendReset, updatePassword, displayName, userId, saveDisplayName, signOut, getToken, redirectToLogin, api, configError],
+    [status, telegram, recovery, signIn, signUp, sendReset, updatePassword, displayName, userId, saveDisplayName, exchangeToken, signOut, getToken, redirectToLogin, api, apiBaseUrl, configError],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
