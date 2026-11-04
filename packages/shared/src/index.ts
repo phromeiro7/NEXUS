@@ -11,6 +11,7 @@ export * from './case-api.js';
 export * from './settings-api.js';
 export * from './holiday-api.js';
 export * from './finance-api.js';
+export * from './telegram-auth-api.js';
 export * from './briefing.js';
 export * from './assistant.js';
 export * from './responses.js';
