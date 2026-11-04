@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
-import { AuthGuard } from "@/components/auth-guard";
+import { MiniGate } from "@/components/mini/mini-gate";
 import { MiniShell } from "@/components/mini/mini-shell";
 import "../../nexus.css";
 
@@ -9,8 +9,8 @@ export const viewport: Viewport = { width: "device-width", initialScale: 1, view
 
 export default function MiniLayout({ children }: { children: ReactNode }) {
   return (
-    <AuthGuard>
+    <MiniGate>
       <MiniShell>{children}</MiniShell>
-    </AuthGuard>
+    </MiniGate>
   );
 }

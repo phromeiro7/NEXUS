@@ -14,14 +14,30 @@ import {
 } from "react";
 import { createApiClient } from "@/lib/api";
 import { createSupabase, readApiUrl, type AuthApiError, type AuthClient } from "@/lib/supabase";
+import { isOptedOut, markHandled, optOut, readInitData, wasHandled } from "@/lib/telegram-init";
+import { signInWithTelegram, type TelegramLoginFailure } from "@/lib/telegram-login";
 
 export type AuthStatus = "loading" | "signedIn" | "signedOut";
 
 export type AuthResult = { error: string | null };
 export type SignUpResult = AuthResult & { needsConfirmation: boolean };
 
+/**
+ * Entrada automática do Mini App pelo Telegram. `available`: há initData (o app abriu dentro do Telegram).
+ * `signedOut`: a pessoa saiu da conta neste uso do app, então não entramos sozinhos de novo.
+ */
+export type TelegramLoginState = {
+  available: boolean;
+  phase: "idle" | "working" | "failed";
+  error: TelegramLoginFailure | null;
+  signedOut: boolean;
+  /** Tenta entrar de novo com o mesmo initData (útil depois de falha de rede). */
+  retry(): void;
+};
+
 export type AuthContextValue = {
   status: AuthStatus;
+  telegram: TelegramLoginState;
   /** Sessão aberta pelo link de recuperação de senha (evento PASSWORD_RECOVERY). */
   recovery: boolean;
   signIn(email: string, password: string): Promise<AuthResult>;
@@ -95,6 +111,8 @@ type ProviderProps = {
   apiBaseUrl?: string;
   /** Cache de consultas: esvaziado ao sair, em 401 e quando o usuário da sessão muda. */
   queryClient?: QueryClient;
+  /** Só para testes: `undefined` lê o initData do Telegram; `null` força "fora do Telegram". */
+  initData?: string | null;
 };
 
 export function AuthProvider({
@@ -103,6 +121,7 @@ export function AuthProvider({
   apiFetch,
   apiBaseUrl,
   queryClient,
+  initData: initDataOverride,
 }: ProviderProps) {
   const queryClientRef = useRef(queryClient);
   queryClientRef.current = queryClient;
@@ -132,6 +151,19 @@ export function AuthProvider({
   const [recovery, setRecovery] = useState(false);
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  const [tgAvailable, setTgAvailable] = useState(false);
+  const [tgPhase, setTgPhase] = useState<TelegramLoginState["phase"]>("idle");
+  const [tgError, setTgError] = useState<TelegramLoginFailure | null>(null);
+  const [tgSignedOut, setTgSignedOut] = useState(false);
+  const initDataRef = useRef<string | null>(null);
+  // Verdadeiro enquanto a entrada pelo Telegram está em curso: eventos "sem sessão" não podem mandar a
+  // pessoa para o login antes de a troca terminar.
+  const exchangingRef = useRef(false);
+  const retryRef = useRef<() => void>(() => {});
+  const apiBaseRef = useRef(apiBaseUrl);
+  apiBaseRef.current = apiBaseUrl;
+  const apiFetchRef = useRef(apiFetch);
+  apiFetchRef.current = apiFetch;
   const recoveryUser = useRef<string | null>(null);
   const clientRef = useRef<AuthClient | null>(injected ?? null);
   const redirected = useRef(false);
@@ -156,6 +188,10 @@ export function AuthProvider({
     }
     clientRef.current = client;
     let active = true;
+    const initData = initDataOverride === undefined ? readInitData() : initDataOverride;
+    initDataRef.current = initData;
+    setTgAvailable(initData !== null);
+    exchangingRef.current = initData !== null && !isOptedOut(initData) && !wasHandled(initData);
     const apply = (hasSession: boolean) => {
       if (!active) return;
       if (hasSession) redirected.current = false;
@@ -183,24 +219,68 @@ export function AuthProvider({
         setDisplayName(nameOf(session));
         setUserId(session?.user?.id ?? null);
       }
+      // Entrando pelo Telegram: um "sem sessão" agora é só o começo; quem decide é a troca.
+      if (session === null && exchangingRef.current) return;
       apply(session !== null);
     });
-    void client.auth
-      .getSession()
-      .then(({ data }) => {
-        if (active) {
-          noteUser(data.session);
-          setDisplayName(nameOf(data.session));
-          setUserId(data.session?.user?.id ?? null);
-        }
-        apply(data.session !== null);
-      })
-      .catch(() => apply(false));
+    // Entrada pelo Telegram: com initData ainda não usado, troca-o por uma sessão da conta vinculada ANTES
+    // de mostrar qualquer coisa (assim os dados de outra conta nunca aparecem). Com sessão já aberta, uma
+    // falha não a derruba: só a ausência de sessão vira erro na tela.
+    const attemptTelegram = async (initData: string, hadSession: boolean) => {
+      exchangingRef.current = true;
+      if (active) {
+        setTgPhase("working");
+        setTgError(null);
+      }
+      const result = await signInWithTelegram(client, {
+        apiBaseUrl: apiBaseRef.current ?? readApiUrl(),
+        initData,
+        ...(apiFetchRef.current ? { fetch: apiFetchRef.current } : {}),
+      });
+      if (result.ok || result.code === "ja_utilizado") markHandled(initData);
+      const { data: now } = await client.auth.getSession().catch(() => ({ data: { session: null } }));
+      exchangingRef.current = false;
+      if (!active) return;
+      noteUser(now.session);
+      setDisplayName(nameOf(now.session));
+      setUserId(now.session?.user?.id ?? null);
+      if (result.ok || hadSession) {
+        setTgPhase("idle");
+        setTgError(null);
+      } else {
+        setTgPhase("failed");
+        setTgError(result.code);
+      }
+      apply(now.session !== null);
+    };
+
+    const boot = async () => {
+      const { data } = await client.auth.getSession();
+      if (!active) return;
+      noteUser(data.session);
+      setDisplayName(nameOf(data.session));
+      setUserId(data.session?.user?.id ?? null);
+      if (initData === null) return apply(data.session !== null);
+      if (isOptedOut(initData)) {
+        setTgSignedOut(true);
+        return apply(data.session !== null);
+      }
+      if (wasHandled(initData)) return apply(data.session !== null);
+      retryRef.current = () => {
+        setStatus("loading");
+        void attemptTelegram(initData, false);
+      };
+      await attemptTelegram(initData, data.session !== null);
+    };
+    void boot().catch(() => {
+      exchangingRef.current = false;
+      apply(false);
+    });
     return () => {
       active = false;
       data.subscription.unsubscribe();
     };
-  }, [injected, clearCache, noteUser]);
+  }, [injected, clearCache, noteUser, initDataOverride]);
 
   const getToken = useCallback(async () => {
     const client = clientRef.current;
@@ -221,6 +301,11 @@ export function AuthProvider({
   }, []);
 
   const signOut = useCallback(async () => {
+    // Dentro do Telegram, sair não pode voltar a entrar sozinho com o mesmo initData (laço).
+    if (initDataRef.current !== null) {
+      optOut(initDataRef.current);
+      setTgSignedOut(true);
+    }
     setStatus("signedOut");
     setRecovery(false);
     lastUser.current = null;
@@ -318,9 +403,21 @@ export function AuthProvider({
     }
   }, []);
 
+  const telegram = useMemo<TelegramLoginState>(
+    () => ({
+      available: tgAvailable,
+      phase: tgPhase,
+      error: tgError,
+      signedOut: tgSignedOut,
+      retry: () => retryRef.current(),
+    }),
+    [tgAvailable, tgPhase, tgError, tgSignedOut],
+  );
+
   const value = useMemo<AuthContextValue>(
     () => ({
       status,
+      telegram,
       recovery,
       signIn,
       signUp,
@@ -335,7 +432,7 @@ export function AuthProvider({
       api,
       configError,
     }),
-    [status, recovery, signIn, signUp, sendReset, updatePassword, displayName, userId, saveDisplayName, signOut, getToken, redirectToLogin, api, configError],
+    [status, telegram, recovery, signIn, signUp, sendReset, updatePassword, displayName, userId, saveDisplayName, signOut, getToken, redirectToLogin, api, configError],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

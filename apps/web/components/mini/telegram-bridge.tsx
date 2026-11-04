@@ -7,6 +7,8 @@ type WebApp = {
   ready(): void;
   expand(): void;
   platform?: string;
+  /** O que o Telegram assinou para este uso do app; nunca exibir nem registrar. */
+  initData?: string;
   initDataUnsafe?: { user?: { first_name?: string } };
   colorScheme: "light" | "dark";
   setHeaderColor?(color: string): void;
