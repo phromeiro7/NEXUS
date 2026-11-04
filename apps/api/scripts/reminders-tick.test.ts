@@ -102,6 +102,12 @@ describe('formatTickOutput', () => {
 });
 
 describe('formatTickOutput chat captures', () => {
+  it('prints the Telegram login and QR login purge counts when the API reports them', () => {
+    expect(formatTickOutput(200, JSON.stringify({ purged: { chatMessages: 0, telegramAuth: 5, qrLogin: 6 } }))).toBe(
+      'HTTP 200\n{"purged":{"chatMessages":0,"telegramAuth":5,"qrLogin":6}}',
+    );
+  });
+
   it('prints the chatCaptures purge count when the API reports it', () => {
     expect(formatTickOutput(200, JSON.stringify({ purged: { chatMessages: 1, linkCodes: 2, modelCalls: 3, chatCaptures: 4 } }))).toBe(
       'HTTP 200\n{"purged":{"chatMessages":1,"linkCodes":2,"modelCalls":3,"chatCaptures":4}}',
