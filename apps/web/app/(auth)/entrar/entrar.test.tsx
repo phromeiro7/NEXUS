@@ -9,7 +9,11 @@ import RecuperarPage from "../recuperar/page";
 
 const router = { replace: vi.fn(), push: vi.fn() };
 let search = "";
+const redirectTo = vi.fn((_url: string): never => {
+  throw new Error("NEXT_REDIRECT");
+});
 vi.mock("next/navigation", () => ({
+  redirect: (url: string) => redirectTo(url),
   useRouter: () => router,
   usePathname: () => "/entrar",
   useSearchParams: () => new URLSearchParams(search),
@@ -79,36 +83,32 @@ describe("Entrar", () => {
   });
 });
 
-describe("Cadastro", () => {
-  it("valida senha mínima de 8 antes de chamar o Supabase", async () => {
-    const { client, auth } = fakeSupabase();
-    const user = userEvent.setup();
-    render(
-      <AuthProvider client={client}>
-        <CadastroPage />
-      </AuthProvider>,
-    );
-    expect(screen.getByLabelText("Senha")).toHaveAttribute("autocomplete", "new-password");
-    await user.type(screen.getByLabelText("E-mail"), "a@b.co");
-    await user.type(screen.getByLabelText("Senha"), "1234567");
-    await user.click(screen.getByRole("button", { name: "Criar conta" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("pelo menos 8 caracteres");
-    expect(auth.signUp).not.toHaveBeenCalled();
-    expect(screen.getByLabelText("E-mail")).toHaveValue("a@b.co");
+describe("Cadastro fechado", () => {
+  it("manda quem chega pelo endereço antigo para a entrada, sem formulário", () => {
+    expect(() => CadastroPage()).toThrow("NEXT_REDIRECT");
+    expect(redirectTo).toHaveBeenCalledWith("/entrar?acesso=convite");
   });
 
-  it("com 8 caracteres chama signUp", async () => {
-    const { client, auth } = fakeSupabase();
-    const user = userEvent.setup();
+  it("a entrada explica que o acesso é por convite", () => {
+    search = "acesso=convite";
+    const { client } = fakeSupabase();
     render(
       <AuthProvider client={client}>
-        <CadastroPage />
+        <EntrarPage />
       </AuthProvider>,
     );
-    await user.type(screen.getByLabelText("E-mail"), "a@b.co");
-    await user.type(screen.getByLabelText("Senha"), "12345678");
-    await user.click(screen.getByRole("button", { name: "Criar conta" }));
-    await waitFor(() => expect(auth.signUp).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("status")).toHaveTextContent("O acesso ao Nexus é por convite.");
+  });
+
+  it("sem o parâmetro não há aviso nem link para criar conta", () => {
+    const { client } = fakeSupabase();
+    render(
+      <AuthProvider client={client}>
+        <EntrarPage />
+      </AuthProvider>,
+    );
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByText(/criar conta/i)).not.toBeInTheDocument();
   });
 });
 

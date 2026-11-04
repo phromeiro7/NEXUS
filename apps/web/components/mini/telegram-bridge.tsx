@@ -13,6 +13,8 @@ type WebApp = {
   colorScheme: "light" | "dark";
   setHeaderColor?(color: string): void;
   setBackgroundColor?(color: string): void;
+  /** Abre um link t.me (ex.: a tela de compartilhar) sem sair do app. */
+  openTelegramLink?(url: string): void;
   onEvent?(event: string, cb: () => void): void;
   offEvent?(event: string, cb: () => void): void;
 };

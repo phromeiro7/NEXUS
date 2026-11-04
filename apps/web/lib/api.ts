@@ -12,6 +12,8 @@ import type {
   FinanceEntryDto,
   FinanceStatus,
   HolidayDto,
+  InviteDto,
+  InviteListDto,
   IsoDate,
   LinkCodeDto,
   ListTasksQuery,
@@ -132,6 +134,9 @@ export function createApiClient(opts: ApiClientOptions) {
     deleteHoliday: (id: string) => request<void>('DELETE', `/holidays/${encodeURIComponent(id)}`),
     createLinkCode: () => request<LinkCodeDto>('POST', '/telegram/link-codes'),
     unlinkTelegram: () => request<void>('DELETE', '/telegram/link'),
+    listInvites: () => request<InviteListDto>('GET', '/invites'),
+    createInvite: () => request<InviteDto>('POST', '/invites'),
+    revokeInvite: (code: string) => request<void>('DELETE', `/invites/${encodeURIComponent(code)}`),
     getBriefing: () => request<BriefingDto>('GET', '/briefing'),
     listFinanceEntries: (query: FinanceListQuery = {}) =>
       request<FinanceEntryDto[]>('GET', `/finance-entries${financeQueryString(query)}`),

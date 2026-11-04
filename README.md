@@ -157,13 +157,51 @@ devolve `{ "tokenHash": "..." }`. O cliente troca o token por sessão com
   padrão 3600, de 60 a 86400).
 - Só entra quem já tem o Telegram **vinculado** (o vínculo de Configurações). O usuário da sessão vem só do
   vínculo guardado no servidor. Telegram não vinculado recebe `403 telegram_nao_vinculado` e o `initData` não é
-  consumido. A entrada de convidados por convite é outro fluxo, ainda não construído.
+  consumido. Quem não tem conta entra por convite (seção abaixo).
 - Cada `initData` abre **uma** sessão (tabela `telegram_auth_replays`; limpeza pelo agendador); repetir dá
   `401 ja_utilizado`. O token de sessão também é de uso único. `admin.generateLink` não envia e-mail algum.
 - Limite de tentativas: 30 por IP e 10 por usuário do Telegram a cada 10 minutos, em memória (vale por
   instância). Atrás de proxy ou túnel vale o primeiro IP de `cf-connecting-ip`/`x-forwarded-for`.
 - Sem `TELEGRAM_BOT_TOKEN` a rota responde `503 login_desabilitado`. Nada disso registra `initData`, token ou
   tokens de sessão em log.
+
+### Convites: dar acesso a outra pessoa
+
+O acesso ao Nexus é **por convite**: não há cadastro aberto (`/cadastro` só redireciona para `/entrar` com o
+aviso "O acesso ao Nexus é por convite."). O convidado não digita e-mail nem senha.
+
+**Para você (administrador), em 3 passos:**
+
+1. No bot, envie `/convite` (ou, no Mini App, **Configurações > Convites > Gerar convite**).
+2. Toque em **Compartilhar** (ou **Copiar link**) e mande o link a quem quiser convidar.
+3. A pessoa abre o link, toca **Iniciar** e pronto: a conta é criada e já fica vinculada ao Telegram dela. Depois
+   é só abrir o Nexus pelo botão do bot (entra sozinha).
+
+Detalhes e garantias:
+
+- Cada convite vale por **7 dias** (`INVITE_TTL_DAYS`, de 1 a 90) e abre **uma conta só**. `/convites` lista os
+  ativos, cada um com **Revogar**; o Mini App também mostra usados, expirados e revogados.
+- Código de 12 caracteres sem ambíguos (≈ 59 bits), reservado de forma atômica: duas pessoas com o mesmo código,
+  só uma entra. Código desconhecido, vencido, usado ou revogado recebe a mesma resposta ("Convite inválido ou
+  expirado.") e há limite de tentativas inválidas por chat.
+- Quem já tem conta não gasta o convite. Se falhar a criação, o código é devolvido e dá para tentar de novo.
+- **Administrador** = conta cujo Telegram **vinculado** está em `ADMIN_TELEGRAM_USER_IDS` (ids numéricos do
+  Telegram, separados por vírgula). Não existe coluna de "admin" no banco: a lista fica só no ambiente. Para
+  descobrir o seu id, envie `/meuid` ao bot. Quem não é administrador não vê `/convite` nem a seção do Mini App
+  (as rotas `/invites` respondem `403`).
+- **Conta sem e-mail:** o Supabase Auth recusa usuário sem e-mail e sem telefone. A conta nasce com um e-mail
+  interno `tg-<id>@telegram.invalid` (domínio reservado, já confirmado, **sem senha**), que nunca é mostrado nem
+  recebe mensagem. Só entra pelo Telegram (`POST /auth/telegram`). Com `/desvincular` e um novo convite, o mesmo
+  Telegram volta à mesma conta.
+
+Variáveis (só os nomes): `ADMIN_TELEGRAM_USER_IDS`, `INVITE_TTL_DAYS` (opcional).
+
+**Produção: feche o cadastro no Supabase.** No Supabase local `enable_signup = true` fica ligado de propósito
+(os testes de banco criam usuários por ali). No projeto de **produção**, desligue o cadastro público em
+*Authentication > Sign In / Providers > "Allow new users to sign up"* (ou `enable_signup = false` no
+`config.toml` aplicado ao projeto), senão qualquer pessoa ainda poderia criar conta chamando a API de Auth
+direto. Convites não dependem disso: a API cria as contas com a chave de serviço. Depois de desligar, confirme
+que `POST <SUPABASE_URL>/auth/v1/signup` responde `422 signup_disabled`.
 
 ### Telegram e lembretes: runbook
 
