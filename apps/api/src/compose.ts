@@ -10,6 +10,9 @@ import { makeHandleTelegramUpdate } from './application/telegram/webhook.js';
 import { createSupabaseCaptureRepository } from './infra/supabase-capture-repository.js';
 import { createSupabaseConfirmationRepository } from './infra/supabase-confirmation-repository.js';
 import { createSupabaseLinkRepository } from './infra/supabase-link-repository.js';
+import { makeAcceptInvite, makeInviteUseCases } from './application/invites.js';
+import { createSupabaseAccountProvisioner } from './infra/supabase-account-provisioner.js';
+import { createSupabaseInviteRepository } from './infra/supabase-invite-repository.js';
 import { makeTelegramLogin } from './application/telegram/login.js';
 import { makeRateLimiter } from './application/telegram/rate-limit.js';
 import { createSupabaseSessionIssuer, createSupabaseTelegramAuthRepository } from './infra/supabase-telegram-auth-repository.js';
@@ -139,6 +142,20 @@ export function buildApp(
   // Vínculo e webhook do Telegram. O webhook só existe com cliente do Telegram E segredo configurados;
   // sem eles a rota responde 503 'webhook_desabilitado' e o resto da API funciona.
   const links = createSupabaseLinkRepository(client);
+  // Convites: administradores vêm de ADMIN_TELEGRAM_USER_IDS; sem token do bot não há link para compartilhar.
+  const inviteUseCases = makeInviteUseCases({
+    invites: createSupabaseInviteRepository(client),
+    adminTelegramIds: new Set(config.adminTelegramUserIds ?? []),
+    botUsername: config.telegramBotUsername,
+    ...(config.inviteTtlDays !== undefined ? { ttlDays: config.inviteTtlDays } : {}),
+    clock,
+  });
+  const acceptInvite = makeAcceptInvite({
+    invites: createSupabaseInviteRepository(client),
+    accounts: createSupabaseAccountProvisioner(client),
+    links,
+    clock,
+  });
   const telegramLink = makeLinkUseCases({ links, botUsername: config.telegramBotUsername, clock });
   const handleTelegramUpdate =
     telegram !== undefined && config.telegramWebhookSecret !== undefined
@@ -168,6 +185,9 @@ export function buildApp(
             ...(config.miniAppUrl !== undefined ? { miniAppUrl: config.miniAppUrl } : {}),
           }),
           assistantEnabled: processMessage !== undefined,
+          invites: inviteUseCases,
+          acceptInvite,
+          ...(config.miniAppUrl !== undefined ? { miniAppUrl: config.miniAppUrl } : {}),
           ...(config.telegramBotUsername !== undefined ? { botUsername: config.telegramBotUsername } : {}),
         })
       : undefined;
@@ -191,6 +211,7 @@ export function buildApp(
   return createApp({
     ...(telegramLogin !== undefined ? { telegramLogin } : {}),
     telegramLink,
+    invites: inviteUseCases,
     ...(handleTelegramUpdate !== undefined ? { handleTelegramUpdate } : {}),
     ...(config.telegramWebhookSecret !== undefined ? { telegramWebhookSecret: config.telegramWebhookSecret } : {}),
     scheduler,

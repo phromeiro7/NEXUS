@@ -2,6 +2,7 @@ import {
   AssistantUnavailableError,
   ConflictError,
   EventInProgressError,
+  ForbiddenError,
   ForeignEventError,
   InvalidInputError,
   MessageTooLongError,
@@ -39,6 +40,7 @@ export function errorResponse(err: unknown): ErrorResponse {
   if (err instanceof NotFoundError || err instanceof TargetTasksGoneError) {
     return { status: 404, body: { error: 'nao_encontrado' } };
   }
+  if (err instanceof ForbiddenError) return { status: 403, body: { error: 'proibido' } };
   if (err instanceof ConflictError) return { status: 409, body: { error: err.code } };
   if (err instanceof EventInProgressError) return { status: 409, body: { error: 'em_processamento' } };
   // Nunca revela de quem é o evento.

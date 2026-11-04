@@ -15,15 +15,15 @@ const ACCEPT_BELOW = Math.floor(256 / LINK_CODE_ALPHABET.length) * LINK_CODE_ALP
 const MAX_ROUNDS = 64;
 
 /** Código de vínculo por amostragem com rejeição sobre bytes aleatórios criptográficos. */
-function generateCode(randomBytes: (n: number) => Uint8Array): string {
+export function generateCode(randomBytes: (n: number) => Uint8Array, length: number = LINK_CODE_LENGTH): string {
   let code = '';
-  for (let round = 0; round < MAX_ROUNDS && code.length < LINK_CODE_LENGTH; round++) {
-    for (const byte of randomBytes(LINK_CODE_LENGTH - code.length)) {
+  for (let round = 0; round < MAX_ROUNDS && code.length < length; round++) {
+    for (const byte of randomBytes(length - code.length)) {
       if (byte < ACCEPT_BELOW) code += LINK_CODE_ALPHABET[byte % LINK_CODE_ALPHABET.length];
-      if (code.length === LINK_CODE_LENGTH) break;
+      if (code.length === length) break;
     }
   }
-  if (code.length !== LINK_CODE_LENGTH) throw new Error('Fonte de bytes aleatórios não produziu um código');
+  if (code.length !== length) throw new Error('Fonte de bytes aleatórios não produziu um código');
   return code;
 }
 

@@ -215,8 +215,8 @@ export interface AssistantModel {
  * Telegram e lembretes (Plano 5).
  */
 
-/** Botão em linha: ou devolve `callbackData` ao webhook (até 64 bytes) ou abre o Mini App (`webAppUrl`, https). */
-export type InlineButton = { text: string } & ({ callbackData: string } | { webAppUrl: string });
+/** Botão em linha: devolve `callbackData` ao webhook (até 64 bytes), abre o Mini App (`webAppUrl`, https) ou abre um link (`url`, https). */
+export type InlineButton = { text: string } & ({ callbackData: string } | { webAppUrl: string } | { url: string });
 export type InlineKeyboard = InlineButton[][];
 
 type TelegramCall<T> = Promise<({ ok: true } & T) | { ok: false; error: TelegramErrorClass }>;
@@ -373,4 +373,41 @@ export interface TelegramAuthReplayRepository {
 export interface SessionIssuer {
   /** `tokenHash` de uso único para `verifyOtp`, ou `null` se a conta não pode receber sessão (sem e-mail, etc.). */
   issue(userId: string): Promise<{ tokenHash: string } | null>;
+}
+
+/** Convite como guardado no banco; o estado (ativo, usado...) é calculado a partir destes campos. */
+export type InviteRecord = {
+  code: string;
+  createdBy: string;
+  createdAt: Date;
+  expiresAt: Date;
+  revokedAt: Date | null;
+  usedAt: Date | null;
+};
+
+export interface InviteRepository {
+  /** Lança `InviteCodeCollisionError` se o código já existe. */
+  create(createdBy: string, code: string, createdAt: Date, expiresAt: Date): Promise<void>;
+  /** Os mais recentes primeiro. */
+  list(limit: number): Promise<InviteRecord[]>;
+  /** Revoga só um convite ainda não usado nem revogado; `false` = nada a revogar. */
+  revoke(code: string, now: Date): Promise<boolean>;
+  /** Reserva o código para UM chamador (atômico); `false` = inexistente, vencido, revogado ou já reservado. */
+  claim(code: string, now: Date): Promise<boolean>;
+  /** Marca o código reservado como usado pela conta criada. */
+  finish(code: string, userId: string, now: Date): Promise<boolean>;
+  /** Devolve um código reservado e não usado (a criação da conta falhou). */
+  release(code: string): Promise<void>;
+  /** Telegram (chat privado) vinculado à conta, ou `null`. */
+  telegramIdOf(userId: string): Promise<number | null>;
+}
+
+/** Cria a conta de quem aceitou um convite e a liga ao Telegram. Sem e-mail real, sem senha. */
+export interface AccountProvisioner {
+  /** Conta nova (ou a conta anterior desse Telegram, se já existir) ligada ao `telegramUserId`. */
+  createForTelegram(telegramUserId: number): Promise<{ userId: string; created: boolean }>;
+  /** Liga o chat à conta; lança `ChatAlreadyLinkedError` se o chat já é de outra conta. */
+  linkChat(userId: string, chatId: number): Promise<void>;
+  /** Desfaz uma conta criada nesta tentativa (a ligação falhou). */
+  remove(userId: string): Promise<void>;
 }

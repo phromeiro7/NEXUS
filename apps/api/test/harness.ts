@@ -8,6 +8,7 @@ import type { HolidayRepository, NewTask } from '../src/application/ports.js';
 import { makeSettingsUseCases } from '../src/application/settings.js';
 import { makeSyncReminders } from '../src/application/sync-reminders.js';
 import { makeTaskUseCases } from '../src/application/tasks.js';
+import { makeInviteUseCases } from '../src/application/invites.js';
 import { makeLinkUseCases } from '../src/application/telegram/link.js';
 import { createFakes } from './fakes.js';
 
@@ -28,6 +29,8 @@ export type HarnessOpts = {
   handleTelegramUpdate?: AppDeps['handleTelegramUpdate'];
   telegramWebhookSecret?: AppDeps['telegramWebhookSecret'];
   telegramLogin?: AppDeps['telegramLogin'];
+  /** Liga as rotas de convite: u1 ganha o chat 111 e `adminIds` diz quem administra (ausente = rotas fechadas). */
+  invites?: { adminIds: number[] };
   /** Padrão 'meu_bot'; `null` = sem nome de bot (vínculo indisponível). */
   botUsername?: string | null;
 };
@@ -47,6 +50,10 @@ export function buildApp(opts: HarnessOpts = {}) {
     }),
     ...opts.tasksOverride,
   };
+  if (opts.invites !== undefined) {
+    fakes.links.setChat('u1', 111);
+    fakes.links.setChat('u2', 222);
+  }
   const app = createApp({
     verifyToken: async (t) => {
       if (opts.verifierThrows) throw new Error('auth provider fora do ar');
@@ -71,6 +78,16 @@ export function buildApp(opts: HarnessOpts = {}) {
       botUsername: opts.botUsername === null ? undefined : (opts.botUsername ?? 'meu_bot'),
       clock: fakes.clock,
     }),
+    ...(opts.invites !== undefined
+      ? {
+          invites: makeInviteUseCases({
+            invites: fakes.invites,
+            adminTelegramIds: new Set(opts.invites.adminIds),
+            botUsername: 'meu_bot',
+            clock: fakes.clock,
+          }),
+        }
+      : {}),
     ...(opts.telegramLogin !== undefined ? { telegramLogin: opts.telegramLogin } : {}),
     ...(opts.handleTelegramUpdate !== undefined ? { handleTelegramUpdate: opts.handleTelegramUpdate } : {}),
     ...(opts.telegramWebhookSecret !== undefined ? { telegramWebhookSecret: opts.telegramWebhookSecret } : {}),

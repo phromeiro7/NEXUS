@@ -1,15 +1,20 @@
 import type { CaseDto, FinanceEntryDto, HolidayDto, IsoDate, SettingsDto, TaskDto } from '@aj/shared';
 import {
+  ChatAlreadyLinkedError,
   ConflictError,
   EventStateError,
   ForeignEventError,
+  InviteCodeCollisionError,
   LinkCodeCollisionError,
   ReminderLeaseError,
 } from '../src/application/errors.js';
 import { FINANCE_LIST_LIMIT } from '../src/application/ports.js';
 import { briefingLocalDate } from '../src/domain/briefing-window.js';
 import type {
+  AccountProvisioner,
   BriefingRepository,
+  InviteRecord,
+  InviteRepository,
   CaseRepository,
   ChatChannel,
   ChatRepository,
@@ -443,6 +448,90 @@ export function createFakes(seed: { now?: Date } = {}) {
     codesOf: (userId) => linkRows.filter((r) => r.userId === userId).map((r) => r.code),
   };
 
+  // ---- Convites e contas por convite: mesma semântica de claim_invite / finish_invite / release_invite ----
+  type InviteRow = InviteRecord & { claimed: boolean };
+  const inviteRows: InviteRow[] = [];
+  const invites: InviteRepository & { rows(): InviteRow[]; seed(row: Partial<InviteRow> & { code: string }): void } = {
+    async create(createdBy, code, createdAt, expiresAt) {
+      if (inviteRows.some((r) => r.code === code)) throw new InviteCodeCollisionError();
+      inviteRows.push({ code, createdBy, createdAt, expiresAt, revokedAt: null, usedAt: null, claimed: false });
+    },
+    async list(limit) {
+      return [...inviteRows].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, limit);
+    },
+    async revoke(code, at) {
+      const row = inviteRows.find((r) => r.code === code && r.usedAt === null && r.revokedAt === null);
+      if (!row) return false;
+      row.revokedAt = at;
+      return true;
+    },
+    async claim(code, at) {
+      const row = inviteRows.find((r) => r.code === code);
+      if (!row || row.claimed || row.revokedAt !== null || row.expiresAt <= at) return false;
+      row.claimed = true;
+      return true;
+    },
+    async finish(code, _userId, at) {
+      const row = inviteRows.find((r) => r.code === code && r.claimed && r.usedAt === null);
+      if (!row) return false;
+      row.usedAt = at;
+      return true;
+    },
+    async release(code) {
+      const row = inviteRows.find((r) => r.code === code && r.usedAt === null);
+      if (row) row.claimed = false;
+    },
+    async telegramIdOf(userId) {
+      return chatOf.get(userId) ?? null;
+    },
+    rows: () => inviteRows,
+    seed(row) {
+      inviteRows.push({
+        createdBy: 'admin',
+        createdAt: now,
+        expiresAt: new Date(now.getTime() + 7 * 86_400_000),
+        revokedAt: null,
+        usedAt: null,
+        claimed: false,
+        ...row,
+      });
+    },
+  };
+  let accountSeq = 0;
+  const accountsByTelegram = new Map<number, string>();
+  const accounts: AccountProvisioner & {
+    created: string[];
+    removed: string[];
+    /** Faz a próxima ligação de chat falhar com este erro (simula corrida). */
+    failLinkWith: Error | null;
+    failCreateWith: Error | null;
+  } = {
+    created: [],
+    removed: [],
+    failLinkWith: null,
+    failCreateWith: null,
+    async createForTelegram(telegramUserId) {
+      if (accounts.failCreateWith) throw accounts.failCreateWith;
+      const existing = accountsByTelegram.get(telegramUserId);
+      if (existing !== undefined) return { userId: existing, created: false };
+      const userId = `invited-${++accountSeq}`;
+      accountsByTelegram.set(telegramUserId, userId);
+      accounts.created.push(userId);
+      return { userId, created: true };
+    },
+    async linkChat(userId, chatId) {
+      if (accounts.failLinkWith) throw accounts.failLinkWith;
+      if (ownerOfChat(chatId, userId) !== null) throw new ChatAlreadyLinkedError();
+      chatOf.set(userId, chatId);
+      profileRows.set(userId, { ...profileOf(userId), telegramLinked: true });
+    },
+    async remove(userId) {
+      accounts.removed.push(userId);
+      for (const [tg, id] of accountsByTelegram) if (id === userId) accountsByTelegram.delete(tg);
+      chatOf.delete(userId);
+    },
+  };
+
   // ---- Briefing diário: mesma semântica de claim_briefing / release_briefing ----
   const lastBriefing = new Map<string, IsoDate>();
   const skippedUsers: string[] = [];
@@ -788,6 +877,8 @@ export function createFakes(seed: { now?: Date } = {}) {
   return {
     telegram,
     links,
+    invites,
+    accounts,
     briefings,
     reminderQueue,
     confirmations,

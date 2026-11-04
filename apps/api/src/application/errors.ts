@@ -1,7 +1,7 @@
 import type { TaskDto } from '@aj/shared';
 
 export class NotFoundError extends Error {
-  constructor(readonly resource: 'tarefa' | 'processo' | 'feriado' | 'lancamento') {
+  constructor(readonly resource: 'tarefa' | 'processo' | 'feriado' | 'lancamento' | 'convite') {
     super(`Não encontrado: ${resource}`);
     this.name = 'NotFoundError';
   }
@@ -144,5 +144,29 @@ export class TelegramAuthError extends Error {
   ) {
     super(`Login pelo Telegram: ${code}`);
     this.name = 'TelegramAuthError';
+  }
+}
+
+/** Só administradores criam, listam e revogam convites (→ 403). */
+export class ForbiddenError extends Error {
+  constructor() {
+    super('Apenas administradores');
+    this.name = 'ForbiddenError';
+  }
+}
+
+/** O código de convite gerado já existe (violação de unicidade em `invites`): gere outro. */
+export class InviteCodeCollisionError extends Error {
+  constructor() {
+    super('Código de convite já existe');
+    this.name = 'InviteCodeCollisionError';
+  }
+}
+
+/** O `telegram_chat_id` já pertence a outra conta (corrida entre dois aceites do mesmo Telegram). */
+export class ChatAlreadyLinkedError extends Error {
+  constructor() {
+    super('Telegram já vinculado');
+    this.name = 'ChatAlreadyLinkedError';
   }
 }

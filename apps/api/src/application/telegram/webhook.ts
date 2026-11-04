@@ -4,6 +4,7 @@ import type { AssistantLogger, ProcessMessageInput } from '../assistant/process-
 import {
   AssistantUnavailableError,
   EventInProgressError,
+  ForbiddenError,
   ForeignEventError,
   MessageTooLongError,
   RateLimitedError,
@@ -14,9 +15,11 @@ import type {
   Clock,
   ConfirmationRepository,
   InboundEventRepository,
+  InlineKeyboard,
   LinkCodeRepository,
   TelegramClient,
 } from '../ports.js';
+import { inviteShareUrl, type AcceptInviteResult, type makeInviteUseCases } from '../invites.js';
 import { CAPTURE_HELP, type CaptureFlow } from './capture.js';
 import { createFailedStartLimiter, type FailedStartLimiter } from './failed-start-limiter.js';
 import { formatAssistantReply } from './reply-format.js';
@@ -58,6 +61,13 @@ const TEXT = {
   inProgress: 'Sua mensagem anterior ainda está sendo processada. Aguarde um instante.',
   captureFailed: 'Não consegui anotar agora. Nada foi salvo. Tente de novo.',
   linkFirst: 'Vincule sua conta primeiro: gere um código no Nexus e envie /start CÓDIGO.',
+  inviteInvalid: 'Convite inválido ou expirado.',
+  inviteCreated: 'Pronto, sua conta foi criada.',
+  alreadyLinked: 'Este Telegram já está ligado a uma conta.',
+  inviteFailed: 'Não consegui criar a conta agora. Tente abrir o convite de novo em instantes.',
+  adminOnly: 'Só administradores criam convites.',
+  noActiveInvites: 'Nenhum convite ativo. Envie /convite para criar um.',
+  inviteRevoked: 'Convite revogado.',
   help: `Eu anoto gastos, contas e tarefas por mensagem. Exemplos:\n• gastei 42 no almoço\n• luz 187,40 vence dia 8\n• ligar pra Ana amanhã 14h\nNada é salvo antes de você tocar em Confirmar.`,
 } as const;
 
@@ -70,9 +80,15 @@ function linkedText(accountHint: string | null): string {
   return `Conta vinculada: ${accountHint}. Você receberá lembretes e o briefing do dia aqui. Se você não reconhece esta conta, envie /desvincular agora.`;
 }
 
-const CODE_FORMAT =/^[A-Z0-9]{8}$/;
+const CODE_FORMAT = /^[A-Z0-9]{8}$/;
+/** Convite: 12 caracteres (o código de vínculo tem 8). */
+const INVITE_FORMAT = /^[A-Z0-9]{12}$/;
+/** Revogar convite pelo botão: `iv:r:<codigo>` (17 bytes, abaixo do limite de 64). */
+const REVOKE_PREFIX = 'iv:r:';
 /** `/comando`, `/comando@bot` e `/comando argumentos`; o comando não distingue maiúsculas. */
-const COMMAND = /^\/(start|desvincular|ajuda)(?:@([A-Za-z0-9_]+))?(?:\s+([\s\S]*))?$/i;
+const COMMAND = /^\/(start|desvincular|ajuda|convite|convites|meuid)(?:@([A-Za-z0-9_]+))?(?:\s+([\s\S]*))?$/i;
+
+type CommandName = 'start' | 'desvincular' | 'ajuda' | 'convite' | 'convites' | 'meuid';
 
 /**
  * Comando para o NOSSO bot: sem sufixo, ou com `@<nome>` igual ao nome configurado (sem distinguir
@@ -81,17 +97,18 @@ const COMMAND = /^\/(start|desvincular|ajuda)(?:@([A-Za-z0-9_]+))?(?:\s+([\s\S]*
 function parseCommand(
   text: string,
   botUsername: string | undefined,
-  withHelp: boolean,
-): { name: 'start' | 'desvincular' | 'ajuda'; args: string } | null {
+  allowed: ReadonlySet<CommandName>,
+): { name: CommandName; args: string } | null {
   const m = COMMAND.exec(text.trim());
   if (m === null) return null;
-  // `/ajuda` só existe com o registro por regras ligado; sem ele continua sendo texto comum.
-  if (m[1]!.toLowerCase() === 'ajuda' && !withHelp) return null;
+  const name = m[1]!.toLowerCase() as CommandName;
+  // Comando desligado (ou de administrador, para quem não é) continua sendo texto comum: não revela que existe.
+  if (!allowed.has(name)) return null;
   const suffix = m[2];
   if (suffix !== undefined && (botUsername === undefined || suffix.toLowerCase() !== botUsername.toLowerCase())) {
     return null;
   }
-  return { name: m[1]!.toLowerCase() as 'start' | 'desvincular' | 'ajuda', args: m[3] ?? '' };
+  return { name, args: m[3] ?? '' };
 }
 
 const errorName = (e: unknown) => (e instanceof Error ? e.name : 'desconhecido');
@@ -111,6 +128,11 @@ export type HandleTelegramUpdateDeps = {
   capture?: CaptureFlow;
   /** O assistente de IA está configurado? Sem ele, o que as regras não entendem recebe a ajuda curta. */
   assistantEnabled?: boolean;
+  /** Convites ligados: `/convite`, `/convites` (administrador), `/meuid` e `/start CONVITE`. */
+  invites?: Pick<ReturnType<typeof makeInviteUseCases>, 'isAdminChat' | 'create' | 'list' | 'revoke'>;
+  acceptInvite?: (code: string, chatId: number) => Promise<AcceptInviteResult>;
+  /** Origem https do Mini App: habilita o botão "Abrir o Nexus" depois do convite. */
+  miniAppUrl?: string;
 };
 
 /*
@@ -172,6 +194,89 @@ export function makeHandleTelegramUpdate(deps: HandleTelegramUpdateDeps) {
     }
   }
 
+  /** Botão "Abrir o Nexus" (Mini App); sem origem configurada, nenhum botão. */
+  const openKeyboard = (): { keyboard: InlineKeyboard } | undefined =>
+    deps.miniAppUrl === undefined ? undefined : { keyboard: [[{ text: 'Abrir o Nexus', webAppUrl: deps.miniAppUrl }]] };
+
+  /** `/start CONVITE`: mensagem única para qualquer convite que não vale (não diz o motivo). */
+  async function handleInviteStart(chatId: number, code: string, now: Date): Promise<void> {
+    if (deps.acceptInvite === undefined) {
+      limiter.recordFailure(chatId, now);
+      await say(chatId, TEXT.inviteInvalid);
+      return;
+    }
+    let result: AcceptInviteResult;
+    try {
+      result = await deps.acceptInvite(code, chatId);
+    } catch (error) {
+      logger.error('telegram.invite_accept_failed', { errorName: errorName(error) });
+      await say(chatId, TEXT.inviteFailed);
+      return;
+    }
+    if (result.status === 'invalido') {
+      limiter.recordFailure(chatId, now);
+      await say(chatId, TEXT.inviteInvalid);
+      return;
+    }
+    const text = result.status === 'criada' ? TEXT.inviteCreated : TEXT.alreadyLinked;
+    const sent = await telegram.sendMessage(chatId, text, openKeyboard());
+    if (!sent.ok) {
+      logger.error('telegram.send_failed', { code: sent.error.kind === 'permanent' ? `permanent:${sent.error.reason}` : 'transient' });
+    }
+  }
+
+  async function sendNewInvite(userId: string, chatId: number): Promise<void> {
+    const invite = deps.invites!;
+    const created = await invite.create(userId);
+    const days = Math.max(1, Math.round((Date.parse(created.expiresAt) - Date.parse(created.createdAt)) / 86_400_000));
+    const sent = await telegram.sendMessage(
+      chatId,
+      `Convite criado. Vale por ${days} ${days === 1 ? 'dia' : 'dias'} e abre uma conta só.\n${created.link}`,
+      { keyboard: [[{ text: 'Compartilhar', url: inviteShareUrl(created.link) }]] },
+    );
+    if (!sent.ok) logger.error('telegram.send_failed', { code: sent.error.kind === 'permanent' ? `permanent:${sent.error.reason}` : 'transient' });
+  }
+
+  async function sendActiveInvites(userId: string, chatId: number): Promise<void> {
+    const invite = deps.invites!;
+    const active = (await invite.list(userId)).filter((i) => i.status === 'ativo').slice(0, 10);
+    if (active.length === 0) return void (await say(chatId, TEXT.noActiveInvites));
+    for (const item of active) {
+      const until = new Date(item.expiresAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' });
+      await telegram.sendMessage(chatId, `Convite ativo, vale até ${until}.\n${item.link}`, {
+        keyboard: [[{ text: 'Revogar', callbackData: `${REVOKE_PREFIX}${item.code}` }]],
+      });
+    }
+  }
+
+  /** Toque em "Revogar" de um convite (só administrador, em chat privado vinculado). */
+  async function handleInviteCallback(
+    updateId: number,
+    callback: NonNullable<z.infer<typeof updateSchema>['callback_query']>,
+  ): Promise<void> {
+    const target = callback.message;
+    if (deps.invites === undefined || target === undefined || target.chat.type !== 'private' || callback.data === undefined) return;
+    const chatId = target.chat.id;
+    const code = callback.data.slice(REVOKE_PREFIX.length);
+    const now = clock.now();
+    const userId = await beforeRegistration(() => links.userForChat(chatId));
+    if (userId === null || !deps.invites.isAdminChat(chatId)) {
+      await telegram.answerCallbackQuery(callback.id, TEXT.adminOnly);
+      return;
+    }
+    const first = await beforeRegistration(() => events.register(userId, 'telegram', String(updateId), now));
+    if (!first.firstTime) return;
+    try {
+      await deps.invites.revoke(userId, code);
+      await telegram.answerCallbackQuery(callback.id, TEXT.inviteRevoked);
+      await telegram.editMessageText(chatId, target.message_id, TEXT.inviteRevoked);
+    } catch (error) {
+      // Já usado, revogado ou inexistente: nada a revogar. Fecha o botão sem alarde.
+      logger.error('telegram.invite_revoke_failed', { errorName: errorName(error) });
+      await telegram.answerCallbackQuery(callback.id, TEXT.inviteInvalid);
+    }
+  }
+
   /** Toque num botão da proposta do chat. Só existe com o registro por regras ligado. */
   async function handleCallbackQuery(
     updateId: number,
@@ -212,7 +317,8 @@ export function makeHandleTelegramUpdate(deps: HandleTelegramUpdateDeps) {
     if (!parsed.success) return;
     const { update_id: updateId, message, callback_query: callbackQuery } = parsed.data;
     if (message === undefined) {
-      if (callbackQuery !== undefined) await handleCallbackQuery(updateId, callbackQuery);
+      if (callbackQuery?.data?.startsWith(REVOKE_PREFIX) === true) await handleInviteCallback(updateId, callbackQuery);
+      else if (callbackQuery !== undefined) await handleCallbackQuery(updateId, callbackQuery);
       return; // edited_message, channel_post...
     }
     if (message.chat.type !== 'private') return;
@@ -221,7 +327,16 @@ export function makeHandleTelegramUpdate(deps: HandleTelegramUpdateDeps) {
 
     const userId = await beforeRegistration(() => links.userForChat(chatId));
     const text = message.text;
-    const command = text === undefined ? null : parseCommand(text, deps.botUsername, deps.capture !== undefined);
+    const allowed = new Set<CommandName>(['start', 'desvincular']);
+    if (deps.capture !== undefined) allowed.add('ajuda');
+    if (deps.invites !== undefined) {
+      allowed.add('meuid');
+      if (deps.invites.isAdminChat(chatId)) {
+        allowed.add('convite');
+        allowed.add('convites');
+      }
+    }
+    const command = text === undefined ? null : parseCommand(text, deps.botUsername, allowed);
 
     /** Idempotência dos ramos sem modelo (Ruling 21): `false` = já tratado, nada a fazer. */
     const firstTime = async (): Promise<boolean> =>
@@ -239,6 +354,27 @@ export function makeHandleTelegramUpdate(deps: HandleTelegramUpdateDeps) {
       return;
     }
 
+    const invites = deps.invites;
+    if (command?.name === 'meuid' && invites !== undefined) {
+      if (!(await firstTime())) return;
+      await say(chatId, `Seu id do Telegram é ${chatId}.`);
+      return;
+    }
+
+    if ((command?.name === 'convite' || command?.name === 'convites') && invites !== undefined) {
+      if (!(await firstTime())) return;
+      if (userId === null) return void (await say(chatId, TEXT.linkFirst));
+      try {
+        if (command.name === 'convite') await sendNewInvite(userId, chatId);
+        else await sendActiveInvites(userId, chatId);
+      } catch (error) {
+        if (error instanceof ForbiddenError) return void (await say(chatId, TEXT.adminOnly));
+        logger.error('telegram.invite_failed', { errorName: errorName(error) });
+        await say(chatId, TEXT.captureFailed);
+      }
+      return;
+    }
+
     if (command?.name === 'desvincular') {
       if (!(await firstTime())) return;
       if (userId === null) return void (await say(chatId, TEXT.unlinked));
@@ -253,6 +389,10 @@ export function makeHandleTelegramUpdate(deps: HandleTelegramUpdateDeps) {
       if (raw === '') return void (await say(chatId, TEXT.startHelp));
       if (!limiter.allow(chatId, now)) return void (await say(chatId, TEXT.tooMany));
       const code = raw.toUpperCase();
+      if (INVITE_FORMAT.test(code)) {
+        await handleInviteStart(chatId, code, now);
+        return;
+      }
       if (!CODE_FORMAT.test(code)) {
         limiter.recordFailure(chatId, now);
         return void (await say(chatId, TEXT.invalidCode));

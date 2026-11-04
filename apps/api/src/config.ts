@@ -18,6 +18,10 @@ export type Config = {
   telegramLoginMaxAgeSeconds?: number;
   /** Opcional: origem https do Mini App; habilita o botão "Ver no Nexus" nas respostas do bot. */
   miniAppUrl?: string;
+  /** Telegram user ids dos administradores (convites). Vazio = ninguém administra. */
+  adminTelegramUserIds?: number[];
+  /** Validade dos convites, em dias (padrão 7). */
+  inviteTtlDays?: number;
 };
 
 /** Lê a configuração do ambiente. Nunca inclui valores (só nomes) nas mensagens de erro. */
@@ -101,7 +105,30 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     miniAppUrl = parsedMiniApp.origin;
   }
 
+  // Administradores: ids numéricos do Telegram separados por vírgula. O erro cita só o nome da variável.
+  const adminTelegramUserIds: number[] = [];
+  const rawAdmins = env.ADMIN_TELEGRAM_USER_IDS?.trim();
+  if (rawAdmins !== undefined && rawAdmins !== '') {
+    for (const part of rawAdmins.split(',')) {
+      const id = part.trim();
+      if (!/^\d{1,15}$/.test(id) || Number(id) <= 0) {
+        throw new Error('ADMIN_TELEGRAM_USER_IDS inválida: use ids numéricos do Telegram separados por vírgula');
+      }
+      adminTelegramUserIds.push(Number(id));
+    }
+  }
+
+  let inviteTtlDays: number | undefined;
+  const rawTtl = env.INVITE_TTL_DAYS?.trim();
+  if (rawTtl !== undefined && rawTtl !== '') {
+    const n = /^\d+$/.test(rawTtl) ? Number.parseInt(rawTtl, 10) : Number.NaN;
+    if (!(n >= 1 && n <= 90)) throw new Error('INVITE_TTL_DAYS inválida: use um inteiro de 1 a 90');
+    inviteTtlDays = n;
+  }
+
   return {
+    ...(adminTelegramUserIds.length > 0 ? { adminTelegramUserIds } : {}),
+    ...(inviteTtlDays !== undefined ? { inviteTtlDays } : {}),
     supabaseUrl: env.SUPABASE_URL as string,
     serviceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY as string,
     port,
