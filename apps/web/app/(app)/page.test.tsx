@@ -20,6 +20,7 @@ vi.mock("@/components/month-view", () => ({
   MonthView: ({ year, month }: { year?: number; month?: number }) => <p>mes-view {year ?? "hoje"}-{month ?? "hoje"}</p>,
 }));
 vi.mock("@/components/quick-add", () => ({ QuickAdd: () => <p>adicao-rapida</p> }));
+vi.mock("@/components/briefing-card", () => ({ BriefingCard: () => <p>briefing-card</p> }));
 vi.mock("@/components/summary-aside", () => ({ SummaryAside: () => <aside>resumo</aside> }));
 
 describe("Painel", () => {
@@ -29,6 +30,15 @@ describe("Painel", () => {
     render(<Home />);
     expect(screen.getByText("dia-view hoje")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Dia" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("o briefing fica acima da adição rápida e da visão", () => {
+    v = null;
+    d = null;
+    render(<Home />);
+    const b = screen.getByText("briefing-card");
+    expect(b.compareDocumentPosition(screen.getByText("adicao-rapida")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(b.compareDocumentPosition(screen.getByText("dia-view hoje")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("Semana e Mês recebem a data de ?d=", () => {

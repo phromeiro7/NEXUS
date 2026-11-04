@@ -14,11 +14,42 @@ describe('messageFor', () => {
     [409, 'numero_ja_cadastrado', 'Já existe um processo com este número.'],
     [409, 'feriado_ja_cadastrado', 'Este feriado já está cadastrado.'],
     [413, 'corpo_muito_grande', 'Os dados enviados são grandes demais.'],
+    [503, 'telegram_nao_configurado', 'O Telegram ainda não está configurado neste servidor.'],
     [0, 'rede', 'Sem conexão com o servidor.'],
     [500, 'erro_interno', 'Algo deu errado. Tente novamente.'],
     [418, 'qualquer_coisa', 'Algo deu errado. Tente novamente.'],
   ])('%i %s', (status, code, text) => {
     expect(messageFor(err(status, code))).toBe(text);
+  });
+
+  it('maps assistant errors', () => {
+    expect(messageFor(err(429, 'limite_de_mensagens', { error: 'limite_de_mensagens', retryAfterSeconds: 90 }))).toBe(
+      'Limite de 30 mensagens por hora atingido. Tente de novo em 2 min.',
+    );
+    expect(messageFor(err(429, 'limite_de_mensagens', { error: 'limite_de_mensagens', retryAfterSeconds: 60 }))).toBe(
+      'Limite de 30 mensagens por hora atingido. Tente de novo em 1 min.',
+    );
+    expect(messageFor(err(429, 'limite_de_mensagens', { error: 'limite_de_mensagens', retryAfterSeconds: 1 }))).toBe(
+      'Limite de 30 mensagens por hora atingido. Tente de novo em 1 min.',
+    );
+    expect(messageFor(err(429, 'limite_de_mensagens', null))).toBe(
+      'Limite de 30 mensagens por hora atingido. Tente de novo em 1 min.',
+    );
+    expect(messageFor(err(503, 'assistente_indisponivel', { error: 'assistente_indisponivel', reason: 'configuracao' }))).toBe(
+      'O assistente ainda não está configurado.',
+    );
+    for (const reason of ['limite', 'rede', 'timeout', 'servico']) {
+      expect(messageFor(err(503, 'assistente_indisponivel', { error: 'assistente_indisponivel', reason }))).toBe(
+        'O assistente está indisponível agora. Nada foi alterado.',
+      );
+    }
+    expect(messageFor(err(503, 'assistente_indisponivel', null))).toBe(
+      'O assistente está indisponível agora. Nada foi alterado.',
+    );
+    expect(messageFor(err(409, 'em_processamento'))).toBe(
+      'Sua mensagem anterior ainda está sendo processada. Aguarde um instante e tente de novo.',
+    );
+    expect(messageFor(err(409, 'conflito_de_evento'))).toBe('Não foi possível processar esta mensagem. Tente reenviar.');
   });
 
   it('distinguishes hora_invalida reasons', () => {

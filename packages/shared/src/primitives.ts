@@ -15,9 +15,13 @@ function isRealDate(value: string): boolean {
   return d.getUTCFullYear() === year && d.getUTCMonth() === month - 1 && d.getUTCDate() === day;
 }
 
-export const isoDateSchema: z.ZodType<IsoDate> = z.string().refine(isRealDate, {
-  message: 'Invalid ISO date (YYYY-MM-DD)',
-});
+// `format: 'date'` só afeta o JSON Schema gerado (ferramentas do assistente); a validação é o refine.
+export const isoDateSchema: z.ZodType<IsoDate> = z
+  .string()
+  .refine(isRealDate, {
+    message: 'Invalid ISO date (YYYY-MM-DD)',
+  })
+  .meta({ format: 'date' });
 
 export const countTypeSchema = z.enum(['uteis', 'corridos']);
 export type CountType = z.infer<typeof countTypeSchema>;

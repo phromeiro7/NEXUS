@@ -14,7 +14,12 @@ import type { makeFinanceUseCases } from './application/finance.js';
 import type { makeHolidayUseCases } from './application/holidays.js';
 import type { makeSettingsUseCases } from './application/settings.js';
 import type { makeTaskUseCases } from './application/tasks.js';
+import type { SchedulerResult } from './application/scheduler.js';
+import type { makeLinkUseCases } from './application/telegram/link.js';
 import { errorResponse } from './http-errors.js';
+import { telegramRoutes } from './routes/telegram.js';
+import { internalRoutes } from './routes/internal.js';
+import { assistantRoutes, type ProcessMessage } from './routes/assistant.js';
 import { briefingRoutes } from './routes/briefing.js';
 import { casesRoutes } from './routes/cases.js';
 import { financeRoutes } from './routes/finance.js';
@@ -33,6 +38,17 @@ export type AppDeps = {
   briefing: (userId: string) => Promise<BriefingDto>;
   /** Única origem de navegador autorizada por CORS (o painel). */
   webOrigin: string;
+  /** Ausente = assistente desabilitado: a rota responde 503 'configuracao'. */
+  processMessage?: ProcessMessage;
+  /** Passada do agendador; sem ela, ou sem `internalSecret`, `/internal` responde 503. */
+  scheduler?: () => Promise<SchedulerResult>;
+  /** Ausente = rotas internas desabilitadas (503, falha fechada). Nunca logar. */
+  internalSecret?: string;
+  telegramLink: ReturnType<typeof makeLinkUseCases>;
+  /** Ausente (ou sem `telegramWebhookSecret`) = webhook desabilitado: 503 'webhook_desabilitado'. */
+  handleTelegramUpdate?: (update: unknown) => Promise<void>;
+  /** Nunca logar. */
+  telegramWebhookSecret?: string;
 };
 
 export function createApp(deps: AppDeps) {
@@ -60,9 +76,22 @@ export function createApp(deps: AppDeps) {
   app.notFound((c) => c.json({ error: 'nao_encontrado' }, 404));
 
   app.onError((err, c) => {
-    const { status, body } = errorResponse(err);
+    const { status, body, headers } = errorResponse(err);
     // Só o erro inesperado é logado: nunca headers, token ou config. O cliente recebe a resposta genérica.
-    if (status === 500) console.error('[api] erro não tratado', err);
+    // Nas rotas internas a mensagem do erro pode citar segredo ou dados: só o nome também.
+    // No assistente a mensagem do erro pode carregar texto do usuário: só o nome do erro é registrado.
+    if (status === 500) {
+      if (
+        c.req.path.startsWith('/assistant') ||
+        c.req.path.startsWith('/internal') ||
+        c.req.path.startsWith('/telegram')
+      ) {
+        console.error('[api] erro não tratado', err instanceof Error ? err.name : 'desconhecido');
+      } else {
+        console.error('[api] erro não tratado', err);
+      }
+    }
+    for (const [name, value] of Object.entries(headers ?? {})) c.header(name, value);
     return c.json(body as object, status);
   });
 
@@ -97,6 +126,29 @@ export function createApp(deps: AppDeps) {
   app.route('/finance-entries', financeRoutes({ finance: deps.finance }, auth));
   app.route('/settings', settingsRoutes({ settings: deps.settings }, auth));
   app.route('/briefing', briefingRoutes({ briefing: deps.briefing }, auth));
+  app.route('/assistant', assistantRoutes({ processMessage: deps.processMessage }, auth));
+
+  // `link-codes` e `link` com autenticação; o webhook sem usuário (segredo do cabeçalho, dentro da rota).
+  app.route(
+    '/telegram',
+    telegramRoutes(
+      {
+        link: deps.telegramLink,
+        ...(deps.handleTelegramUpdate !== undefined ? { handleUpdate: deps.handleTelegramUpdate } : {}),
+        ...(deps.telegramWebhookSecret !== undefined ? { webhookSecret: deps.telegramWebhookSecret } : {}),
+      },
+      auth,
+    ),
+  );
+
+  // Sem autenticação de usuário: o segredo compartilhado é verificado dentro da rota.
+  app.route(
+    '/internal',
+    internalRoutes({
+      ...(deps.scheduler !== undefined ? { scheduler: deps.scheduler } : {}),
+      ...(deps.internalSecret !== undefined ? { internalSecret: deps.internalSecret } : {}),
+    }),
+  );
 
   return app;
 }

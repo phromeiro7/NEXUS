@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { useAuth } from "./auth-provider";
+import { CommandBar } from "./command-bar";
+import { HighlightProvider } from "./highlight-context";
 
 const NAV = [
   { href: "/", label: "Painel" },
@@ -20,6 +22,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname() ?? "/";
   const { signOut } = useAuth();
   return (
+    <HighlightProvider>
     <div className="min-h-screen">
       <header className="border-b border-[var(--color-borda)] bg-[var(--color-superficie)] px-4 py-2">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-x-4 gap-y-2">
@@ -51,10 +54,12 @@ export function AppShell({ children }: { children: ReactNode }) {
             Sair
           </button>
         </div>
-        {/* Reservado para a barra de comando (Plano 4). */}
-        <div data-slot="command-bar" />
+        <div data-slot="command-bar">
+          <CommandBar />
+        </div>
       </header>
       {children}
     </div>
+    </HighlightProvider>
   );
 }

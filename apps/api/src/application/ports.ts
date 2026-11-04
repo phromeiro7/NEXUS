@@ -10,10 +10,12 @@ import type {
   ListTasksQuery,
   SettingsDto,
   TaskDto,
+  TaskType,
   UpdateCaseInput,
   UpdateSettingsInput,
 } from '@aj/shared';
-import type { ReminderDraft } from '../domain/reminders.js';
+import type { TelegramErrorClass } from '../domain/reminder-message.js';
+import type { ReminderDraft, ReminderKind } from '../domain/reminders.js';
 
 /*
  * Contrato comum a todas as portas: todo método recebe `userId` primeiro e NUNCA
@@ -103,4 +105,210 @@ export interface FinanceEntryRepository {
   update(userId: string, id: string, patch: FinanceEntryPatch): Promise<FinanceEntryDto | null>;
   /** `true` somente se um lançamento do usuário foi apagado. */
   remove(userId: string, id: string): Promise<boolean>;
+}
+
+export type ChatChannel = 'painel' | 'telegram';
+export type ChatRole = 'user' | 'assistant';
+
+export interface ChatRepository {
+  /** Guarda a mensagem com `created_at = now` e validade de 24 h a partir de `now`. */
+  append(userId: string, channel: ChatChannel, role: ChatRole, content: string, now: Date): Promise<void>;
+  /** Até `limit` mensagens não expiradas (`expires_at > now`) do usuário no canal, em ordem cronológica. */
+  recent(
+    userId: string,
+    channel: ChatChannel,
+    limit: number,
+    now: Date,
+  ): Promise<Array<{ role: ChatRole; content: string }>>;
+}
+
+export type InboundEventStatus = 'recebido' | 'processando' | 'processado' | 'falhou';
+
+export interface InboundEventRepository {
+  /**
+   * Registro atômico (único `(channel, externalId)`). `firstTime: true` para evento novo ou
+   * `falhou` (reiniciado como `recebido`); `false` para qualquer outro estado, com o `reply`
+   * guardado. Lança `ForeignEventError` se o evento pertence a outro usuário. `userId` nulo
+   * (Telegram sem vínculo) é adotado pelo primeiro usuário que o registrar.
+   */
+  register(
+    userId: string | null,
+    channel: ChatChannel,
+    externalId: string,
+    now: Date,
+  ): Promise<{ firstTime: boolean; status: InboundEventStatus; reply: unknown | null }>;
+  /*
+   * As três transições abaixo filtram pelo dono do evento (`userId`; `null` = evento sem
+   * vínculo) e por pré-condição de estado, de forma atômica. Erros tipados, nunca sucesso
+   * silencioso: `ForeignEventError` (evento de outro usuário), `EventStateError` (evento
+   * inexistente ou estado que não permite a transição).
+   */
+  /**
+   * 'recebido' -> 'processando', `attempt_count + 1` e registra UMA chamada ao modelo (conta no
+   * limite horário). `userId` obrigatório (não nulo).
+   */
+  beginModelCall(userId: string, channel: ChatChannel, externalId: string, now: Date): Promise<void>;
+  /** 'processando' -> 'processado', `processed_at = now`, guarda `reply` (jsonb, < 64 KB). */
+  markProcessed(
+    userId: string | null,
+    channel: ChatChannel,
+    externalId: string,
+    reply: unknown,
+    now: Date,
+  ): Promise<void>;
+  /** 'recebido' ou 'processando' -> 'falhou' (pode ser reprocessado por `register`). Nunca reabre 'processado'. */
+  markFailed(userId: string | null, channel: ChatChannel, externalId: string, now: Date): Promise<void>;
+  /**
+   * Número de CHAMADAS AO MODELO do usuário, em TODOS os canais, com `called_at >= since` (Ruling 9:
+   * conta chamadas, não eventos; reenvio ou recusa sem chamada não contam; o limite é por usuário).
+   */
+  countSince(userId: string, since: Date): Promise<number>;
+}
+
+/*
+ * Modelo de IA. `ModelMessage` é o histórico do ciclo de ferramentas: texto simples, ou blocos.
+ * O assistente responde com `text` e `tool_use`; o servidor devolve cada resultado como um
+ * bloco `tool_result` (mensagem `user`) cujo `tool_use_id` é o `id` do `tool_use` respondido.
+ *
+ * Blocos `thinking`/`redacted_thinking` (Haiku 5.5 pensa por padrão): o adaptador deve produzi-los
+ * VERBATIM a partir da resposta da API em `raw` (mesmo com texto vazio) e o ciclo deve reenviá-los
+ * sem modificação, na mesma ordem, antes dos blocos `tool_use` da mensagem do assistente.
+ */
+export type ThinkingPassThrough = { type: 'thinking' | 'redacted_thinking'; raw: unknown };
+
+export type ContentBlock =
+  | ThinkingPassThrough
+  | { type: 'text'; text: string }
+  | { type: 'tool_use'; id: string; name: string; input: unknown }
+  | { type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean };
+
+export type ModelMessage = { role: 'user' | 'assistant'; content: string | Array<ContentBlock> };
+
+/** Trecho do prompt de sistema; `cache: true` marca o fim do trecho cacheável. */
+export type SystemBlock = { type: 'text'; text: string; cache?: boolean };
+
+export type ToolDefinition = {
+  name: string;
+  description: string;
+  /** JSON Schema do input da ferramenta. */
+  inputSchema: Record<string, unknown>;
+};
+
+export type ModelStep = {
+  stopReason: 'end_turn' | 'tool_use' | 'max_tokens' | 'refusal';
+  blocks: Array<
+    ThinkingPassThrough | { type: 'text'; text: string } | { type: 'tool_use'; id: string; name: string; input: unknown }
+  >;
+  usage: { inputTokens: number; outputTokens: number; cacheReadTokens: number };
+};
+
+export interface AssistantModel {
+  step(input: {
+    system: SystemBlock[];
+    messages: ModelMessage[];
+    tools: ToolDefinition[];
+    signal: AbortSignal;
+  }): Promise<ModelStep>;
+}
+
+/*
+ * Telegram e lembretes (Plano 5).
+ */
+
+/** Envia texto simples. Nunca lança por falha do Telegram: devolve a classificação do erro. */
+export interface TelegramClient {
+  sendMessage(
+    chatId: number,
+    text: string,
+  ): Promise<{ ok: true; messageId: number } | { ok: false; error: TelegramErrorClass }>;
+}
+
+/** Lembrete reservado (`enviando`) com tudo o que o envio precisa; `attempts` é o token de reserva. */
+export type ClaimedReminder = {
+  reminderId: string;
+  userId: string;
+  taskId: string;
+  kind: ReminderKind;
+  scheduledAt: Date;
+  attempts: number;
+  title: string;
+  taskType: TaskType;
+  dueDate: IsoDate;
+  /** HH:mm */
+  dueTime: string | null;
+  fatal: boolean;
+  chatId: number;
+  timezone: string;
+};
+
+export interface ReminderQueue {
+  /** Reserva até `limit` lembretes vencidos (SKIP LOCKED); o mais antigo primeiro. */
+  claimDue(now: Date, limit: number): Promise<ClaimedReminder[]>;
+  /** Cancela lembretes que nunca devem ser enviados (tarefa apagada/encerrada ou atraso > 24 h). */
+  cancelDead(now: Date): Promise<number>;
+  /** Devolve a `pendente` os lembretes presos em `enviando` há mais de 5 minutos. */
+  recoverStuck(now: Date): Promise<number>;
+  /**
+   * Registra o resultado do envio. `attempts` é o valor devolvido por `claimDue` (cerca de reserva).
+   * Lança `ReminderLeaseError` se a reserva foi perdida; qualquer outro erro do banco propaga.
+   */
+  finish(
+    input: {
+      reminderId: string;
+      attempts: number;
+      status: 'enviado' | 'pendente' | 'falhou' | 'cancelado';
+      error: string | null;
+      nextAttemptAt: Date | null;
+    },
+    now: Date,
+  ): Promise<void>;
+  /** Pausa o canal (`channel_paused`) só desse usuário. */
+  pauseChannel(userId: string): Promise<void>;
+}
+
+export type BriefingRecipient = { userId: string; chatId: number; timezone: string; localDate: IsoDate };
+
+export interface BriefingRepository {
+  /**
+   * Usuários vinculados e NÃO pausados cuja hora LOCAL (fuso do perfil) está em
+   * [briefingTime, briefingTime + 4 h] e cujo último briefing é anterior a `localDate`
+   * (Ruling 19). `localDate` é a data local do `briefingTime` (se a janela cruza a
+   * meia-noite, a do dia anterior). Fora da janela nada é devolvido.
+   */
+  dueFor(now: Date): Promise<BriefingRecipient[]>;
+  /** Atômico (`claim_briefing`): `true` só para quem tomou o dia. */
+  claim(userId: string, localDate: IsoDate): Promise<boolean>;
+  /** Desfaz o claim (`release_briefing`) só se o dia guardado é exatamente `localDate`. */
+  release(userId: string, localDate: IsoDate): Promise<void>;
+}
+
+export interface LinkCodeRepository {
+  /** Substitui TODOS os códigos anteriores do usuário por este. */
+  create(userId: string, code: string, expiresAt: Date): Promise<void>;
+  consume(
+    code: string,
+    chatId: number,
+    now: Date,
+  ): Promise<
+    /** `accountHint`: e-mail MASCARADO da conta vinculada (`p***@dominio`), ou `null` se indisponível. */
+    { status: 'ok'; userId: string; accountHint: string | null } | { status: 'invalido' } | { status: 'chat_em_uso' }
+  >;
+  /** Desvincula o Telegram do usuário (`telegram_chat_id` nulo). */
+  unlink(userId: string): Promise<void>;
+  /** Dono do chat, ou `null` se nenhum usuário o tem vinculado. */
+  userForChat(chatId: number): Promise<string | null>;
+}
+
+export interface ConfirmationRepository {
+  /** Idempotente (chave primária). */
+  record(chatId: number, messageId: number, taskIds: string[]): Promise<void>;
+  /** Tarefas da confirmação que são do usuário: vivas e a contagem das apagadas. Nunca vê tarefas de outro usuário. */
+  tasksFor(userId: string, chatId: number, messageId: number): Promise<{ alive: string[]; deletedCount: number }>;
+}
+
+export interface MaintenanceRepository {
+  purgeExpiredChatMessages(now: Date): Promise<number>;
+  purgeExpiredLinkCodes(now: Date): Promise<number>;
+  purgeOldModelCalls(now: Date): Promise<number>;
+  recoverStuckEvents(now: Date): Promise<{ recovered: number; failed: number }>;
 }

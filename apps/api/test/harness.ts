@@ -1,4 +1,4 @@
-import { createApp } from '../src/app.js';
+import { type AppDeps, createApp } from '../src/app.js';
 import { makeCalculateDeadline } from '../src/application/calculate-deadline.js';
 import { makeGetBriefing } from '../src/application/briefing.js';
 import { makeCaseUseCases } from '../src/application/cases.js';
@@ -8,6 +8,7 @@ import type { HolidayRepository, NewTask } from '../src/application/ports.js';
 import { makeSettingsUseCases } from '../src/application/settings.js';
 import { makeSyncReminders } from '../src/application/sync-reminders.js';
 import { makeTaskUseCases } from '../src/application/tasks.js';
+import { makeLinkUseCases } from '../src/application/telegram/link.js';
 import { createFakes } from './fakes.js';
 
 export const WEB_ORIGIN = 'http://localhost:3000';
@@ -20,6 +21,14 @@ export type HarnessOpts = {
   casesOverride?: Partial<ReturnType<typeof makeCaseUseCases>>;
   holidaysOverride?: Partial<ReturnType<typeof makeHolidayUseCases>>;
   now?: Date;
+  /** `processMessage` falso para as rotas do assistente (ausente = assistente desabilitado). */
+  processMessage?: AppDeps['processMessage'];
+  scheduler?: AppDeps['scheduler'];
+  internalSecret?: AppDeps['internalSecret'];
+  handleTelegramUpdate?: AppDeps['handleTelegramUpdate'];
+  telegramWebhookSecret?: AppDeps['telegramWebhookSecret'];
+  /** Padrão 'meu_bot'; `null` = sem nome de bot (vínculo indisponível). */
+  botUsername?: string | null;
 };
 
 /** App real sobre casos de uso reais e repositórios fake. Tokens: token-ok -> u1, token-u2 -> u2. */
@@ -56,6 +65,16 @@ export function buildApp(opts: HarnessOpts = {}) {
     }),
     briefing: makeGetBriefing({ tasks: fakes.tasks, profiles: fakes.profiles, clock: fakes.clock }),
     webOrigin: WEB_ORIGIN,
+    telegramLink: makeLinkUseCases({
+      links: fakes.links,
+      botUsername: opts.botUsername === null ? undefined : (opts.botUsername ?? 'meu_bot'),
+      clock: fakes.clock,
+    }),
+    ...(opts.handleTelegramUpdate !== undefined ? { handleTelegramUpdate: opts.handleTelegramUpdate } : {}),
+    ...(opts.telegramWebhookSecret !== undefined ? { telegramWebhookSecret: opts.telegramWebhookSecret } : {}),
+    ...(opts.processMessage !== undefined ? { processMessage: opts.processMessage } : {}),
+    ...(opts.scheduler !== undefined ? { scheduler: opts.scheduler } : {}),
+    ...(opts.internalSecret !== undefined ? { internalSecret: opts.internalSecret } : {}),
   });
   return { app, fakes };
 }
