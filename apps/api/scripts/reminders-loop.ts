@@ -64,6 +64,20 @@ function abortableSleep(signal: AbortSignal): (ms: number) => Promise<boolean> {
     });
 }
 
+/** Uma API travada não pode travar o laço: passado `ms`, a passada conta como falha e a próxima começa. */
+export function withTimeout(work: Promise<number>, ms: number): Promise<number> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(1), ms);
+    work.then(
+      (code) => (clearTimeout(timer), resolve(code)),
+      () => (clearTimeout(timer), resolve(1)),
+    );
+  });
+}
+
+/** O endpoint pode levar ~45 s no pior caso (README); acima disso é travada de verdade. */
+export const TICK_TIMEOUT_MS = 90_000;
+
 export async function main(env: Record<string, string | undefined> = process.env): Promise<number> {
   let intervalMs: number;
   try {
@@ -76,7 +90,7 @@ export async function main(env: Record<string, string | undefined> = process.env
   for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => controller.abort());
   console.log(`Agendador local: uma passada a cada ${intervalMs / 1000} s (Ctrl+C para parar)`);
   await runLoop({
-    tick: () => tickOnce(env),
+    tick: () => withTimeout(tickOnce(env), TICK_TIMEOUT_MS),
     sleep: abortableSleep(controller.signal),
     intervalMs,
     log: (line) => console.log(line),
