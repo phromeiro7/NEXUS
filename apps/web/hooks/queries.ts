@@ -34,6 +34,11 @@ export function useTasks(query: ListTasksQuery) {
   return useQuery({ queryKey: queryKeys.tasks(query), queryFn: () => api.listTasks(query) });
 }
 
+export function useTask(id: string) {
+  const api = useApi();
+  return useQuery({ queryKey: ["task", id] as const, queryFn: () => api.getTask(id) });
+}
+
 export function useBriefing() {
   const api = useApi();
   return useQuery({ queryKey: queryKeys.briefing, queryFn: () => api.getBriefing() });
@@ -54,6 +59,7 @@ function useInvalidateTasks() {
   return () =>
     Promise.all([
       client.invalidateQueries({ queryKey: ["tasks"] }),
+      client.invalidateQueries({ queryKey: ["task"] }),
       client.invalidateQueries({ queryKey: ["briefing"] }),
     ]);
 }
