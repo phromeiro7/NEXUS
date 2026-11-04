@@ -1,0 +1,659 @@
+/*
+ * Nexus: painel web para computador (.pn). Vive dentro do escopo `.mini` (mesmos tokens e modo escuro)
+ * e acrescenta só o que o Mini App não tem: menu lateral, duas colunas, tabela e diálogo.
+ * Operate: listas com divisórias em vez de cartões, números tabulares, alvos de 44px ou mais,
+ * terracota só como acento gráfico. Contrastes: os mesmos pares de docs/nexus/contrastes-mini-app.md.
+ */
+.pn {
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr);
+  min-height: 100dvh;
+  font-size: 1rem;
+}
+.pn-side {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100dvh;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 20px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--superficie);
+  border-right: 1px solid var(--linha);
+}
+.pn-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 10px 20px;
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.pn-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pn-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-sizing: border-box;
+  min-height: 48px;
+  padding: 0 14px;
+  border-radius: 12px;
+  color: var(--suave);
+  font-weight: 500;
+  text-decoration: none;
+}
+.pn-link:hover {
+  background: color-mix(in srgb, var(--texto) 6%, var(--superficie));
+  color: var(--texto);
+}
+.pn-link[aria-current="page"] {
+  background: color-mix(in srgb, var(--marca) 12%, var(--superficie));
+  color: var(--texto);
+  font-weight: 700;
+}
+.pn-sep {
+  height: 1px;
+  margin: 12px 4px;
+  background: var(--linha);
+}
+.pn-side-foot {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.pn-keys {
+  margin: 0;
+  padding: 0 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.875rem;
+}
+.pn-keys-title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--suave);
+}
+.pn-keys div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.pn-kbd {
+  display: inline-block;
+  min-width: 22px;
+  box-sizing: border-box;
+  padding: 2px 7px;
+  border: 1px solid var(--contorno);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  background: var(--campo);
+  color: var(--texto);
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-align: center;
+}
+.pn-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 10px 0;
+  border-top: 1px solid var(--linha);
+}
+.pn-avatar {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--marca);
+  color: var(--sobre-marca);
+  font-weight: 700;
+}
+.pn-user-name {
+  min-width: 0;
+  flex: 1;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pn-signout {
+  min-height: 44px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--suave);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.pn-signout:hover {
+  color: var(--texto);
+}
+
+.pn-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.pn-head {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 40px;
+  background: var(--superficie);
+  border-bottom: 1px solid var(--linha);
+}
+.pn-capture {
+  display: flex;
+  gap: 10px;
+  max-width: 780px;
+}
+.pn-capture-field {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+.pn-capture-field .mini-field {
+  padding-right: 46px;
+}
+.pn-capture-field .pn-kbd {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.pn-examples {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.pn-examples .mini-chip {
+  font-weight: 500;
+}
+.pn-proposal {
+  max-width: 780px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 20px;
+  border: 1px solid var(--linha);
+  border-radius: 14px;
+  background: var(--fundo);
+}
+.pn-proposal p {
+  margin: 0;
+}
+.pn-help {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 40px;
+  padding: 16px 20px;
+  border: 1px solid var(--linha);
+  border-radius: 14px;
+  background: var(--fundo);
+  font-size: 0.9375rem;
+}
+.pn-help div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pn-body {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 1240px;
+  padding: 32px 40px 56px;
+}
+.pn-h1 {
+  margin: 0;
+  font-size: 1.875rem;
+  line-height: 1.15;
+  letter-spacing: -0.015em;
+}
+.pn-h2 {
+  margin: 32px 0 12px;
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+.pn-h2:first-child {
+  margin-top: 0;
+}
+.pn-lead {
+  margin: 8px 0 0;
+  font-size: 1.125rem;
+}
+.pn-sub {
+  color: var(--suave);
+  font-size: 0.9375rem;
+}
+.pn-grid2 {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 56px;
+  align-items: start;
+}
+.pn-col-bills {
+  padding-left: 56px;
+  border-left: 1px solid var(--linha);
+}
+.pn-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.pn-title-row .pn-h1 {
+  margin-right: auto;
+}
+
+.pn-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow: hidden;
+  border: 1px solid var(--linha);
+  border-radius: 14px;
+  background: var(--superficie);
+}
+.pn-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-sizing: border-box;
+  min-height: 64px;
+  padding: 8px 16px;
+}
+.pn-row + .pn-row {
+  border-top: 1px solid var(--linha);
+}
+.pn-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.pn-row-main:hover .pn-row-title {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.pn-row-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.pn-row-sub {
+  font-size: 0.875rem;
+  color: var(--suave);
+}
+.pn-row-sub.late {
+  color: var(--alerta);
+  font-weight: 600;
+}
+.pn-amount {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pn-circle {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.pn-circle span {
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--contorno);
+  border-radius: 50%;
+}
+.pn-circle:hover span {
+  border-color: var(--texto);
+  background: color-mix(in srgb, var(--marca) 12%, transparent);
+}
+.pn-small-btn {
+  min-height: 44px;
+  padding: 0 16px;
+  font-size: 0.9375rem;
+}
+.pn-quiet-text {
+  margin: 0;
+  color: var(--suave);
+}
+
+.pn-facts {
+  margin: 16px 0 28px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 48px;
+}
+.pn-facts div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pn-facts dt {
+  color: var(--suave);
+  font-size: 0.9375rem;
+}
+.pn-facts dd {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.pn-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.pn-tools .mini-field {
+  width: 300px;
+  max-width: 100%;
+}
+.pn-tools select.mini-field {
+  width: auto;
+  min-width: 140px;
+}
+.pn-tools-end {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pn-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--linha);
+  border-radius: 14px;
+  background: var(--superficie);
+}
+.pn-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9375rem;
+}
+.pn-table th {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--linha);
+  background: var(--fundo);
+  color: var(--suave);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+.pn-table td {
+  box-sizing: border-box;
+  height: 56px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--linha);
+}
+.pn-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.pn-table tfoot td {
+  border-top: 1px solid var(--linha);
+  border-bottom: 0;
+  background: var(--fundo);
+  font-weight: 700;
+}
+.pn-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.pn-table .act {
+  text-align: right;
+  white-space: nowrap;
+}
+.pn-table .act .mini-btn + .mini-btn {
+  margin-left: 6px;
+}
+.pn-sortbtn {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+}
+.pn-sortbtn:hover {
+  color: var(--texto);
+}
+.pn-status-late {
+  color: var(--alerta);
+  font-weight: 600;
+}
+.pn-empty {
+  margin: 0;
+  padding: 28px 16px;
+  color: var(--suave);
+}
+
+.pn-sec {
+  display: grid;
+  grid-template-columns: minmax(0, 260px) minmax(0, 1fr);
+  gap: 32px;
+  padding: 24px 0;
+  border-top: 1px solid var(--linha);
+}
+.pn-sec:first-of-type {
+  border-top: 0;
+}
+.pn-sec h2 {
+  margin: 0;
+  font-size: 1.125rem;
+}
+.pn-sec > div > p {
+  margin: 4px 0 0;
+}
+.pn-sec-body {
+  min-width: 0;
+  max-width: 600px;
+}
+/* O formulário compartilhado com o Mini App vem num cartão: no painel ele é só o conteúdo da seção. */
+.pn-sec-body .mini-card {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.pn-sec-body .mini-sheet {
+  margin-top: 0;
+}
+.pn-sec-body .mini-btn.primary {
+  align-self: flex-start;
+}
+.pn-sec-body .mini-btn.quiet {
+  align-self: flex-start;
+}
+
+.pn-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 8vh 20px 20px;
+  overflow-y: auto;
+  background: rgb(10 24 31 / 0.5);
+}
+.pn-dialog {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 520px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px;
+  border-radius: 18px;
+  background: var(--superficie);
+  color: var(--texto);
+  box-shadow: 0 24px 60px -12px rgb(0 0 0 / 0.45);
+}
+.pn-dialog:focus {
+  outline: none;
+}
+.pn-dialog-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.pn-dialog-head h2 {
+  flex: 1;
+  margin: 0;
+  font-size: 1.25rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.pn-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.pn-seg {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--texto) 8%, var(--superficie));
+}
+.pn-seg button {
+  flex: 1;
+  min-height: 44px;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--texto);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.pn-seg button[aria-pressed="true"] {
+  background: var(--sel);
+  color: var(--sobre-sel);
+}
+.pn-two {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+.pn-invite-box {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 20px;
+  padding: 20px;
+  border: 1px solid var(--linha);
+  border-radius: 14px;
+  background: var(--superficie);
+}
+.pn-invite-box p {
+  margin: 0;
+}
+
+.pn-sec-body .mini-tg-title {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.pn .mini-toast-zone {
+  padding-bottom: 28px;
+}
+
+@media (max-width: 1180px) {
+  .pn {
+    grid-template-columns: 76px minmax(0, 1fr);
+  }
+  .pn-lbl,
+  .pn-side-foot .pn-keys,
+  .pn-user-name {
+    display: none;
+  }
+  .pn-link {
+    justify-content: center;
+    padding: 0;
+  }
+  .pn-brand {
+    justify-content: center;
+    padding-inline: 0;
+  }
+  .pn-user {
+    flex-direction: column;
+    padding-inline: 0;
+  }
+  .pn-grid2 {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 32px;
+  }
+  .pn-col-bills {
+    padding-left: 0;
+    border-left: 0;
+  }
+  .pn-head,
+  .pn-body {
+    padding-inline: 24px;
+  }
+  .pn-sec {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+}
+@media (max-width: 640px) {
+  .pn-capture {
+    flex-direction: column;
+  }
+  .pn-two {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
