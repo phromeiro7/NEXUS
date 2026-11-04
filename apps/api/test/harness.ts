@@ -2,6 +2,7 @@ import { type AppDeps, createApp } from '../src/app.js';
 import { makeCalculateDeadline } from '../src/application/calculate-deadline.js';
 import { makeGetBriefing } from '../src/application/briefing.js';
 import { makeCaseUseCases } from '../src/application/cases.js';
+import { makeCaptureInterpretUseCases } from '../src/application/capture-interpret.js';
 import { makeFinanceUseCases } from '../src/application/finance.js';
 import { makeHolidayUseCases } from '../src/application/holidays.js';
 import type { HolidayRepository, NewTask } from '../src/application/ports.js';
@@ -68,6 +69,7 @@ export function buildApp(opts: HarnessOpts = {}) {
     cases: { ...makeCaseUseCases({ cases: fakes.cases }), ...opts.casesOverride },
     holidays: { ...makeHolidayUseCases({ holidays: fakes.holidays }), ...opts.holidaysOverride },
     finance: makeFinanceUseCases({ finance: fakes.finance, clock: fakes.clock }),
+    capture: makeCaptureInterpretUseCases({ profiles: fakes.profiles, clock: fakes.clock }),
     settings: makeSettingsUseCases({
       profiles: fakes.profiles,
       tasks: fakes.tasks,

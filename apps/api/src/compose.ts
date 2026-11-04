@@ -26,6 +26,7 @@ import { createSupabaseInboundEventRepository } from './infra/supabase-inbound-e
 import { makeGetBriefing } from './application/briefing.js';
 import { makeCalculateDeadline } from './application/calculate-deadline.js';
 import { makeCaseUseCases } from './application/cases.js';
+import { makeCaptureInterpretUseCases } from './application/capture-interpret.js';
 import { makeFinanceUseCases } from './application/finance.js';
 import { makeHolidayUseCases } from './application/holidays.js';
 import type { Clock, TelegramClient } from './application/ports.js';
@@ -243,6 +244,7 @@ export function buildApp(
     cases: makeCaseUseCases({ cases }),
     holidays: makeHolidayUseCases({ holidays }),
     finance: financeUseCases,
+    capture: makeCaptureInterpretUseCases({ profiles, clock }),
     settings: makeSettingsUseCases({
       profiles,
       tasks,

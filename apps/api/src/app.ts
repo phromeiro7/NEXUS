@@ -10,6 +10,7 @@ import {
 import { authMiddleware, type AuthVerifier } from './auth.js';
 import type { makeCalculateDeadline } from './application/calculate-deadline.js';
 import type { makeCaseUseCases } from './application/cases.js';
+import type { makeCaptureInterpretUseCases } from './application/capture-interpret.js';
 import type { makeFinanceUseCases } from './application/finance.js';
 import type { makeHolidayUseCases } from './application/holidays.js';
 import type { makeSettingsUseCases } from './application/settings.js';
@@ -23,6 +24,7 @@ import { internalRoutes } from './routes/internal.js';
 import { assistantRoutes, type ProcessMessage } from './routes/assistant.js';
 import { authRoutes, type AuthRoutesDeps } from './routes/auth.js';
 import { briefingRoutes } from './routes/briefing.js';
+import { captureRoutes } from './routes/capture.js';
 import { casesRoutes } from './routes/cases.js';
 import { financeRoutes } from './routes/finance.js';
 import { holidaysRoutes } from './routes/holidays.js';
@@ -37,6 +39,8 @@ export type AppDeps = {
   cases: ReturnType<typeof makeCaseUseCases>;
   holidays: ReturnType<typeof makeHolidayUseCases>;
   finance: ReturnType<typeof makeFinanceUseCases>;
+  /** Barra de captura do painel: lê a frase com as regras do bot, sem gravar. */
+  capture: ReturnType<typeof makeCaptureInterpretUseCases>;
   settings: ReturnType<typeof makeSettingsUseCases>;
   briefing: (userId: string) => Promise<BriefingDto>;
   /** Única origem de navegador autorizada por CORS (o painel). */
@@ -136,6 +140,7 @@ export function createApp(deps: AppDeps) {
   app.route('/cases', casesRoutes({ cases: deps.cases }, auth));
   app.route('/holidays', holidaysRoutes({ holidays: deps.holidays }, auth));
   app.route('/finance-entries', financeRoutes({ finance: deps.finance }, auth));
+  app.route('/capture', captureRoutes({ capture: deps.capture }, auth));
   app.route(
     '/invites',
     inviteRoutes(
