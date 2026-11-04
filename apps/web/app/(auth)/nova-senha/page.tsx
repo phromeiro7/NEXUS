@@ -69,11 +69,11 @@ export default function NovaSenhaPage() {
   if (!done && (hashError || status === "signedOut")) {
     return (
       <AuthCard title="Nova senha">
-        <p role="alert" className="text-sm text-[var(--color-fatal)]">
+        <p role="alert" className="nx-error">
           O link de recuperação é inválido ou expirou. Peça um novo link.
         </p>
-        <p className="mt-4 text-sm">
-          <Link href="/recuperar" className="inline-flex min-h-10 items-center underline">
+        <p className="nx-links">
+          <Link href="/recuperar" className="nx-link">
             Pedir novo link
           </Link>
         </p>
@@ -85,12 +85,12 @@ export default function NovaSenhaPage() {
   if (!done && !recovery) {
     return (
       <AuthCard title="Nova senha">
-        <p className="text-sm">Este link só funciona a partir do e-mail de recuperação.</p>
-        <p className="mt-4 flex flex-wrap gap-x-4 text-sm">
-          <Link href="/configuracoes" className="inline-flex min-h-10 items-center underline">
+        <p className="nx-note">Este link só funciona a partir do e-mail de recuperação.</p>
+        <p className="nx-links">
+          <Link href="/configuracoes" className="nx-link">
             Configurações
           </Link>
-          <Link href="/recuperar" className="inline-flex min-h-10 items-center underline">
+          <Link href="/recuperar" className="nx-link">
             Pedir novo link
           </Link>
         </p>
@@ -123,10 +123,10 @@ export default function NovaSenhaPage() {
           onChange={setConfirm}
           autoComplete="new-password"
         />
-        <p className="text-xs">Mínimo de {MIN_PASSWORD} caracteres.</p>
+        <p className="nx-note">Mínimo de {MIN_PASSWORD} caracteres.</p>
       </AuthForm>
       {done && (
-        <p role="status" className="mt-3 text-sm text-[var(--color-sucesso)]">
+        <p role="status" className="nx-ok">
           Senha atualizada. Levando você ao painel…
         </p>
       )}

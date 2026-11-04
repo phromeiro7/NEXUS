@@ -38,7 +38,7 @@ export default function CadastroPage() {
   }
 
   return (
-    <AuthCard title="Criar conta">
+    <AuthCard title="Criar conta" lead="Anote tarefas e lembretes e acompanhe o seu dia.">
       <AuthForm
         onSubmit={() => void onSubmit()}
         error={error}
@@ -55,15 +55,15 @@ export default function CadastroPage() {
           onChange={setPassword}
           autoComplete="new-password"
         />
-        <p className="text-xs">Mínimo de {MIN_PASSWORD} caracteres.</p>
+        <p className="nx-note">Mínimo de {MIN_PASSWORD} caracteres.</p>
       </AuthForm>
       {notice !== null && (
-        <p role="status" className="mt-3 text-sm text-[var(--color-sucesso)]">
+        <p role="status" className="nx-ok">
           {notice}
         </p>
       )}
-      <p className="mt-4 text-sm">
-        <Link href="/entrar" className="underline">
+      <p className="nx-links">
+        <Link href="/entrar" className="nx-link">
           Já tenho conta
         </Link>
       </p>

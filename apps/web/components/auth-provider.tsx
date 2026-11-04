@@ -29,6 +29,12 @@ export type AuthContextValue = {
   sendReset(email: string): Promise<AuthResult>;
   /** Define a nova senha da sessão atual (a de recuperação, vinda do link do e-mail). */
   updatePassword(password: string): Promise<AuthResult>;
+  /** Como a pessoa quer ser chamada (user_metadata.display_name); null se não definiu. */
+  displayName: string | null;
+  /** Id do usuário da sessão (chave dos dados locais); null sem sessão. */
+  userId: string | null;
+  /** Salva o nome (vazio remove). O nome vive só na conta de autenticação. */
+  saveDisplayName(name: string): Promise<AuthResult>;
   signOut(): Promise<void>;
   getToken(): Promise<string | null>;
   /** Redireciona para /entrar?next=<rota atual>, no máximo uma vez por sessão deslogada. */
@@ -40,6 +46,13 @@ export type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 const GENERIC = "Não foi possível concluir. Tente novamente.";
+
+export const DISPLAY_NAME_MAX = 40;
+
+function nameOf(session: { user?: { user_metadata?: { display_name?: unknown } } } | null): string | null {
+  const v = session?.user?.user_metadata?.display_name;
+  return typeof v === "string" && v.trim() !== "" ? v.trim() : null;
+}
 
 function isInvalidCredentials(e: AuthApiError): boolean {
   return e.code === "invalid_credentials" || /invalid login credentials/i.test(e.message ?? "");
@@ -117,6 +130,8 @@ export function AuthProvider({
   const [configError, setConfigError] = useState<string | null>(null);
   // Verdadeiro só entre o evento PASSWORD_RECOVERY e o fim da redefinição (ou a saída).
   const [recovery, setRecovery] = useState(false);
+  const [displayName, setDisplayName] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const recoveryUser = useRef<string | null>(null);
   const clientRef = useRef<AuthClient | null>(injected ?? null);
   const redirected = useRef(false);
@@ -164,12 +179,20 @@ export function AuthProvider({
         }
       }
       if (active && (event === "SIGNED_IN" || event === "INITIAL_SESSION")) noteUser(session);
+      if (active) {
+        setDisplayName(nameOf(session));
+        setUserId(session?.user?.id ?? null);
+      }
       apply(session !== null);
     });
     void client.auth
       .getSession()
       .then(({ data }) => {
-        if (active) noteUser(data.session);
+        if (active) {
+          noteUser(data.session);
+          setDisplayName(nameOf(data.session));
+          setUserId(data.session?.user?.id ?? null);
+        }
         apply(data.session !== null);
       })
       .catch(() => apply(false));
@@ -280,6 +303,21 @@ export function AuthProvider({
     }
   }, []);
 
+  const saveDisplayName = useCallback(async (name: string): Promise<AuthResult> => {
+    const client = clientRef.current;
+    if (!client) return { error: GENERIC };
+    // eslint-disable-next-line no-control-regex
+    const clean = name.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, DISPLAY_NAME_MAX);
+    try {
+      const { error } = await client.auth.updateUser({ data: { display_name: clean === "" ? null : clean } });
+      if (error) return { error: GENERIC };
+      setDisplayName(clean === "" ? null : clean);
+      return { error: null };
+    } catch {
+      return { error: "Sem conexão. Verifique sua internet e tente novamente." };
+    }
+  }, []);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       status,
@@ -288,13 +326,16 @@ export function AuthProvider({
       signUp,
       sendReset,
       updatePassword,
+      displayName,
+      userId,
+      saveDisplayName,
       signOut,
       getToken,
       redirectToLogin,
       api,
       configError,
     }),
-    [status, recovery, signIn, signUp, sendReset, updatePassword, signOut, getToken, redirectToLogin, api, configError],
+    [status, recovery, signIn, signUp, sendReset, updatePassword, displayName, userId, saveDisplayName, signOut, getToken, redirectToLogin, api, configError],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

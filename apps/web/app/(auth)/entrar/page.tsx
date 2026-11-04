@@ -29,7 +29,7 @@ function EntrarForm() {
   }
 
   return (
-    <AuthCard title="Entrar">
+    <AuthCard title="Entrar" lead="Sua rotina, conectada.">
       <AuthForm
         onSubmit={() => void onSubmit()}
         error={error}
@@ -47,13 +47,11 @@ function EntrarForm() {
           autoComplete="current-password"
         />
       </AuthForm>
-      <p className="mt-4 flex justify-between text-sm">
-        <Link href="/recuperar" className="underline">
+      <p className="nx-links">
+        <Link href="/recuperar" className="nx-link">
           Esqueci a senha
         </Link>
-        <Link href="/cadastro" className="underline">
-          Criar conta
-        </Link>
+        {/* Sem "Criar conta" aqui: a conta virá do Telegram. /cadastro segue acessível por URL. */}
       </p>
     </AuthCard>
   );
