@@ -1181,3 +1181,20 @@ details.mini-more[open] > summary svg {
   font-size: 0.8125rem;
   font-weight: 650;
 }
+
+/* Vínculo do Telegram (Configurações do Mini App) */
+.mini .mini-tg { display: flex; flex-direction: column; gap: 12px; }
+.mini .mini-tg-title { margin: 0; font-size: 1.0625rem; font-weight: 700; }
+.mini .mini-tg-block { display: flex; flex-direction: column; gap: 12px; }
+.mini .mini-tg-state { margin: 0; font-weight: 600; }
+.mini .mini-tg-text { margin: 0; font-size: 0.9375rem; line-height: 1.45; color: var(--suave); }
+.mini .mini-tg-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.mini .mini-code {
+  margin: 0;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  font-variant-numeric: tabular-nums;
+  user-select: all;
+}
