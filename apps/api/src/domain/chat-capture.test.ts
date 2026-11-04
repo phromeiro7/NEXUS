@@ -213,6 +213,9 @@ describe('o que não entende', () => {
     'amanhã', // só data, sem o que fazer
     '14h',
     'gastei 0 em roupa',
+    'quanto gastei esse mês?', // pergunta
+    'me explica como funciona o prazo em dobro', // frase solta, sem data nem verbo no infinitivo
+    'academia',
   ])('%j devolve null', (text) => {
     expect(read(text)).toBeNull();
   });
