@@ -351,6 +351,29 @@ não é abortada no meio de um envio. **Ainda falta** o adaptador que expõe a A
 construído**. Hoje a API só sobe como servidor Node (`src/server.ts`); sem o adaptador, o webhook e o agendador
 não têm onde receber chamadas em produção.
 
+### Rodar no Mac, sem túnel (validação)
+
+O Telegram só entrega por webhook em HTTPS público, que o Mac não tem. Sem túnel, use o **long polling**:
+`pnpm --filter @aj/api telegram:poll` busca as mensagens com `getUpdates` e repassa cada uma à rota
+`/telegram/webhook` da própria API (mesmo segredo, mesma lógica). Só avança quando a API responde 200; falha
+da API ou da rede repete a atualização. Variáveis: `TELEGRAM_BOT_TOKEN` e `TELEGRAM_WEBHOOK_SECRET`
+(`TELEGRAM_POLL_URL` opcional; padrão `http://localhost:$PORT`).
+
+- Ao iniciar, o script **apaga o webhook** do bot: o Telegram não entrega por polling e webhook ao mesmo tempo.
+  Para voltar ao webhook, rode o `setWebhook` do runbook acima.
+- `scripts/local-up.sh` sobe API, site, lembretes e polling juntos, sob `caffeinate -i` (o Mac não dorme
+  enquanto rodar). `--sem-telegram` omite o polling. Ajustes do Sistema: desative o repouso automático na tomada e
+  deixe a tampa aberta.
+- **Banco na nuvem.** A API e o site podem apontar para o Supabase Cloud (projeto NEXUS) em vez do local: troque
+  `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` em `apps/api/.env` e `NEXT_PUBLIC_SUPABASE_URL` e
+  `NEXT_PUBLIC_SUPABASE_ANON_KEY` em `apps/web/.env.local` (as chaves saem de
+  `supabase projects api-keys --project-ref <ref>`). As migrations vão com `supabase db push --linked` (use
+  `--dry-run` antes). O banco da nuvem pode ser o de produção: não rode `db reset` nem `test:db` com esses `.env`.
+- O Supabase local **não é lugar para dados de outras pessoas**: `supabase db reset`, `stop --no-backup` e a limpeza
+  de volumes do Docker apagam tudo, e não há backup.
+- Portas: o `local-up.sh` usa 3110 (site) e 3111 (API), porque a 3000 e a 3001 costumam estar ocupadas.
+  `NEXT_PUBLIC_API_URL` e `WEB_ORIGIN` precisam acompanhar essas portas.
+
 ### Assistente de IA
 
 `POST /assistant/message` (autenticado) recebe `{ "text": string, "clientMessageId": uuid }`

@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "start": "tsx src/server.ts",
+    "start": "tsx --env-file-if-exists=.env src/server.ts",
     "reminders:tick": "tsx --env-file-if-exists=.env scripts/reminders-tick.ts",
     "reminders:loop": "tsx --env-file-if-exists=.env scripts/reminders-loop.ts",
+    "telegram:poll": "tsx --env-file-if-exists=.env scripts/telegram-poll.ts",
     "smoke:assistant": "tsx scripts/assistant-smoke.ts",
     "test": "vitest run --passWithNoTests",
     "test:db": "vitest run --config vitest.db.config.ts --passWithNoTests",
