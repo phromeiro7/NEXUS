@@ -95,6 +95,35 @@ precisem do painel web. Lista de telas e consequências em `docs/ROTEIRO-NEXUS.m
 
 - Janela de validade do `auth_date` e duração da sessão do Mini App.
 - Usuário sem e-mail no Supabase Auth (ver §4).
-- Quantos convidados, e se haverá perfis de administrador além do dono.
+- Se haverá perfis de administrador além do dono (hoje: só o dono).
 - Mini App no mesmo app Next.js (rotas mobile-first) ou app separado? Recomendação inicial: mesmo app.
 - (Resolvido em 2026-11-03) Escopo do Mini App: o mais completo possível; ver §6.
+
+## 9. Decisões do usuário (2026-11-03, segunda rodada)
+
+- **Convidados:** cerca de 10 pessoas no início. Consequência: o limite de 30 mensagens/hora de IA por usuário
+  vale para cada uma, e é preciso um **teto de gasto total** da chave da Anthropic (a definir no plano, com
+  alerta ao se aproximar).
+- **Acesso dos convidados: só pelo Telegram.** Nenhum convidado cria conta com e-mail e senha no painel web;
+  só o administrador (dono) mantém o login por e-mail. O cadastro aberto do painel deve ser desligado ou
+  restrito quando o Mini App entrar no ar (o plano decide como: bloquear `/cadastro` no painel e/ou
+  desativar o cadastro público no Supabase Auth).
+
+## 10. Decisão do usuário (2026-11-03, terceira rodada): login com Telegram também no painel web
+
+Os convidados podem usar o painel web, **sempre entrando pelo Telegram** (sem e-mail nem senha). Substitui
+"o painel só atende ao administrador" da §1 e a parte "só Mini App" da §9: convidados usam o Mini App e o
+painel web, com a mesma conta.
+
+- **Botão "Entrar com Telegram"** na tela de login do painel (Telegram Login Widget): o Telegram assina os
+  dados; a API confere a assinatura (chave derivada do token do bot, comparação em tempo constante,
+  `auth_date` recente, sem reuso) e abre a sessão da conta ligada àquele `telegram_user_id`. A validação é
+  parente da do Mini App (`initData` usa outra derivação de chave): mesmo módulo, duas funções.
+- **Primeiro login só com convite:** se o `telegram_user_id` não tem conta nem convite válido, nada é criado
+  (senão qualquer pessoa com Telegram entraria). O convite é o do §2; no widget, o código de convite precisa ser
+  informado antes ou o convidado aceita o convite pelo bot (`/start CONVITE`) e só depois entra no painel.
+- **Mesma conta** no Mini App e no painel web.
+- Exige `/setdomain` no BotFather apontando para o endereço do painel (funciona com `*.vercel.app`) e o painel
+  em HTTPS.
+- Entra no Plano 7a, compartilhando a sessão e a validação com o Mini App.
+- O administrador mantém e-mail e senha; o cadastro por e-mail continua removido.

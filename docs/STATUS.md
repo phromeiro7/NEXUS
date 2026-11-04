@@ -30,7 +30,7 @@ assim por diante. Revise e integre na ordem.
 - **API** (Hono, porta 3001): tarefas, processos, feriados locais, configurações, briefing e cálculo de
   prazos em dias úteis/corridos, com isolamento por usuário (filtro explícito + RLS) e lembretes gravados
   na fila (`reminders`). Rotas e erros: README, seção "API".
-- **Painel** (Next.js, porta 3000): entrar, criar conta, recuperar e redefinir senha; Painel com adição
+- **Painel** (Next.js, porta 3000): entrar, recuperar e redefinir senha (sem cadastro público: contas são criadas pelo dono em Authentication > Users > Add user do Supabase, até existir o convite pelo Telegram; em produção, desligar "Allow new users to sign up"); Painel com adição
   rápida e visões Dia, Semana e Mês; troca de status com um clique; criar, editar e excluir tarefas;
   calculadora de prazos; histórico; configurações e feriados locais. Como subir tudo localmente: README,
   seção "Painel".
@@ -87,7 +87,7 @@ registrado.
   trocar o código.
 - Tempo do agendador: o pior caso real é ~45 s; o `pg_net` deve usar `timeout_milliseconds` de 60000, e a
   função da Vercel precisa de `maxDuration` de pelo menos 60 s.
-- A API é um servidor Node; falta o adaptador de função para a Vercel.
+- O adaptador de função da Vercel existe (`apps/api/vercel.json`, bundle esbuild em `.vercel/output`, Build Output API v3; veja o README, "Publicar na Vercel (API)"), mas **nenhum deploy real foi feito** e a primeira publicação pode exigir um ajuste.
 
 ## Plano 6 — acabamento e publicação (não iniciado)
 

@@ -20,7 +20,6 @@ export type AuthClient = {
       data: { subscription: { unsubscribe(): void } };
     };
     signInWithPassword(c: { email: string; password: string }): Promise<AuthResponse>;
-    signUp(c: { email: string; password: string }): Promise<AuthResponse>;
     resetPasswordForEmail(
       email: string,
       o?: { redirectTo?: string },

@@ -346,10 +346,41 @@ Em qualquer opção, o agendador deve apontar para o **domínio de produção**,
 proteção de implantação da Vercel as bloqueia; o domínio de produção fica de fora da proteção padrão).
 
 **Hospedagem.** O alvo é a Vercel (domínio gratuito `*.vercel.app`; o plano Hobby é só para uso não comercial).
-A função precisará de `maxDuration` de pelo menos 60 s (o padrão do plano Hobby é menor), porque a execução
-não é abortada no meio de um envio. **Ainda falta** o adaptador que expõe a API Hono como função da Vercel (um entrypoint de função): ele **não foi
-construído**. Hoje a API só sobe como servidor Node (`src/server.ts`); sem o adaptador, o webhook e o agendador
-não têm onde receber chamadas em produção.
+O adaptador existe (`apps/api/src/vercel.ts`, empacotado por esbuild em `apps/api/.vercel/output`, Build Output API v3; veja
+"Publicar na Vercel (API)" abaixo), mas **nenhum deploy real foi feito ainda** e a primeira publicação pode exigir um ajuste.
+
+#### Publicar na Vercel (API)
+
+O `apps/api/vercel.json` só define o `buildCommand` (`pnpm run build`). O build gera `apps/api/.vercel/output`
+(Build Output API v3): uma única função Node em `functions/api.func` (bundle esbuild, runtime `nodejs22.x`,
+`maxDuration` de 60 s, região `gru1`/São Paulo) e uma rota que manda **todos** os caminhos (`/health`, `/me`,
+`/tasks`, `/telegram/webhook`, `/internal/reminders/run`...) para ela. Localmente nada muda:
+`pnpm --filter @aj/api dev`/`start` seguem subindo o servidor Node.
+
+1. **Criar o projeto.** Na Vercel: *Add New > Project*, importe o repositório do GitHub e, em *Root Directory*,
+   escolha `apps/api`. Deixe ligada a opção *Include source files outside of the Root Directory in the Build Step*
+   (já vem ligada em projetos novos; o build precisa de `packages/shared`). Framework Preset: *Other*; não defina *Output Directory* nem sobrescreva o *Build Command* (o `vercel.json` já manda).
+2. **Variáveis de ambiente** (*Settings > Environment Variables*, ambiente Production; só os nomes, valores nunca vão
+   para o Git):
+   - `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY`: no painel do Supabase, *Project Settings > API* (a chave
+     `service_role` é secreta; use só aqui).
+   - `WEB_ORIGIN`: a URL do **projeto web** na Vercel, `https://<projeto-web>.vercel.app`, **sem barra final**
+     (é a única origem aceita por CORS; se ficar errada o painel não consegue chamar a API).
+   - `TELEGRAM_BOT_TOKEN` e `TELEGRAM_BOT_USERNAME`: do BotFather (passo 1 do runbook acima).
+   - `TELEGRAM_WEBHOOK_SECRET` e `INTERNAL_SECRET`: segredos que você gera (`openssl rand -hex 32`).
+   - `ANTHROPIC_API_KEY` (opcional; sem ela o assistente responde 503 `configuracao`) e `ASSISTANT_MODEL` (opcional).
+
+   Se faltar `SUPABASE_URL` ou `SUPABASE_SERVICE_ROLE_KEY`, toda rota responde 500 com o **nome** da variável ausente
+   (nunca o valor); veja também os logs da função.
+3. **Deploy.** Faça o deploy e confira `https://<projeto>.vercel.app/health` (deve responder `{"status":"ok"}`).
+   Se o projeto tiver *Deployment Protection* no domínio de produção, desative-a para essas rotas: o Telegram e o
+   `pg_net` não enviam credenciais da Vercel.
+4. **Depois, o `setWebhook`**, apontando para `https://<projeto>.vercel.app/telegram/webhook` (passo 3 do runbook).
+5. **Por último, o `pg_cron`**, chamando `POST https://<projeto>.vercel.app/internal/reminders/run` com o
+   cabeçalho `X-Internal-Secret` (agendador acima).
+
+Limites verificados na documentação da Vercel: no Hobby o `maxDuration` vai até 300 s (usamos 60 s, acima dos ~45 s do
+pior caso do agendador) e a função roda em uma única região (`gru1`).
 
 ### Rodar no Mac, sem túnel (validação)
 
@@ -472,8 +503,11 @@ projeto: é o botão "Reabrir" do Histórico.
 `dev` e `build` usam `--webpack`: o Turbopack não resolve os imports `./x.js` que apontam para
 `.ts` dentro de `@aj/shared`. O motivo e como reverter estão em `apps/web/next.config.ts`.
 
-**Auth local.** Em `supabase/config.toml`, `[auth.email]` está com `enable_confirmations = false`:
-o cadastro entra direto, sem confirmar e-mail. Se você ligar a confirmação, o painel avisa para
+**Auth local.** Não há cadastro público: o painel não tem tela de criar conta e `supabase/config.toml`
+está com `enable_signup = false`. Enquanto o convite pelo Telegram não existe, a conta do dono é criada
+no painel do Supabase (Authentication > Users > Add user). Em produção, desligue também a opção
+"Allow new users to sign up" do projeto Supabase (configuração remota, feita à mão). Em
+`[auth.email]`, `enable_confirmations = false`; se você ligar a confirmação, o painel avisa para
 confirmar e os e-mails de teste aparecem na interface web do servidor de e-mail local (porta 55324). A recuperação de senha envia o
 link para `/nova-senha`; essa URL está em `additional_redirect_urls` do mesmo arquivo (reinicie
 o Supabase local depois de alterar o `config.toml`).
