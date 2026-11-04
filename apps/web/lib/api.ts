@@ -14,6 +14,8 @@ import type {
   HolidayDto,
   InviteDto,
   InviteListDto,
+  InterpretCaptureInput,
+  InterpretCaptureResultDto,
   IsoDate,
   LinkCodeDto,
   ListTasksQuery,
@@ -144,6 +146,8 @@ export function createApiClient(opts: ApiClientOptions) {
     updateFinanceEntry: (id: string, input: UpdateFinanceEntryInput) =>
       request<FinanceEntryDto>('PATCH', `/finance-entries/${encodeURIComponent(id)}`, input),
     deleteFinanceEntry: (id: string) => request<void>('DELETE', `/finance-entries/${encodeURIComponent(id)}`),
+    interpretCapture: (input: InterpretCaptureInput) =>
+      request<InterpretCaptureResultDto>('POST', '/capture/interpret', input),
     sendAssistantMessage: (input: AssistantMessageInput) =>
       request<AssistantReplyDto>('POST', '/assistant/message', input),
   };
