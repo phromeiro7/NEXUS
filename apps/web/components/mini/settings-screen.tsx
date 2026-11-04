@@ -7,6 +7,7 @@ import { DISPLAY_NAME_MAX, useAuth } from "@/components/auth-provider";
 import { useSettings, useUpdateSettings } from "@/hooks/queries";
 import { messageFor } from "@/lib/messages";
 import { BackIcon } from "./icons";
+import { TelegramCard } from "./telegram-card";
 import { telegramFirstName } from "./telegram-bridge";
 import { useToast } from "./toast";
 
@@ -236,14 +237,7 @@ function SettingsForm({ settings, back }: { settings: SettingsDto; back: React.R
         </p>
       )}
 
-      <div className="mini-card">
-        <dl className="mini-facts">
-          <div>
-            <dt>Telegram</dt>
-            <dd>{settings.telegramLinked ? "Conectado" : "Ainda não conectado"}</dd>
-          </div>
-        </dl>
-      </div>
+      <TelegramCard linked={settings.telegramLinked} paused={settings.channelPaused} />
     </main>
   );
 }
