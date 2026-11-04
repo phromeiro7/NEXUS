@@ -13,7 +13,7 @@ export async function readJson(c: Context): Promise<unknown> {
 }
 
 /** Um id malformado é tratado como recurso inexistente (mesma resposta), antes do caso de uso. */
-export function idParam(c: Context, resource: 'tarefa' | 'processo' | 'feriado'): string {
+export function idParam(c: Context, resource: 'tarefa' | 'processo' | 'feriado' | 'lancamento'): string {
   const id = c.req.param('id') ?? '';
   if (!UUID.test(id)) throw new NotFoundError(resource);
   return id;

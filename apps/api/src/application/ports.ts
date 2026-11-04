@@ -2,6 +2,8 @@ import type {
   CaseDto,
   CreateCaseInput,
   CreateHolidayInput,
+  FinanceEntryDto,
+  ListFinanceEntriesQuery,
   Holiday,
   HolidayDto,
   IsoDate,
@@ -78,4 +80,27 @@ export interface ReminderRepository {
 
 export interface Clock {
   now(): Date;
+}
+
+export type NewFinanceEntry = Omit<FinanceEntryDto, 'id' | 'createdAt' | 'updatedAt'> & { id?: string };
+export type FinanceEntryPatch = Partial<
+  Pick<FinanceEntryDto, 'description' | 'amountCents' | 'category' | 'dueDate' | 'status' | 'reminderTime' | 'paidAt'>
+>;
+
+/** Teto de linhas por listagem: a API devolve as mais recentes e nunca uma resposta sem limite. */
+export const FINANCE_LIST_LIMIT = 2000;
+
+export interface FinanceEntryRepository {
+  /** Lança `ConflictError('lancamento_ja_cadastrado')` se `entry.id` já existe. */
+  create(userId: string, entry: NewFinanceEntry): Promise<FinanceEntryDto>;
+  get(userId: string, id: string): Promise<FinanceEntryDto | null>;
+  /**
+   * Filtros: `from`/`to` (inclusivos, sobre `dueDate`) e `status`. Ordem: `dueDate` desc, depois
+   * `createdAt` desc; no máximo `FINANCE_LIST_LIMIT` linhas (as mais recentes).
+   */
+  list(userId: string, query: ListFinanceEntriesQuery): Promise<FinanceEntryDto[]>;
+  /** `null` se o id não existe para o usuário; senão o lançamento atualizado. */
+  update(userId: string, id: string, patch: FinanceEntryPatch): Promise<FinanceEntryDto | null>;
+  /** `true` somente se um lançamento do usuário foi apagado. */
+  remove(userId: string, id: string): Promise<boolean>;
 }

@@ -10,12 +10,14 @@ import {
 import { authMiddleware, type AuthVerifier } from './auth.js';
 import type { makeCalculateDeadline } from './application/calculate-deadline.js';
 import type { makeCaseUseCases } from './application/cases.js';
+import type { makeFinanceUseCases } from './application/finance.js';
 import type { makeHolidayUseCases } from './application/holidays.js';
 import type { makeSettingsUseCases } from './application/settings.js';
 import type { makeTaskUseCases } from './application/tasks.js';
 import { errorResponse } from './http-errors.js';
 import { briefingRoutes } from './routes/briefing.js';
 import { casesRoutes } from './routes/cases.js';
+import { financeRoutes } from './routes/finance.js';
 import { holidaysRoutes } from './routes/holidays.js';
 import { settingsRoutes } from './routes/settings.js';
 import { tasksRoutes } from './routes/tasks.js';
@@ -26,6 +28,7 @@ export type AppDeps = {
   tasks: ReturnType<typeof makeTaskUseCases>;
   cases: ReturnType<typeof makeCaseUseCases>;
   holidays: ReturnType<typeof makeHolidayUseCases>;
+  finance: ReturnType<typeof makeFinanceUseCases>;
   settings: ReturnType<typeof makeSettingsUseCases>;
   briefing: (userId: string) => Promise<BriefingDto>;
   /** Única origem de navegador autorizada por CORS (o painel). */
@@ -91,6 +94,7 @@ export function createApp(deps: AppDeps) {
   app.route('/tasks', tasksRoutes({ tasks: deps.tasks }, auth));
   app.route('/cases', casesRoutes({ cases: deps.cases }, auth));
   app.route('/holidays', holidaysRoutes({ holidays: deps.holidays }, auth));
+  app.route('/finance-entries', financeRoutes({ finance: deps.finance }, auth));
   app.route('/settings', settingsRoutes({ settings: deps.settings }, auth));
   app.route('/briefing', briefingRoutes({ briefing: deps.briefing }, auth));
 

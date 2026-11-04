@@ -3,6 +3,7 @@ import { createApp } from './app.js';
 import { makeGetBriefing } from './application/briefing.js';
 import { makeCalculateDeadline } from './application/calculate-deadline.js';
 import { makeCaseUseCases } from './application/cases.js';
+import { makeFinanceUseCases } from './application/finance.js';
 import { makeHolidayUseCases } from './application/holidays.js';
 import type { Clock } from './application/ports.js';
 import { makeSettingsUseCases } from './application/settings.js';
@@ -11,6 +12,7 @@ import { makeTaskUseCases } from './application/tasks.js';
 import type { Config } from './config.js';
 import { createSupabaseAuthVerifier } from './infra/supabase-auth.js';
 import { createSupabaseCaseRepository } from './infra/supabase-case-repository.js';
+import { createSupabaseFinanceRepository } from './infra/supabase-finance-repository.js';
 import { createSupabaseHolidayRepository } from './infra/supabase-holiday-repository.js';
 import { createSupabaseProfileRepository } from './infra/supabase-profile-repository.js';
 import { createSupabaseReminderRepository } from './infra/supabase-reminder-repository.js';
@@ -23,6 +25,7 @@ export function buildApp(config: Config, overrides?: { clock?: Clock }): ReturnT
   });
 
   const holidays = createSupabaseHolidayRepository(client);
+  const finance = createSupabaseFinanceRepository(client);
   const cases = createSupabaseCaseRepository(client);
   const profiles = createSupabaseProfileRepository(client);
   const reminders = createSupabaseReminderRepository(client);
@@ -36,6 +39,7 @@ export function buildApp(config: Config, overrides?: { clock?: Clock }): ReturnT
     tasks: makeTaskUseCases({ tasks, cases, profiles, reminders, calculateDeadline, clock }),
     cases: makeCaseUseCases({ cases }),
     holidays: makeHolidayUseCases({ holidays }),
+    finance: makeFinanceUseCases({ finance, clock }),
     settings: makeSettingsUseCases({
       profiles,
       tasks,
