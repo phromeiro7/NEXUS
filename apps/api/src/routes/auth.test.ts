@@ -13,11 +13,18 @@ describe('POST /auth/telegram', () => {
   it('devolve o tokenHash, sem cache, e NÃO exige Bearer', async () => {
     const telegramLogin = vi.fn(async () => ({ tokenHash: 'abc' }));
     const { app } = buildApp({ telegramLogin });
-    const res = await post(app, { initData: 'a=b&hash=c' }, { 'x-forwarded-for': '203.0.113.9, 10.0.0.1' });
+    const res = await post(app, { initData: 'a=b&hash=c' }, { 'x-forwarded-for': '1.1.1.1, 203.0.113.9' });
     expect(res.status).toBe(200);
     expect(res.headers.get('cache-control')).toBe('no-store');
     expect(await res.json()).toEqual({ tokenHash: 'abc' });
     expect(telegramLogin).toHaveBeenCalledWith({ initData: 'a=b&hash=c', ip: '203.0.113.9' });
+  });
+
+  it('ignora o IP forjado no começo de x-forwarded-for: vale o último item', async () => {
+    const telegramLogin = vi.fn(async () => ({ tokenHash: 'x' }));
+    const { app } = buildApp({ telegramLogin });
+    await post(app, { initData: 'k' }, { 'x-forwarded-for': '9.9.9.9, 8.8.8.8, 203.0.113.9' });
+    expect(telegramLogin).toHaveBeenCalledWith({ initData: 'k', ip: '203.0.113.9' });
   });
 
   it('prefere o IP do Cloudflare e cai em "desconhecido" sem cabeçalho', async () => {
@@ -124,7 +131,7 @@ describe('login do painel por QR: POST /auth/qr e GET /auth/qr/:id', () => {
     const { app } = buildApp({ qrLogin: { create, status: vi.fn() } });
     const res = await app.request('/auth/qr', {
       method: 'POST',
-      headers: { 'user-agent': 'Mozilla/5.0 (Macintosh) Chrome/126', 'x-forwarded-for': '203.0.113.9, 10.0.0.1' },
+      headers: { 'user-agent': 'Mozilla/5.0 (Macintosh) Chrome/126', 'x-forwarded-for': '1.1.1.1, 203.0.113.9' },
     });
     expect(res.status).toBe(201);
     expect(res.headers.get('cache-control')).toBe('no-store');

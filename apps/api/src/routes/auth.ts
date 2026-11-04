@@ -19,9 +19,13 @@ export type AuthRoutesDeps = {
   };
 };
 
-/** Origem da requisição para o limite por IP. Atrás de proxy/túnel vale o primeiro IP encaminhado. */
+/**
+ * Origem da requisição para o limite por IP. `cf-connecting-ip` é reescrito pelo Cloudflare (que fica na frente do
+ * Render e dos túneis). Sem ele vale o ÚLTIMO item de `x-forwarded-for`, o que o proxy mais próximo acrescentou:
+ * o primeiro vem do cliente e dá para forjar, o que burlaria o limite girando o cabeçalho a cada pedido.
+ */
 function clientIp(headers: (name: string) => string | undefined): string {
-  const forwarded = headers('cf-connecting-ip') ?? headers('x-forwarded-for')?.split(',')[0];
+  const forwarded = headers('cf-connecting-ip') ?? headers('x-forwarded-for')?.split(',').at(-1);
   const ip = forwarded?.trim();
   return ip !== undefined && ip !== '' ? ip.slice(0, 64) : 'desconhecido';
 }
