@@ -109,3 +109,80 @@ describe('POST /auth/telegram', () => {
     expect(bad.headers.get('access-control-allow-origin')).toBeNull();
   });
 });
+
+describe('login do painel por QR: POST /auth/qr e GET /auth/qr/:id', () => {
+  const ID = '3f1c1b8e-6a63-4b0a-9a35-0d3b3f6a4a11';
+  const created = {
+    id: ID,
+    pollSecret: 'p'.repeat(43),
+    deepLink: 'https://t.me/meu_bot?start=login_abc',
+    expiresAt: '2026-11-04T12:03:00.000Z',
+  };
+
+  it('cria o pedido sem Bearer, sem cache, com IP e navegador de quem chamou', async () => {
+    const create = vi.fn(async () => created);
+    const { app } = buildApp({ qrLogin: { create, status: vi.fn() } });
+    const res = await app.request('/auth/qr', {
+      method: 'POST',
+      headers: { 'user-agent': 'Mozilla/5.0 (Macintosh) Chrome/126', 'x-forwarded-for': '203.0.113.9, 10.0.0.1' },
+    });
+    expect(res.status).toBe(201);
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    expect(await res.json()).toEqual(created);
+    expect(create).toHaveBeenCalledWith({ ip: '203.0.113.9', userAgent: 'Mozilla/5.0 (Macintosh) Chrome/126' });
+  });
+
+  it('a consulta leva o segredo do cabeçalho X-Poll-Secret e nunca o aceita na URL', async () => {
+    const status = vi.fn(async () => ({ status: 'aguardando' as const, expiresAt: created.expiresAt }));
+    const { app } = buildApp({ qrLogin: { create: vi.fn(), status } });
+    const res = await app.request(`/auth/qr/${ID}`, { headers: { 'x-poll-secret': 'segredo' } });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    expect(status).toHaveBeenCalledWith({ id: ID, pollSecret: 'segredo' });
+    await app.request(`/auth/qr/${ID}?pollSecret=oculto`);
+    expect(status).toHaveBeenLastCalledWith({ id: ID, pollSecret: undefined });
+  });
+
+  it('desligado: 503 login_desabilitado nas duas rotas', async () => {
+    const { app } = buildApp();
+    const a = await app.request('/auth/qr', { method: 'POST' });
+    const b = await app.request(`/auth/qr/${ID}`);
+    expect([a.status, b.status]).toEqual([503, 503]);
+    expect(await a.json()).toEqual({ error: 'login_desabilitado' });
+  });
+
+  it('muitas tentativas: 429 com Retry-After; reuso: 401', async () => {
+    const { app } = buildApp({
+      qrLogin: {
+        create: async () => {
+          throw new TelegramAuthError('muitas_tentativas', 30);
+        },
+        status: async () => {
+          throw new TelegramAuthError('ja_utilizado');
+        },
+      },
+    });
+    const a = await app.request('/auth/qr', { method: 'POST' });
+    expect(a.status).toBe(429);
+    expect(a.headers.get('retry-after')).toBe('30');
+    const b = await app.request(`/auth/qr/${ID}`);
+    expect(b.status).toBe(401);
+    expect(await b.json()).toEqual({ error: 'ja_utilizado' });
+  });
+
+  it('o preflight do navegador libera o cabeçalho do segredo só para a origem do painel', async () => {
+    const { app } = buildApp();
+    const ok = await app.request(`/auth/qr/${ID}`, {
+      method: 'OPTIONS',
+      headers: { Origin: WEB_ORIGIN, 'Access-Control-Request-Method': 'GET', 'Access-Control-Request-Headers': 'x-poll-secret' },
+    });
+    expect(ok.status).toBe(204);
+    expect(ok.headers.get('access-control-allow-headers')?.toLowerCase()).toContain('x-poll-secret');
+    expect(ok.headers.get('access-control-allow-origin')).toBe(WEB_ORIGIN);
+    const other = await app.request(`/auth/qr/${ID}`, {
+      method: 'OPTIONS',
+      headers: { Origin: 'https://outro.example', 'Access-Control-Request-Method': 'GET' },
+    });
+    expect(other.headers.get('access-control-allow-origin')).toBeNull();
+  });
+});

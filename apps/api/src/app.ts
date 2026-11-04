@@ -54,6 +54,8 @@ export type AppDeps = {
   telegramWebhookSecret?: string;
   /** Login do Mini App pelo `initData`; ausente = desligado (503 'login_desabilitado'). */
   telegramLogin?: AuthRoutesDeps['telegramLogin'];
+  /** Login do painel por QR code; ausente = desligado (503 'login_desabilitado'). */
+  qrLogin?: AuthRoutesDeps['qrLogin'];
   /** Convites (administrador). Ausente = rotas respondem 403 a todos. */
   invites?: InviteRoutesDeps['invites'];
 };
@@ -69,8 +71,10 @@ export function createApp(deps: AppDeps) {
     '*',
     cors({
       origin: (origin) => (origin === deps.webOrigin ? origin : null),
-      allowHeaders: ['Authorization', 'Content-Type'],
+      // X-Poll-Secret: o navegador do login por QR prova que é dono do pedido. maxAge evita um preflight a cada consulta.
+      allowHeaders: ['Authorization', 'Content-Type', 'X-Poll-Secret'],
       allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+      maxAge: 600,
     }),
   );
 
@@ -156,7 +160,13 @@ export function createApp(deps: AppDeps) {
   app.route('/assistant', assistantRoutes({ processMessage: deps.processMessage }, auth));
 
   // Sem Bearer: a prova de identidade é a assinatura do `initData` (dentro do caso de uso).
-  app.route('/auth', authRoutes({ ...(deps.telegramLogin !== undefined ? { telegramLogin: deps.telegramLogin } : {}) }));
+  app.route(
+    '/auth',
+    authRoutes({
+      ...(deps.telegramLogin !== undefined ? { telegramLogin: deps.telegramLogin } : {}),
+      ...(deps.qrLogin !== undefined ? { qrLogin: deps.qrLogin } : {}),
+    }),
+  );
 
   // `link-codes` e `link` com autenticação; o webhook sem usuário (segredo do cabeçalho, dentro da rota).
   app.route(

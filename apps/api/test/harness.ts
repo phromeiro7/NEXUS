@@ -29,6 +29,8 @@ export type HarnessOpts = {
   handleTelegramUpdate?: AppDeps['handleTelegramUpdate'];
   telegramWebhookSecret?: AppDeps['telegramWebhookSecret'];
   telegramLogin?: AppDeps['telegramLogin'];
+  /** Login do painel por QR: o objeto pronto, ou uma função que monta o real sobre os fakes do harness. */
+  qrLogin?: AppDeps['qrLogin'] | ((fakes: ReturnType<typeof createFakes>) => AppDeps['qrLogin']);
   /** Liga as rotas de convite: u1 ganha o chat 111 e `adminIds` diz quem administra (ausente = rotas fechadas). */
   invites?: { adminIds: number[] };
   /** Padrão 'meu_bot'; `null` = sem nome de bot (vínculo indisponível). */
@@ -89,6 +91,9 @@ export function buildApp(opts: HarnessOpts = {}) {
         }
       : {}),
     ...(opts.telegramLogin !== undefined ? { telegramLogin: opts.telegramLogin } : {}),
+    ...(opts.qrLogin !== undefined
+      ? { qrLogin: typeof opts.qrLogin === 'function' ? opts.qrLogin(fakes) : opts.qrLogin }
+      : {}),
     ...(opts.handleTelegramUpdate !== undefined ? { handleTelegramUpdate: opts.handleTelegramUpdate } : {}),
     ...(opts.telegramWebhookSecret !== undefined ? { telegramWebhookSecret: opts.telegramWebhookSecret } : {}),
     ...(opts.processMessage !== undefined ? { processMessage: opts.processMessage } : {}),

@@ -411,3 +411,43 @@ export interface AccountProvisioner {
   /** Desfaz uma conta criada nesta tentativa (a ligação falhou). */
   remove(userId: string): Promise<void>;
 }
+
+/** Pedido de login do painel por QR code, como guardado (segredos só em hash). */
+export type QrLoginRecord = {
+  id: string;
+  status: 'aguardando' | 'confirmar' | 'aprovado' | 'negado' | 'recusado' | 'consumido';
+  /** SHA-256 (hex) do segredo de consulta do navegador. */
+  pollHash: string;
+  createdAt: Date;
+  expiresAt: Date;
+};
+
+export interface QrLoginRepository {
+  create(input: {
+    id: string;
+    nonceHash: string;
+    pollHash: string;
+    clientLabel: string;
+    createdAt: Date;
+    expiresAt: Date;
+  }): Promise<void>;
+  get(id: string): Promise<QrLoginRecord | null>;
+  /**
+   * O bot recebeu `/start login_<nonce>`. Atômico: só vale com o pedido `aguardando` e não vencido (senão `null`).
+   * Com conta (`userId`) o pedido vira `confirmar`; sem conta, `recusado`.
+   */
+  open(
+    nonceHash: string,
+    chatId: number,
+    userId: string | null,
+    now: Date,
+  ): Promise<{ id: string; outcome: 'confirmar' | 'recusado'; clientLabel: string; createdAt: Date } | null>;
+  /** A pessoa respondeu ao bot. Só o chat que abriu o pedido, para a conta perguntada, com o pedido em `confirmar`. */
+  decide(id: string, chatId: number, userId: string, approve: boolean, now: Date): Promise<'aprovado' | 'negado' | null>;
+  /** O navegador dono do segredo recolhe a aprovação: atômico, devolve o usuário uma única vez (`consumido`). */
+  consume(id: string, pollHash: string, now: Date): Promise<string | null>;
+  /** Devolve um pedido consumido a `aprovado` (a emissão da sessão falhou). */
+  release(id: string): Promise<void>;
+  /** Apaga os vencidos há mais de dez minutos; devolve quantos. */
+  purgeExpired(now: Date): Promise<number>;
+}

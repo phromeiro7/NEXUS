@@ -14,6 +14,8 @@ import { makeAcceptInvite, makeInviteUseCases } from './application/invites.js';
 import { createSupabaseAccountProvisioner } from './infra/supabase-account-provisioner.js';
 import { createSupabaseInviteRepository } from './infra/supabase-invite-repository.js';
 import { makeTelegramLogin } from './application/telegram/login.js';
+import { makeQrLogin } from './application/qr-login.js';
+import { createSupabaseQrLoginRepository } from './infra/supabase-qr-login-repository.js';
 import { makeRateLimiter } from './application/telegram/rate-limit.js';
 import { createSupabaseSessionIssuer, createSupabaseTelegramAuthRepository } from './infra/supabase-telegram-auth-repository.js';
 import type { AssistantModel } from './application/ports.js';
@@ -129,10 +131,27 @@ export function buildApp(
   const captures = createSupabaseCaptureRepository(client);
   const financeUseCases = makeFinanceUseCases({ finance, clock });
   const telegramAuth = createSupabaseTelegramAuthRepository(client);
+  const qrRequests = createSupabaseQrLoginRepository(client);
+  const sessionIssuer = createSupabaseSessionIssuer(client);
+  // Login do painel por QR: precisa do bot recebendo mensagens (webhook) e do nome do bot para o link.
+  const qrLogin =
+    telegram !== undefined && config.telegramWebhookSecret !== undefined && config.telegramBotUsername !== undefined
+      ? makeQrLogin({
+          requests: qrRequests,
+          sessions: sessionIssuer,
+          botUsername: config.telegramBotUsername,
+          profiles,
+          // Por IP: abrir e recarregar a tela de login. Por pedido: a consulta do navegador a cada ~2 s.
+          ipLimiter: makeRateLimiter({ max: 20, windowMs: 10 * 60_000, clock }),
+          pollLimiter: makeRateLimiter({ max: 120, windowMs: 60_000, clock }),
+          clock,
+        })
+      : undefined;
   const scheduler = makeRunScheduler({
     maintenance: createSupabaseMaintenanceRepository(client),
     purgeCaptures: (at) => captures.purgeExpired(at),
     purgeTelegramAuth: (at) => telegramAuth.purgeExpired(at),
+    ...(qrLogin !== undefined ? { purgeQrLogin: (at: Date) => qrLogin.purgeExpired(at) } : {}),
     runReminders: () => runReminders({ budgetMs: SCHEDULER_BUDGETS_MS.reminders }),
     sendDailyBriefings,
     clock,
@@ -187,6 +206,7 @@ export function buildApp(
           assistantEnabled: processMessage !== undefined,
           invites: inviteUseCases,
           acceptInvite,
+          ...(qrLogin !== undefined ? { qrLogin } : {}),
           ...(config.miniAppUrl !== undefined ? { miniAppUrl: config.miniAppUrl } : {}),
           ...(config.telegramBotUsername !== undefined ? { botUsername: config.telegramBotUsername } : {}),
         })
@@ -201,7 +221,7 @@ export function buildApp(
           maxAgeSeconds: config.telegramLoginMaxAgeSeconds ?? 3600,
           replays: telegramAuth,
           links,
-          sessions: createSupabaseSessionIssuer(client),
+          sessions: sessionIssuer,
           ipLimiter: makeRateLimiter({ max: 30, windowMs: 10 * 60_000, clock }),
           userLimiter: makeRateLimiter({ max: 10, windowMs: 10 * 60_000, clock }),
           clock,
@@ -210,6 +230,7 @@ export function buildApp(
 
   return createApp({
     ...(telegramLogin !== undefined ? { telegramLogin } : {}),
+    ...(qrLogin !== undefined ? { qrLogin } : {}),
     telegramLink,
     invites: inviteUseCases,
     ...(handleTelegramUpdate !== undefined ? { handleTelegramUpdate } : {}),

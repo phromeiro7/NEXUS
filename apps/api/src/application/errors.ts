@@ -1,7 +1,7 @@
 import type { TaskDto } from '@aj/shared';
 
 export class NotFoundError extends Error {
-  constructor(readonly resource: 'tarefa' | 'processo' | 'feriado' | 'lancamento' | 'convite') {
+  constructor(readonly resource: 'tarefa' | 'processo' | 'feriado' | 'lancamento' | 'convite' | 'login') {
     super(`Não encontrado: ${resource}`);
     this.name = 'NotFoundError';
   }
