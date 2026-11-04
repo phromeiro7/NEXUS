@@ -374,6 +374,29 @@ da API ou da rede repete a atualização. Variáveis: `TELEGRAM_BOT_TOKEN` e `TE
 - Portas: o `local-up.sh` usa 3110 (site) e 3111 (API), porque a 3000 e a 3001 costumam estar ocupadas.
   `NEXT_PUBLIC_API_URL` e `WEB_ORIGIN` precisam acompanhar essas portas.
 
+### Colocar no ar (outras pessoas usando)
+
+Alvo: site na **Vercel** (Hobby, uso não comercial), API no **Render** (plano gratuito, `render.yaml`), banco no
+**Supabase Cloud**, lembretes pelo `pg_cron` do Supabase e Telegram por **webhook** (sem polling). O plano gratuito do
+Render hiberna a API após ~15 min sem requisições; o `pg_cron` chamando a API a cada minuto a mantém acordada.
+
+1. **Código no GitHub.** O Render e a Vercel leem o repositório: dê push da branch.
+2. **API no Render.** New > Blueprint, escolha o repositório e a branch (lê o `render.yaml`). Preencha os segredos:
+   `SUPABASE_SERVICE_ROLE_KEY` (`supabase projects api-keys --project-ref <ref>`), `TELEGRAM_BOT_TOKEN`,
+   `TELEGRAM_WEBHOOK_SECRET` e `INTERNAL_SECRET` (valores no `.env.telegram` ou gerados com `openssl rand -hex 32`),
+   e `ADMIN_TELEGRAM_USER_IDS`. Deixe `WEB_ORIGIN` e `MINI_APP_URL` para o passo 4. Confira `https://<api>/health`.
+3. **Site na Vercel.** Import do repositório, **Root Directory** `apps/web`, com "Include source files outside of
+   the Root Directory" ligado. Variáveis: `NEXT_PUBLIC_API_URL` (URL da API), `NEXT_PUBLIC_SUPABASE_URL` e
+   `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+4. **Fechar o círculo.** No Render, preencha `WEB_ORIGIN` e `MINI_APP_URL` com a URL do site (origem https, sem barra
+   final) e reimplante. No Supabase (Authentication > URL Configuration), ponha essa URL em Site URL.
+5. **Webhook do Telegram.** Pare o polling local (`scripts/local-up.sh`) e rode
+   `scripts/telegram-webhook.sh set https://<api>` (`info` consulta, `delete` remove).
+6. **Lembretes.** Rode o SQL do passo 6 do runbook acima no SQL Editor (Vault + `cron.schedule`), com a URL da API.
+7. **Backup.** `scripts/backup-db.sh` grava os dados (inclui as contas do `auth`) em `~/Backups/nexus`, guardando os 14
+   mais recentes; agende no `launchd`/`cron`. O plano gratuito do Supabase não garante backup automático.
+8. **Convidar.** Com seu ID do Telegram em `ADMIN_TELEGRAM_USER_IDS`, gere os convites (veja "Convites").
+
 ### Assistente de IA
 
 `POST /assistant/message` (autenticado) recebe `{ "text": string, "clientMessageId": uuid }`
