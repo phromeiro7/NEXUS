@@ -125,8 +125,8 @@ aparece em respostas nem em logs. `/comando@outro_bot` só é comando se o sufix
 (`TELEGRAM_BOT_USERNAME`, sem distinguir maiúsculas); os comandos também não distinguem maiúsculas. Um chat só pode estar ligado a uma conta (`Este Telegram já está ligado a outra conta.`).
 
 **Registro pelo chat (regras, sem IA).** Antes do assistente, a mensagem de texto de um chat vinculado passa por
-um interpretador de regras em português (`apps/api/src/domain/chat-capture.ts`): `gastei 100 em roupa`,
-`recebi 1500 do freela`, `luz 187,40 vence dia 8`, `ligar pra vidinha hoje 14h`. O bot responde com uma
+um interpretador de regras em português (`apps/api/src/domain/chat-capture.ts`): `gastei 45 no mercado`,
+`recebi 800 de um serviço`, `internet 119,90 vence dia 8`, `reunião com a equipe sexta 9h30`. O bot responde com uma
 proposta e botões; nada vai para tarefas nem lançamentos antes de **Confirmar**.
 
 - Gasto e entrada: Confirmar, Mudar categoria, Mudar data. Conta a pagar: também Mudar horário; sem data não há

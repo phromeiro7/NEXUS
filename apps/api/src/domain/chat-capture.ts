@@ -2,8 +2,8 @@ import { FINANCE_MAX_CENTS, type IsoDate } from '@aj/shared';
 import { addDays, weekday } from './calendar.js';
 
 /*
- * Interpretador de regras para mensagens de chat em português: "gastei 100 em roupa", "luz 187,40 vence
- * dia 8", "ligar pra vidinha hoje 14h". Função pura: sem IA, sem relógio, sem rede. `today` é o dia local
+ * Interpretador de regras para mensagens de chat em português: "gastei 45 no mercado", "internet 119,90
+ * vence dia 8", "reunião com a equipe sexta 9h30". Função pura: sem IA, sem relógio, sem rede. `today` é o dia local
  * do usuário (já no fuso dele).
  *
  * Regras de honestidade: nunca assume data ou horário que a pessoa não disse (tarefa sem data fica sem data;

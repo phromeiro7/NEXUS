@@ -37,7 +37,7 @@ type Proposal = z.infer<typeof proposalSchema>;
 type FinanceProposal = Extract<Proposal, { kind: 'gasto' | 'entrada' | 'conta' }>;
 
 export const CAPTURE_HELP =
-  'Não entendi. Tente: gastei 42 no almoço · ligar pra Ana amanhã 14h · luz 187,40 vence dia 8';
+  'Não entendi. Tente: gastei 45 no mercado · recebi 800 de um serviço · reunião com a equipe sexta 9h30';
 
 const EXPENSE_CATEGORIES = ['Moradia', 'Mercado', 'Transporte', 'Lazer', 'Saúde', 'Roupas', 'Outra'] as const;
 const INCOME_CATEGORIES = ['Salário', 'Freela', 'Outra'] as const;

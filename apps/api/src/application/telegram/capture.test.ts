@@ -362,7 +362,7 @@ describe('what the rules do not understand', () => {
   it('without the assistant the bot answers with short help and does not call the model', async () => {
     const s = setup({ assistantEnabled: false });
     await s.say(CHAT1, 'oi');
-    expect(s.lastSent().text).toBe('Não entendi. Tente: gastei 42 no almoço · ligar pra Ana amanhã 14h · luz 187,40 vence dia 8');
+    expect(s.lastSent().text).toBe('Não entendi. Tente: gastei 45 no mercado · recebi 800 de um serviço · reunião com a equipe sexta 9h30');
     expect(s.processMessage).not.toHaveBeenCalled();
     await s.say(CHAT1, 'gastei com mercado');
     expect(s.lastSent().text).toContain('Não entendi');
@@ -381,7 +381,7 @@ describe('what the rules do not understand', () => {
   it('/ajuda lists examples', async () => {
     const s = setup();
     await s.say(CHAT1, '/ajuda');
-    expect(s.lastSent().text).toContain('gastei 42 no almoço');
+    expect(s.lastSent().text).toContain('gastei 45 no mercado');
     expect(s.lastSent().text).toContain('Nada é salvo antes de você tocar em Confirmar.');
   });
 
