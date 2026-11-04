@@ -1,7 +1,7 @@
 # Assistente Jurídico Pessoal — Especificação de Design
 
 **Data:** 2026-10-26
-**Estado:** Aguardando revisão do responsável pelo projeto
+**Estado:** Visão jurídica original; posicionamento do produto em revisão no escopo `2026-10-26-escopo-assistente-pessoal.md`
 **Origem:** brainstorming conduzido com o responsável + documento de contexto de outra IA (escopo V2.0, "Assistente Pessoal Inteligente")
 
 ---
@@ -183,7 +183,7 @@ Painel gera código de uso único (10 min) e link; `/start CODIGO` chega ao webh
 
 ## 8. Painel web
 
-**Telas:** login/cadastro/recuperação; Painel (briefing + barra de comando + seletor Dia/Semana/Mês); Processos; Histórico (concluídas agrupadas pelo dia da conclusão, filtro para incluir canceladas); Configurações (fuso, UF e cidade, feriados locais, lembretes, briefing, Telegram).
+**Telas:** login/cadastro/recuperação; Painel (briefing + barra de comando + seletor Dia/Semana/Mês); Histórico (concluídas agrupadas pelo dia da conclusão, filtro para incluir canceladas); Configurações (fuso, UF e cidade, feriados locais, lembretes, briefing, Telegram). **Decisão para a primeira versão do painel:** não exibir uma aba/tela de Processos; referências a processo podem aparecer no contexto de uma tarefa, mas o cadastro e a navegação própria de processos ficam adiados. Ver `docs/superpowers/specs/2026-10-26-painel-web-direcao-visual.md` para a direção do protótipo e decisões visuais pendentes.
 
 - **Dia:** atrasadas em destaque, depois hoje por horário e sem data.
 - **Semana:** colunas por dia, fatais marcados.

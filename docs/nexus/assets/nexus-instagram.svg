@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080" role="img" aria-labelledby="title desc">
+  <title id="title">Nexus — foto de perfil</title>
+  <desc id="desc">N contínuo em névoa clara e ponto terracota sobre fundo azul petróleo, centralizados para recorte circular.</desc>
+  <rect width="1080" height="1080" fill="#142D3A"/>
+  <path d="M300 760V335C300 280 360 258 400 307L660 610C700 657 765 630 765 562V335" fill="none" stroke="#F5F6F2" stroke-width="96" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="865" cy="335" r="34" fill="#C05640"/>
+</svg>

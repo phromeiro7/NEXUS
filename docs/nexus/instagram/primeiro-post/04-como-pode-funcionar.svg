@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080">
+  <rect width="1080" height="1350" fill="#142D3A"/>
+  <circle cx="940" cy="1090" r="240" fill="#1D3B49"/>
+  <rect x="90" y="94" width="48" height="5" rx="2.5" fill="#C05640"/>
+  <text x="90" y="146" fill="#F5F6F2" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" letter-spacing="4">NEXUS · EXPERIÊNCIA</text>
+  <text x="90" y="260" fill="#F5F6F2" font-family="Inter, Arial, sans-serif" font-size="53" font-weight="700" letter-spacing="-1">Conversa para</text>
+  <text x="90" y="325" fill="#F5F6F2" font-family="Inter, Arial, sans-serif" font-size="53" font-weight="700" letter-spacing="-1">capturar.</text>
+  <text x="90" y="405" fill="#F0A38B" font-family="Inter, Arial, sans-serif" font-size="53" font-weight="700" letter-spacing="-1">Mini App para</text>
+  <text x="90" y="470" fill="#F0A38B" font-family="Inter, Arial, sans-serif" font-size="53" font-weight="700" letter-spacing="-1">organizar.</text>
+  <g transform="translate(90 548)">
+    <rect width="390" height="265" rx="24" fill="#FFFFFF"/>
+    <text x="28" y="47" fill="#52616A" font-family="Inter, Arial, sans-serif" font-size="17" font-weight="700" letter-spacing="1">TELEGRAM</text>
+    <rect x="25" y="73" width="335" height="86" rx="18" fill="#E9EFEB"/>
+    <text x="48" y="111" fill="#142D3A" font-family="Inter, Arial, sans-serif" font-size="20">Me lembra de buscar</text>
+    <text x="48" y="140" fill="#142D3A" font-family="Inter, Arial, sans-serif" font-size="20">a encomenda às 14h</text>
+    <text x="28" y="209" fill="#52616A" font-family="Inter, Arial, sans-serif" font-size="17">Uma mensagem para registrar</text>
+    <text x="28" y="236" fill="#52616A" font-family="Inter, Arial, sans-serif" font-size="17">uma tarefa. (Fluxo planejado)</text>
+  </g>
+  <g transform="translate(600 548)">
+    <rect width="390" height="265" rx="24" fill="#F5F6F2"/>
+    <text x="28" y="47" fill="#52616A" font-family="Inter, Arial, sans-serif" font-size="17" font-weight="700" letter-spacing="1">MINI APP</text>
+    <text x="28" y="105" fill="#142D3A" font-family="Inter, Arial, sans-serif" font-size="30" font-weight="700">Hoje</text>
+    <rect x="24" y="127" width="342" height="61" rx="14" fill="#FFFFFF"/>
+    <circle cx="49" cy="158" r="9" fill="none" stroke="#6F7E78" stroke-width="3"/>
+    <text x="74" y="154" fill="#142D3A" font-family="Inter, Arial, sans-serif" font-size="16" font-weight="700">Buscar encomenda</text>
+    <text x="74" y="176" fill="#52616A" font-family="Inter, Arial, sans-serif" font-size="14">Hoje, às 14h</text>
+    <text x="28" y="230" fill="#52616A" font-family="Inter, Arial, sans-serif" font-size="17">Consultar e ajustar com rapidez.</text>
+  </g>
+  <path d="M482 680H594" fill="none" stroke="#F0A38B" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="538" cy="680" r="9" fill="#C05640"/>
+  <rect x="90" y="836" width="900" height="74" rx="18" fill="#1D3B49"/>
+  <circle cx="130" cy="873" r="10" fill="#F0A38B"/>
+  <text x="158" y="880" fill="#F5F6F2" font-family="Inter, Arial, sans-serif" font-size="19" font-weight="700">VISÃO DO PRODUTO · EM DESENVOLVIMENTO</text>
+  <text x="90" y="1000" fill="#B8C9C5" font-family="Inter, Arial, sans-serif" font-size="16">NEXUS · SUA ROTINA, CONECTADA</text>
+  <text x="990" y="1000" text-anchor="end" fill="#F5F6F2" font-family="Inter, Arial, sans-serif" font-size="16" font-weight="700">04 / 05</text>
+</svg>
