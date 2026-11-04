@@ -181,3 +181,40 @@ describe('createApiClient errors', () => {
     expect(onUnauthorized).not.toHaveBeenCalled();
   });
 });
+
+describe('createApiClient finance entries', () => {
+  it('lists with a stable query string, and everything without filters', async () => {
+    const { client, calls } = setup(() => Response.json([]));
+    await client.listFinanceEntries();
+    await client.listFinanceEntries({ status: 'a_pagar', to: '2026-11-30', from: '2026-11-01' });
+    expect(calls[0]!.url).toBe('http://api.test/finance-entries');
+    expect(calls[1]!.url).toBe('http://api.test/finance-entries?from=2026-11-01&to=2026-11-30&status=a_pagar');
+  });
+
+  it('creates, updates and deletes by id', async () => {
+    const { client, calls } = setup(() => Response.json({ id: 'f1' }));
+    await client.createFinanceEntry({
+      id: 'f1',
+      kind: 'gasto',
+      description: 'Almoço',
+      amountCents: 4200,
+      category: null,
+      dueDate: '2026-11-04',
+      status: 'paga',
+      reminderTime: null,
+    });
+    await client.updateFinanceEntry('f1', { status: 'paga' });
+    expect(calls[0]!.url).toBe('http://api.test/finance-entries');
+    expect(calls[0]!.init.method).toBe('POST');
+    expect(calls[1]!.url).toBe('http://api.test/finance-entries/f1');
+    expect(calls[1]!.init.method).toBe('PATCH');
+    expect(JSON.parse(calls[1]!.init.body as string)).toEqual({ status: 'paga' });
+  });
+
+  it('delete resolves on 204', async () => {
+    const { client, calls } = setup(() => new Response(null, { status: 204 }));
+    await expect(client.deleteFinanceEntry('f1')).resolves.toBeUndefined();
+    expect(calls[0]!.init.method).toBe('DELETE');
+    expect(calls[0]!.url).toBe('http://api.test/finance-entries/f1');
+  });
+});
