@@ -1,16 +1,24 @@
 "use client";
 
-import type { FormEvent, ReactNode } from "react";
-import { inputClass } from "./field";
+import { useId, useState, type FormEvent, type ReactNode } from "react";
+import { EyeIcon, EyeOffIcon, NexusMark } from "./mini/icons";
 
-export function AuthCard({ title, children }: { title: string; children: ReactNode }) {
+/** Moldura das telas de acesso: marca Nexus, título, texto de apoio e o cartão do formulário. */
+export function AuthCard({ title, lead, children }: { title: string; lead?: string; children: ReactNode }) {
   return (
-    <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-4 p-4">
-      <h1 className="text-2xl font-semibold">{title}</h1>
-      <div className="rounded border border-[var(--color-borda)] bg-[var(--color-superficie)] p-4">
-        {children}
-      </div>
-    </main>
+    <div className="mini nx-auth">
+      <main className="nx-main">
+        <div className="nx-brand">
+          <NexusMark size={44} />
+          <b>nexus</b>
+        </div>
+        <div className="nx-heading">
+          <h1>{title}</h1>
+          {lead !== undefined && <p>{lead}</p>}
+        </div>
+        <div className="nx-card">{children}</div>
+      </main>
+    </div>
   );
 }
 
@@ -23,21 +31,43 @@ export function Field(props: {
   autoComplete: string;
   minLength?: number;
 }) {
+  const [shown, setShown] = useState(false);
+  const isPassword = props.type === "password";
+  const isEmail = props.type === "email";
+  const input = (
+    <input
+      id={props.id}
+      name={props.id}
+      type={isPassword && shown ? "text" : props.type}
+      value={props.value}
+      onChange={(e) => props.onChange(e.target.value)}
+      autoComplete={props.autoComplete}
+      {...(isEmail ? { inputMode: "email" as const, autoCapitalize: "none", spellCheck: false } : {})}
+      {...(isPassword ? { autoCapitalize: "none", spellCheck: false } : {})}
+      required
+      className="mini-field"
+    />
+  );
   return (
-    <div className="flex flex-col gap-1">
-      <label htmlFor={props.id} className="text-sm font-medium">
-        {props.label}
-      </label>
-      <input
-        id={props.id}
-        name={props.id}
-        type={props.type}
-        value={props.value}
-        onChange={(e) => props.onChange(e.target.value)}
-        autoComplete={props.autoComplete}
-        required
-        className={inputClass}
-      />
+    <div className="mini-label">
+      <label htmlFor={props.id}>{props.label}</label>
+      {isPassword ? (
+        <div className="nx-pass">
+          {input}
+          <button
+            type="button"
+            className="nx-toggle"
+            aria-label={`${shown ? "Ocultar" : "Mostrar"} ${props.id === "confirm" ? "confirmação" : "senha"}`}
+            aria-pressed={shown}
+            aria-controls={props.id}
+            onClick={() => setShown((v) => !v)}
+          >
+            {shown ? <EyeOffIcon /> : <EyeIcon />}
+          </button>
+        </div>
+      ) : (
+        input
+      )}
     </div>
   );
 }
@@ -50,23 +80,20 @@ export function AuthForm(props: {
   submittingLabel: string;
   children: ReactNode;
 }) {
+  const errorId = useId();
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (!props.submitting) props.onSubmit();
   };
   return (
-    <form onSubmit={submit} noValidate className="flex flex-col gap-3">
+    <form onSubmit={submit} noValidate className="nx-form" aria-describedby={props.error !== null ? errorId : undefined}>
       {props.children}
       {props.error !== null && (
-        <p role="alert" className="text-sm text-[var(--color-fatal)]">
+        <p id={errorId} role="alert" className="nx-error">
           {props.error}
         </p>
       )}
-      <button
-        type="submit"
-        disabled={props.submitting}
-        className="rounded bg-[var(--color-destaque)] px-3 py-2 font-medium text-[var(--color-superficie)] disabled:opacity-60"
-      >
+      <button type="submit" disabled={props.submitting} className="mini-btn primary nx-submit">
         {props.submitting ? props.submittingLabel : props.submitLabel}
       </button>
     </form>
