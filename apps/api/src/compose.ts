@@ -192,7 +192,7 @@ export function buildApp(
           telegram,
           clock,
           logger,
-          // Registro pelo chat por regras: "gastei 100 em roupa" vira proposta com botões; a IA só entra
+          // Registro pelo chat por regras: "gastei 45 no mercado" vira proposta com botões; a IA só entra
           // para o que as regras não entendem, e só se houver chave.
           capture: makeCaptureFlow({
             captures,

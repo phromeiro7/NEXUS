@@ -3,7 +3,7 @@ import { interpretCapture } from '../domain/chat-capture.js';
 import type { Clock, ProfileRepository } from './ports.js';
 
 /**
- * Lê uma frase com as MESMAS regras do bot ("gastei 100 em roupa", "ligar pra vidinha hoje 14h") e devolve o
+ * Lê uma frase com as MESMAS regras do bot ("gastei 45 no mercado", "reunião com a equipe sexta 9h30") e devolve o
  * que entendeu. Não grava nada: o painel mostra a proposta e, só depois de confirmada, cria a tarefa ou o
  * lançamento pelas rotas normais. O "hoje" vem do fuso das configurações da pessoa.
  */

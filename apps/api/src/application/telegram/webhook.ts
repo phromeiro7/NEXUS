@@ -75,7 +75,7 @@ const TEXT = {
   loginClosed: 'Esse pedido já foi respondido ou expirou.',
   noActiveInvites: 'Nenhum convite ativo. Envie /convite para criar um.',
   inviteRevoked: 'Convite revogado.',
-  help: `Eu anoto gastos, contas e tarefas por mensagem. Exemplos:\n• gastei 42 no almoço\n• luz 187,40 vence dia 8\n• ligar pra Ana amanhã 14h\nNada é salvo antes de você tocar em Confirmar.`,
+  help: `Eu anoto gastos, contas e tarefas por mensagem. Exemplos:\n• gastei 45 no mercado\n• recebi 800 de um serviço\n• pagar a conta de internet amanhã às 10h\nNada é salvo antes de você tocar em Confirmar.`,
 } as const;
 
 /**
