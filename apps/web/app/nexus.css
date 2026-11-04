@@ -6,13 +6,13 @@
  * O tema do Telegram só escolhe claro/escuro (data-scheme); as cores são do produto.
  */
 .mini {
-  --fundo: #edf0eb;
-  --superficie: #f7f9f5;
-  --campo: #fbfcf9;
-  --texto: #142d3a;
+  --fundo: #e7eae4;
+  --superficie: #f0f2ec;
+  --campo: #f6f7f2;
+  --texto: #1b333f;
   --suave: #4a5a63;
   --contorno: #68786f;
-  --linha: #d5dcd6;
+  --linha: #d0d7d0;
   --linha-forte: #b4c0ba;
   --marca: #142d3a;
   --sobre-marca: #f2f5f1;
@@ -43,7 +43,7 @@
   color-scheme: light;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 1rem;
-  line-height: 1.45;
+  line-height: 1.5;
   font-variant-numeric: tabular-nums;
   -webkit-text-size-adjust: 100%;
   accent-color: var(--marca);
@@ -54,22 +54,22 @@
 
 @media (prefers-color-scheme: dark) {
   .mini:not([data-scheme="light"]) {
-    --fundo: #11212a;
-    --superficie: #182c37;
-    --campo: #142630;
-    --texto: #d5dfdd;
-    --suave: #9bafb7;
+    --fundo: #0f1b22;
+    --superficie: #16262f;
+    --campo: #12212a;
+    --texto: #c9d4d2;
+    --suave: #9aadb5;
     --contorno: #6c8591;
-    --linha: #243e4b;
-    --linha-forte: #365564;
-    --marca: #8db2c1;
-    --sobre-marca: #0f232c;
+    --linha: #223943;
+    --linha-forte: #34505e;
+    --marca: #7ba0b0;
+    --sobre-marca: #0c1a21;
     --sel: #2d5567;
     --sobre-sel: #e2ebec;
     --acento: #d9785f;
-    --alerta: #eba791;
+    --alerta: #e6a58f;
     --alerta-fundo: #33292b;
-    --ok: #7cc4a0;
+    --ok: #78b898;
     --foco: #eba791;
     --hero: #1b3c4b;
     --hero-texto: #dce6e6;
@@ -80,22 +80,22 @@
   }
 }
 .mini[data-scheme="dark"] {
-  --fundo: #11212a;
-  --superficie: #182c37;
-  --campo: #142630;
-  --texto: #d5dfdd;
-  --suave: #9bafb7;
+  --fundo: #0f1b22;
+  --superficie: #16262f;
+  --campo: #12212a;
+  --texto: #c9d4d2;
+  --suave: #9aadb5;
   --contorno: #6c8591;
-  --linha: #243e4b;
-  --linha-forte: #365564;
-  --marca: #8db2c1;
-  --sobre-marca: #0f232c;
+  --linha: #223943;
+  --linha-forte: #34505e;
+  --marca: #7ba0b0;
+  --sobre-marca: #0c1a21;
   --sel: #2d5567;
   --sobre-sel: #e2ebec;
   --acento: #d9785f;
-  --alerta: #eba791;
+  --alerta: #e6a58f;
   --alerta-fundo: #33292b;
-  --ok: #7cc4a0;
+  --ok: #78b898;
   --foco: #eba791;
   --hero: #1b3c4b;
   --hero-texto: #dce6e6;
@@ -1073,7 +1073,7 @@ details.mini-more[open] > summary svg {
   padding: 16px;
   display: grid;
   place-items: center;
-  background: #ffffff;
+  background: #eef1ec;
   border: 1px solid var(--linha-forte);
   border-radius: 20px;
   box-shadow: var(--sombra);
@@ -1101,7 +1101,7 @@ details.mini-more[open] > summary svg {
 }
 .nx-qr-overlay span {
   padding: 10px 14px;
-  background: #ffffff;
+  background: #eef1ec;
   border: 1px solid #b4c0ba;
   border-radius: 12px;
 }
@@ -1369,4 +1369,14 @@ details.mini-more[open] > summary svg {
   letter-spacing: 0.18em;
   font-variant-numeric: tabular-nums;
   user-select: all;
+}
+
+/* prefers-contrast: texto de apoio e linhas se aproximam do texto principal (vale nos dois temas). */
+@media (prefers-contrast: more) {
+  .mini.mini.mini {
+    --suave: color-mix(in srgb, var(--texto) 90%, var(--fundo));
+    --linha: var(--contorno);
+    --linha-forte: var(--contorno);
+    --borda: 2px;
+  }
 }

@@ -43,7 +43,7 @@ export function QrCode({ value, label, dimmed = false }: { value: string; label:
       shapeRendering="crispEdges"
       style={{ opacity: dimmed ? 0.28 : 1 }}
     >
-      <rect width={size} height={size} fill="#ffffff" />
+      <rect width={size} height={size} fill="#eef1ec" />
       <path d={path} fill="#142d3a" />
     </svg>
   );
