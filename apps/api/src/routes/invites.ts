@@ -1,10 +1,11 @@
 import { Hono, type MiddlewareHandler } from 'hono';
-import { inviteCodeSchema, type InviteDto, type InviteListDto, type InviteSummaryDto } from '@aj/shared';
+import { createInviteInputSchema, inviteCodeSchema, type InviteDto, type InviteListDto, type InviteSummaryDto } from '@aj/shared';
 import { NotFoundError } from '../application/errors.js';
+import { ValidationError } from '../http-errors.js';
 
 export type InviteRoutesDeps = {
   invites: {
-    create(userId: string): Promise<InviteDto>;
+    create(userId: string, label?: string): Promise<InviteDto>;
     list(userId: string): Promise<InviteDto[]>;
     summary(userId: string): Promise<InviteSummaryDto>;
     remove(userId: string, code: string): Promise<void>;
@@ -29,7 +30,11 @@ export function inviteRoutes(deps: InviteRoutesDeps, auth: MiddlewareHandler): H
 
   routes.post('/', async (c) => {
     c.header('Cache-Control', 'no-store');
-    return c.json(await deps.invites.create(c.get('userId')), 201);
+    // O corpo é opcional (clientes antigos não mandam nada).
+    const raw: unknown = await c.req.json().catch(() => ({}));
+    const parsed = createInviteInputSchema.safeParse(raw ?? {});
+    if (!parsed.success) throw new ValidationError(parsed.error.issues);
+    return c.json(await deps.invites.create(c.get('userId'), parsed.data.label), 201);
   });
 
   routes.delete('/:code', async (c) => {

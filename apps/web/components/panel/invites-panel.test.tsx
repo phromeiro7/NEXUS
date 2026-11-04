@@ -18,6 +18,7 @@ const holder = vi.hoisted(() => ({ api: { listInvites: vi.fn(), createInvite: vi
 vi.mock("@/components/auth-provider", () => ({ useApi: () => holder.api }));
 
 const invite = (over: Record<string, unknown> = {}) => ({
+  label: null,
   code: "ABCDEFGHJKMN",
   link: "https://t.me/NexusAssitant_bot?start=ABCDEFGHJKMN",
   status: "ativo",

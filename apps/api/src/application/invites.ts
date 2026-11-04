@@ -55,6 +55,7 @@ export function makeInviteUseCases(deps: InviteDeps) {
     createdAt: record.createdAt.toISOString(),
     expiresAt: record.expiresAt.toISOString(),
     usedAt: record.usedAt?.toISOString() ?? null,
+    label: record.label ?? null,
   });
 
   async function requireAdmin(userId: string): Promise<void> {
@@ -79,15 +80,15 @@ export function makeInviteUseCases(deps: InviteDeps) {
       }
     },
 
-    async create(userId: string): Promise<InviteDto> {
+    async create(userId: string, label?: string): Promise<InviteDto> {
       await requireAdmin(userId);
       const now = deps.clock.now();
       const expiresAt = new Date(now.getTime() + ttlMs);
       for (let attempt = 0; ; attempt++) {
         const code = generateCode(randomBytes, INVITE_CODE_LENGTH);
         try {
-          await deps.invites.create(userId, code, now, expiresAt);
-          return toDto({ code, createdBy: userId, createdAt: now, expiresAt, revokedAt: null, usedAt: null }, now);
+          await deps.invites.create(userId, code, now, expiresAt, label);
+          return toDto({ code, createdBy: userId, createdAt: now, expiresAt, revokedAt: null, usedAt: null, label: label ?? null }, now);
         } catch (error) {
           if (!(error instanceof InviteCodeCollisionError) || attempt >= MAX_COLLISION_RETRIES) throw error;
         }

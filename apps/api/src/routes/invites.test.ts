@@ -60,6 +60,17 @@ describe('invite routes', () => {
     expect((await req(app, 'DELETE', '/invites/curto', undefined, 'token-ok')).status).toBe(404);
   });
 
+  it('creates an invite with a label, and without a body', async () => {
+    const { app } = buildApp({ invites: { adminIds: [111] } });
+    const named = await req(app, 'POST', '/invites', { label: '  Maria  ' }, 'token-ok');
+    expect(named.status).toBe(201);
+    expect(((await named.json()) as { label: string }).label).toBe('Maria');
+    const plain = await req(app, 'POST', '/invites', undefined, 'token-ok');
+    expect(((await plain.json()) as { label: string | null }).label).toBeNull();
+    const tooLong = await req(app, 'POST', '/invites', { label: 'x'.repeat(61) }, 'token-ok');
+    expect(tooLong.status).toBe(400);
+  });
+
   it('the response never exposes who used an invite', async () => {
     const { app, fakes } = buildApp({ invites: { adminIds: [111] } });
     fakes.invites.seed({ code: 'HHHHHHHHHHHH', usedAt: new Date(), createdBy: 'u1' });
