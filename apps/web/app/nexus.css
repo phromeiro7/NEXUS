@@ -1029,6 +1029,144 @@ details.mini-more[open] > summary svg {
   width: 100%;
 }
 
+/* ===== Entrada do painel por QR code ===== */
+.nx-main.nx-wide {
+  max-width: 64rem;
+}
+.nx-qr-grid {
+  display: grid;
+  gap: 24px;
+}
+.nx-qr-intro h1 {
+  margin: 0;
+  font-size: 1.875rem;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  font-weight: 760;
+  text-wrap: balance;
+}
+.nx-qr-lead {
+  margin: 8px 0 0;
+  max-width: 32rem;
+  color: var(--suave);
+  font-size: 1.0625rem;
+  line-height: 1.5;
+}
+.nx-steps {
+  margin: 20px 0 0;
+  padding: 0 0 0 22px;
+  max-width: 32rem;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  line-height: 1.45;
+}
+.nx-qr-box {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.nx-qr-card {
+  position: relative;
+  width: min(100%, 20rem);
+  margin-inline: auto;
+  padding: 16px;
+  display: grid;
+  place-items: center;
+  background: #ffffff;
+  border: 1px solid var(--linha-forte);
+  border-radius: 20px;
+  box-shadow: var(--sombra);
+}
+.nx-qr-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.nx-qr-placeholder {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 12px;
+  background: #e8ece8;
+}
+.nx-qr-overlay {
+  position: absolute;
+  inset: 16px;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  text-align: center;
+  font-weight: 700;
+  color: #142d3a;
+}
+.nx-qr-overlay span {
+  padding: 10px 14px;
+  background: #ffffff;
+  border: 1px solid #b4c0ba;
+  border-radius: 12px;
+}
+.nx-qr-status {
+  margin: 0;
+  min-height: 3em;
+  text-align: center;
+  line-height: 1.4;
+}
+.nx-qr-status b {
+  font-weight: 700;
+}
+.nx-qr-status span {
+  color: var(--suave);
+}
+.nx-qr-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.nx-mail {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+.nx-mail-toggle {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.nx-mail-card {
+  width: 100%;
+  max-width: 26rem;
+}
+.nx-mail-card[hidden] {
+  display: none;
+}
+/* O QR só aparece em tela larga: ler o código com o mesmo aparelho não serve. Antes disso, o botão faz o papel dele. */
+.nx-wide-only {
+  display: none;
+}
+@media (min-width: 900px) {
+  .nx-main.nx-wide {
+    padding-top: 56px;
+  }
+  .nx-qr-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 22rem);
+    gap: 64px;
+    align-items: center;
+  }
+  .nx-steps.nx-wide-only {
+    display: flex;
+  }
+  .nx-qr-card.nx-wide-only {
+    display: grid;
+  }
+  .nx-narrow-only {
+    display: none;
+  }
+}
+
 @keyframes mini-in {
   from {
     opacity: 0;
