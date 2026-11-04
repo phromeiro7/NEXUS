@@ -1,10 +1,14 @@
-import type { CaseDto, HolidayDto, IsoDate, SettingsDto, TaskDto } from '@aj/shared';
+import type { CaseDto, FinanceEntryDto, HolidayDto, IsoDate, SettingsDto, TaskDto } from '@aj/shared';
 import { ConflictError } from '../src/application/errors.js';
+import { FINANCE_LIST_LIMIT } from '../src/application/ports.js';
 import type {
   CaseRepository,
   Clock,
+  FinanceEntryPatch,
+  FinanceEntryRepository,
   HolidayAdminRepository,
   HolidayRepository,
+  NewFinanceEntry,
   NewTask,
   ProfileRepository,
   ReminderRepository,
@@ -45,6 +49,7 @@ export function createFakes(seed: { now?: Date } = {}) {
   const caseRows: { userId: string; dto: CaseDto }[] = [];
   const holidayRows: { userId: string; dto: HolidayDto }[] = [];
   const profileRows = new Map<string, SettingsDto>();
+  const financeRows: { userId: string; dto: FinanceEntryDto }[] = [];
 
   const tasks: TaskRepository = {
     async create(userId, task: NewTask) {
@@ -204,11 +209,50 @@ export function createFakes(seed: { now?: Date } = {}) {
     },
   };
 
+
+  const finance: FinanceEntryRepository = {
+    async create(userId, entry: NewFinanceEntry) {
+      const id = entry.id ?? crypto.randomUUID();
+      if (financeRows.some((r) => r.dto.id === id)) throw new ConflictError('lancamento_ja_cadastrado');
+      const dto: FinanceEntryDto = { ...entry, id, createdAt: stamp(), updatedAt: stamp() };
+      financeRows.push({ userId, dto });
+      return { ...dto };
+    },
+    async get(userId, id) {
+      const row = financeRows.find((r) => r.userId === userId && r.dto.id === id);
+      return row ? { ...row.dto } : null;
+    },
+    async list(userId, query) {
+      return financeRows
+        .filter((r) => r.userId === userId)
+        .map((r) => r.dto)
+        .filter((d) => query.from === undefined || d.dueDate >= query.from)
+        .filter((d) => query.to === undefined || d.dueDate <= query.to)
+        .filter((d) => query.status === undefined || d.status === query.status)
+        .sort((a, b) => (a.dueDate === b.dueDate ? cmp(b.createdAt, a.createdAt) : cmp(b.dueDate, a.dueDate)))
+        .slice(0, FINANCE_LIST_LIMIT)
+        .map((d) => ({ ...d }));
+    },
+    async update(userId, id, patch: FinanceEntryPatch) {
+      const row = financeRows.find((r) => r.userId === userId && r.dto.id === id);
+      if (!row) return null;
+      row.dto = { ...row.dto, ...defined(patch), updatedAt: stamp() };
+      return { ...row.dto };
+    },
+    async remove(userId, id) {
+      const i = financeRows.findIndex((r) => r.userId === userId && r.dto.id === id);
+      if (i < 0) return false;
+      financeRows.splice(i, 1);
+      return true;
+    },
+  };
+
   return {
     tasks,
     cases,
     profiles,
     holidays,
+    finance,
     reminders,
     clock,
     setNow(date: Date) {
