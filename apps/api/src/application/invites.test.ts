@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createFakes } from '../../test/fakes.js';
-import { ChatAlreadyLinkedError, ForbiddenError, NotFoundError } from './errors.js';
+import { ChatAlreadyLinkedError, ConflictError, ForbiddenError, NotFoundError } from './errors.js';
 import { inviteStatus, makeAcceptInvite, makeInviteUseCases } from './invites.js';
 
 const NOW = new Date('2026-11-04T12:00:00.000Z');
@@ -12,6 +12,7 @@ function setup(opts: { admins?: number[]; ttlDays?: number } = {}) {
   f.links.setChat('plain', 222);
   const uc = makeInviteUseCases({
     invites: f.invites,
+    accounts: f.accounts,
     adminTelegramIds: new Set(opts.admins ?? [ADMIN_CHAT]),
     botUsername: 'nexus_bot',
     clock: f.clock,
@@ -71,6 +72,7 @@ describe('invite creation', () => {
     let i = 0;
     const uc2 = makeInviteUseCases({
       invites: f.invites,
+      accounts: f.accounts,
       adminTelegramIds: new Set([ADMIN_CHAT]),
       botUsername: 'nexus_bot',
       clock: f.clock,
@@ -111,6 +113,53 @@ describe('invite list and revoke', () => {
     const { f, uc } = setup();
     f.invites.seed({ code: 'DDDDDDDDDDDD', usedAt: NOW });
     await expect(uc.revoke('admin', 'DDDDDDDDDDDD')).rejects.toBeInstanceOf(NotFoundError);
+  });
+});
+
+describe('invite removal', () => {
+  it('deleting an active invite removes it and blocks nobody', async () => {
+    const { f, uc } = setup();
+    const { code } = await uc.create('admin');
+    await uc.remove('admin', code);
+    expect(await uc.list('admin')).toEqual([]);
+    expect(f.accounts.blocked).toEqual([]);
+  });
+
+  it('deleting a used invite blocks the guest account and unlinks their Telegram', async () => {
+    const { f, uc, accept } = setup();
+    const { code } = await uc.create('admin');
+    const result = await accept(code, 555);
+    if (result.status !== 'criada') throw new Error('esperava conta criada');
+    await uc.remove('admin', code);
+    expect(f.accounts.blocked).toEqual([result.userId]);
+    expect(await f.links.userForChat(555)).toBeNull();
+    expect(await uc.list('admin')).toEqual([]);
+  });
+
+  it('never blocks the administrator or another administrator through an invite', async () => {
+    const { f, uc } = setup({ admins: [ADMIN_CHAT, 333] });
+    f.links.setChat('other-admin', 333);
+    f.invites.seed({ code: 'EEEEEEEEEEEE', usedAt: NOW, usedBy: 'other-admin' });
+    f.invites.seed({ code: 'FFFFFFFFFFFF', usedAt: NOW, usedBy: 'admin' });
+    await expect(uc.remove('admin', 'EEEEEEEEEEEE')).rejects.toBeInstanceOf(ConflictError);
+    await expect(uc.remove('admin', 'FFFFFFFFFFFF')).rejects.toBeInstanceOf(ConflictError);
+    expect(f.accounts.blocked).toEqual([]);
+    expect(f.invites.rows()).toHaveLength(2);
+  });
+
+  it('unknown code is 404 and a non-administrator is forbidden', async () => {
+    const { uc } = setup();
+    await expect(uc.remove('admin', 'ABCDEFGHJKMN')).rejects.toBeInstanceOf(NotFoundError);
+    await expect(uc.remove('plain', 'ABCDEFGHJKMN')).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
+  it('summary counts every status', async () => {
+    const { f, uc } = setup();
+    f.invites.seed({ code: 'AAAAAAAAAAAA', expiresAt: new Date('2026-11-03T00:00:00Z'), createdAt: new Date('2026-11-01T00:00:00Z') });
+    f.invites.seed({ code: 'BBBBBBBBBBBB', usedAt: NOW });
+    f.invites.seed({ code: 'CCCCCCCCCCCC', revokedAt: NOW });
+    await uc.create('admin');
+    expect(await uc.summary('admin')).toEqual({ total: 4, ativos: 1, usados: 1, expirados: 1, revogados: 1 });
   });
 });
 

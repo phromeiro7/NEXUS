@@ -5,6 +5,8 @@ import type { AccountProvisioner } from '../application/ports.js';
 const UNIQUE_VIOLATION = '23505';
 /** Domínio reservado (RFC 2606): nunca entrega e-mail. */
 export const SYNTHETIC_EMAIL_DOMAIN = 'telegram.invalid';
+/** ~100 anos: o Supabase só aceita duração, não "para sempre". */
+const BAN_FOREVER = '876000h';
 const PAGE_SIZE = 200;
 const MAX_PAGES = 50;
 
@@ -49,12 +51,22 @@ export function createSupabaseAccountProvisioner(client: SupabaseClient): Accoun
     },
 
     async linkChat(userId, chatId) {
+      // Um convite novo devolve o acesso a quem foi bloqueado antes.
+      const unban = await client.auth.admin.updateUserById(userId, { ban_duration: 'none' });
+      if (unban.error) throw new Error(`Falha ao liberar a conta: ${unban.error.message}`);
       const { error } = await client
         .from('profiles')
         .update({ telegram_chat_id: chatId, channel_paused: false })
         .eq('id', userId);
       if (error?.code === UNIQUE_VIOLATION) throw new ChatAlreadyLinkedError();
       if (error) throw new Error(`Falha ao vincular o Telegram: ${error.message}`);
+    },
+
+    async block(userId) {
+      const { error } = await client.auth.admin.updateUserById(userId, { ban_duration: BAN_FOREVER });
+      if (error) throw new Error(`Falha ao bloquear a conta: ${error.message}`);
+      const unlink = await client.from('profiles').update({ telegram_chat_id: null }).eq('id', userId);
+      if (unlink.error) throw new Error(`Falha ao desvincular o Telegram: ${unlink.error.message}`);
     },
 
     async remove(userId) {

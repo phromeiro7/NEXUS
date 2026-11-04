@@ -8,7 +8,7 @@ export class NotFoundError extends Error {
 }
 
 export class ConflictError extends Error {
-  constructor(readonly code: 'tarefa_encerrada' | 'numero_ja_cadastrado' | 'feriado_ja_cadastrado' | 'lancamento_ja_cadastrado') {
+  constructor(readonly code: 'tarefa_encerrada' | 'numero_ja_cadastrado' | 'feriado_ja_cadastrado' | 'lancamento_ja_cadastrado' | 'convite_de_administrador') {
     super(`Conflito: ${code}`);
     this.name = 'ConflictError';
   }

@@ -135,7 +135,7 @@ describe('invites end to end (Supabase local, fake Telegram)', () => {
     expect(await mailCount()).toBe(mailsBefore);
   });
 
-  it('the administrator reads and revokes invites over HTTP; a revoked invite is dead', async () => {
+  it('the administrator reads and deletes invites over HTTP; a deleted invite is dead', async () => {
     const adminSession = await (async () => {
       const email = `${randomUUID()}@example.test`;
       const password = `pw-${randomUUID()}`;
@@ -165,7 +165,7 @@ describe('invites end to end (Supabase local, fake Telegram)', () => {
     const invite = (await made.json()) as { code: string };
     expect((await app.request(`/invites/${invite.code}`, { method: 'DELETE', headers: bearer })).status).toBe(204);
     const list = (await (await app.request('/invites', { headers: bearer })).json()) as { invites: Array<{ code: string; status: string }> };
-    expect(list.invites.find((i) => i.code === invite.code)?.status).toBe('revogado');
+    expect(list.invites.find((i) => i.code === invite.code)).toBeUndefined();
     await say(base + 50, `/start ${invite.code}`);
     expect(repliesTo(base + 50)).toEqual(['Convite inválido ou expirado.']);
   });
