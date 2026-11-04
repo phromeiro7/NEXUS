@@ -5,7 +5,9 @@ import { makeProcessMessage } from './application/assistant/process-message.js';
 import { makeToolExecutor } from './application/assistant/tools.js';
 import { AssistantUnavailableError, NotFoundError } from './application/errors.js';
 import { makeLinkUseCases } from './application/telegram/link.js';
+import { makeCaptureFlow } from './application/telegram/capture.js';
 import { makeHandleTelegramUpdate } from './application/telegram/webhook.js';
+import { createSupabaseCaptureRepository } from './infra/supabase-capture-repository.js';
 import { createSupabaseConfirmationRepository } from './infra/supabase-confirmation-repository.js';
 import { createSupabaseLinkRepository } from './infra/supabase-link-repository.js';
 import type { AssistantModel } from './application/ports.js';
@@ -118,8 +120,11 @@ export function buildApp(
     logger,
     budgetMs: SCHEDULER_BUDGETS_MS.briefings,
   });
+  const captures = createSupabaseCaptureRepository(client);
+  const financeUseCases = makeFinanceUseCases({ finance, clock });
   const scheduler = makeRunScheduler({
     maintenance: createSupabaseMaintenanceRepository(client),
+    purgeCaptures: (at) => captures.purgeExpired(at),
     runReminders: () => runReminders({ budgetMs: SCHEDULER_BUDGETS_MS.reminders }),
     sendDailyBriefings,
     clock,
@@ -145,6 +150,19 @@ export function buildApp(
           telegram,
           clock,
           logger,
+          // Registro pelo chat por regras: "gastei 100 em roupa" vira proposta com botões; a IA só entra
+          // para o que as regras não entendem, e só se houver chave.
+          capture: makeCaptureFlow({
+            captures,
+            tasks: taskUseCases,
+            finance: financeUseCases,
+            profiles,
+            telegram,
+            clock,
+            logger,
+            ...(config.miniAppUrl !== undefined ? { miniAppUrl: config.miniAppUrl } : {}),
+          }),
+          assistantEnabled: processMessage !== undefined,
           ...(config.telegramBotUsername !== undefined ? { botUsername: config.telegramBotUsername } : {}),
         })
       : undefined;
@@ -160,7 +178,7 @@ export function buildApp(
     tasks: taskUseCases,
     cases: makeCaseUseCases({ cases }),
     holidays: makeHolidayUseCases({ holidays }),
-    finance: makeFinanceUseCases({ finance, clock }),
+    finance: financeUseCases,
     settings: makeSettingsUseCases({
       profiles,
       tasks,
