@@ -1,4 +1,4 @@
-import type { AssistantReplyDto } from '@aj/shared';
+import { QR_LOGIN_START_PREFIX, type AssistantReplyDto } from '@aj/shared';
 import { z } from 'zod';
 import type { AssistantLogger, ProcessMessageInput } from '../assistant/process-message.js';
 import {
@@ -20,6 +20,7 @@ import type {
   TelegramClient,
 } from '../ports.js';
 import { inviteShareUrl, type AcceptInviteResult, type makeInviteUseCases } from '../invites.js';
+import type { QrLoginUseCases } from '../qr-login.js';
 import { CAPTURE_HELP, type CaptureFlow } from './capture.js';
 import { createFailedStartLimiter, type FailedStartLimiter } from './failed-start-limiter.js';
 import { formatAssistantReply } from './reply-format.js';
@@ -66,6 +67,12 @@ const TEXT = {
   alreadyLinked: 'Este Telegram já está ligado a uma conta.',
   inviteFailed: 'Não consegui criar a conta agora. Tente abrir o convite de novo em instantes.',
   adminOnly: 'Só administradores criam convites.',
+  loginNoAccount: 'Este Telegram ainda não tem acesso ao Nexus. Peça um convite.',
+  loginInvalid: 'Este código de login já foi usado ou expirou. Gere um novo no computador.',
+  loginFailed: 'Não consegui abrir o login agora. Gere um novo código no computador e tente de novo.',
+  loginApproved: 'Pronto, o painel foi liberado neste navegador. Se não foi você, envie /desvincular.',
+  loginDenied: 'Tudo certo, o acesso foi bloqueado.',
+  loginClosed: 'Esse pedido já foi respondido ou expirou.',
   noActiveInvites: 'Nenhum convite ativo. Envie /convite para criar um.',
   inviteRevoked: 'Convite revogado.',
   help: `Eu anoto gastos, contas e tarefas por mensagem. Exemplos:\n• gastei 42 no almoço\n• luz 187,40 vence dia 8\n• ligar pra Ana amanhã 14h\nNada é salvo antes de você tocar em Confirmar.`,
@@ -85,6 +92,9 @@ const CODE_FORMAT = /^[A-Z0-9]{8}$/;
 const INVITE_FORMAT = /^[A-Z0-9]{12}$/;
 /** Revogar convite pelo botão: `iv:r:<codigo>` (17 bytes, abaixo do limite de 64). */
 const REVOKE_PREFIX = 'iv:r:';
+/** Resposta do login do painel: `ql:y:<id>` (confirmar) ou `ql:n:<id>` ("Não fui eu"); o id é um uuid (41 bytes). */
+const LOGIN_PREFIX = 'ql:';
+const LOGIN_CALLBACK = /^ql:(y|n):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
 /** `/comando`, `/comando@bot` e `/comando argumentos`; o comando não distingue maiúsculas. */
 const COMMAND = /^\/(start|desvincular|ajuda|convite|convites|meuid)(?:@([A-Za-z0-9_]+))?(?:\s+([\s\S]*))?$/i;
 
@@ -131,6 +141,8 @@ export type HandleTelegramUpdateDeps = {
   /** Convites ligados: `/convite`, `/convites` (administrador), `/meuid` e `/start CONVITE`. */
   invites?: Pick<ReturnType<typeof makeInviteUseCases>, 'isAdminChat' | 'create' | 'list' | 'revoke'>;
   acceptInvite?: (code: string, chatId: number) => Promise<AcceptInviteResult>;
+  /** Login do painel por QR: `/start login_<nonce>` e os botões Confirmar / "Não fui eu". */
+  qrLogin?: Pick<QrLoginUseCases, 'start' | 'decide'>;
   /** Origem https do Mini App: habilita o botão "Abrir o Nexus" depois do convite. */
   miniAppUrl?: string;
 };
@@ -277,6 +289,83 @@ export function makeHandleTelegramUpdate(deps: HandleTelegramUpdateDeps) {
     }
   }
 
+  /**
+   * `/start login_<nonce>`: a pessoa leu o QR do painel. Sem conta, recusa. Com conta, pergunta se foi ela e deixa
+   * claro que só se confirma se foi ela mesma quem abriu o painel (quem recebe um QR de outra pessoa cai aqui).
+   */
+  async function handleLoginStart(chatId: number, nonce: string, userId: string | null, now: Date): Promise<void> {
+    let result: Awaited<ReturnType<NonNullable<typeof deps.qrLogin>['start']>>;
+    try {
+      result = await deps.qrLogin!.start({ nonce, chatId, userId });
+    } catch (error) {
+      logger.error('telegram.qr_login_failed', { errorName: errorName(error) });
+      await say(chatId, TEXT.loginFailed);
+      return;
+    }
+    if (result.kind === 'invalido') {
+      limiter.recordFailure(chatId, now);
+      await say(chatId, TEXT.loginInvalid);
+      return;
+    }
+    if (result.kind === 'recusado') {
+      await say(chatId, TEXT.loginNoAccount);
+      return;
+    }
+    const sent = await telegram.sendMessage(
+      chatId,
+      `Entrar no painel do Nexus pelo navegador?\n${result.label} · ${result.time}\nConfirme só se foi você quem acabou de abrir o painel. Se alguém lhe enviou este link ou QR code, toque em Não fui eu.`,
+      {
+        keyboard: [
+          [
+            { text: 'Confirmar', callbackData: `${LOGIN_PREFIX}y:${result.requestId}` },
+            { text: 'Não fui eu', callbackData: `${LOGIN_PREFIX}n:${result.requestId}` },
+          ],
+        ],
+      },
+    );
+    if (!sent.ok) {
+      logger.error('telegram.send_failed', { code: sent.error.kind === 'permanent' ? `permanent:${sent.error.reason}` : 'transient' });
+    }
+  }
+
+  /** Toque em Confirmar / "Não fui eu" do login do painel (só no chat que abriu o pedido, para a conta dele). */
+  async function handleLoginCallback(
+    updateId: number,
+    callback: NonNullable<z.infer<typeof updateSchema>['callback_query']>,
+  ): Promise<void> {
+    const target = callback.message;
+    if (deps.qrLogin === undefined || target === undefined || target.chat.type !== 'private' || callback.data === undefined) return;
+    const parsed = LOGIN_CALLBACK.exec(callback.data);
+    if (parsed === null) return;
+    const chatId = target.chat.id;
+    const now = clock.now();
+    const userId = await beforeRegistration(() => links.userForChat(chatId));
+    if (userId === null) {
+      await telegram.answerCallbackQuery(callback.id, TEXT.loginNoAccount);
+      return;
+    }
+    const first = await beforeRegistration(() => events.register(userId, 'telegram', String(updateId), now));
+    if (!first.firstTime) return;
+    const approve = parsed[1]!.toLowerCase() === 'y';
+    let decision: Awaited<ReturnType<NonNullable<typeof deps.qrLogin>['decide']>>;
+    try {
+      decision = await deps.qrLogin.decide({ requestId: parsed[2]!, chatId, userId, approve });
+    } catch (error) {
+      logger.error('telegram.qr_login_callback_failed', { errorName: errorName(error) });
+      await telegram.answerCallbackQuery(callback.id, TEXT.captureFailed);
+      return;
+    }
+    // Já respondido ou vencido: só um aviso curto. A mensagem não é reescrita (um segundo toque não apaga a resposta certa).
+    if (decision === 'expirado') {
+      await telegram.answerCallbackQuery(callback.id, TEXT.loginClosed);
+      return;
+    }
+    const text = decision === 'aprovado' ? TEXT.loginApproved : TEXT.loginDenied;
+    await telegram.answerCallbackQuery(callback.id, text);
+    // Sem teclado: os botões somem e a mensagem fica como registro do que foi decidido.
+    await telegram.editMessageText(chatId, target.message_id, text);
+  }
+
   /** Toque num botão da proposta do chat. Só existe com o registro por regras ligado. */
   async function handleCallbackQuery(
     updateId: number,
@@ -318,6 +407,7 @@ export function makeHandleTelegramUpdate(deps: HandleTelegramUpdateDeps) {
     const { update_id: updateId, message, callback_query: callbackQuery } = parsed.data;
     if (message === undefined) {
       if (callbackQuery?.data?.startsWith(REVOKE_PREFIX) === true) await handleInviteCallback(updateId, callbackQuery);
+      else if (callbackQuery?.data?.startsWith(LOGIN_PREFIX) === true) await handleLoginCallback(updateId, callbackQuery);
       else if (callbackQuery !== undefined) await handleCallbackQuery(updateId, callbackQuery);
       return; // edited_message, channel_post...
     }
@@ -388,6 +478,11 @@ export function makeHandleTelegramUpdate(deps: HandleTelegramUpdateDeps) {
       const raw = command.args.trim();
       if (raw === '') return void (await say(chatId, TEXT.startHelp));
       if (!limiter.allow(chatId, now)) return void (await say(chatId, TEXT.tooMany));
+      // Login do painel: `login_<nonce>` (o nonce distingue maiúsculas, por isso antes do toUpperCase).
+      if (deps.qrLogin !== undefined && raw.startsWith(QR_LOGIN_START_PREFIX)) {
+        await handleLoginStart(chatId, raw.slice(QR_LOGIN_START_PREFIX.length), userId, now);
+        return;
+      }
       const code = raw.toUpperCase();
       if (INVITE_FORMAT.test(code)) {
         await handleInviteStart(chatId, code, now);

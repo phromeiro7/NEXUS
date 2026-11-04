@@ -224,4 +224,17 @@ describe('makeRunScheduler chat captures', () => {
     });
     expect((await failing()).purged.telegramAuth).toBe(0);
   });
+  it('purges the expired QR login requests when the QR login is on, and a failure counts zero', async () => {
+    const seen: Date[] = [];
+    const run = makeRunScheduler({ ...base, purgeQrLogin: async (at) => (seen.push(at), 2) });
+    expect((await run()).purged).toEqual({ chatMessages: 0, linkCodes: 0, modelCalls: 0, qrLogin: 2 });
+    expect(seen).toEqual([NOW]);
+    const failing = makeRunScheduler({
+      ...base,
+      purgeQrLogin: async () => {
+        throw new Error('boom');
+      },
+    });
+    expect((await failing()).purged.qrLogin).toBe(0);
+  });
 });

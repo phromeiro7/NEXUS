@@ -15,6 +15,8 @@ import type {
   BriefingRepository,
   InviteRecord,
   InviteRepository,
+  QrLoginRecord,
+  QrLoginRepository,
   CaseRepository,
   ChatChannel,
   ChatRepository,
@@ -497,6 +499,66 @@ export function createFakes(seed: { now?: Date } = {}) {
       });
     },
   };
+  // ---- Pedidos de login por QR: mesma semântica de open_/decide_/consume_/release_qr_login ----
+  type QrRow = QrLoginRecord & { nonceHash: string; chatId: number | null; userId: string | null; clientLabel: string };
+  const qrRows: QrRow[] = [];
+  const qrLogins: QrLoginRepository & { rows(): QrRow[] } = {
+    async create(input) {
+      qrRows.push({
+        id: input.id,
+        status: 'aguardando',
+        pollHash: input.pollHash,
+        nonceHash: input.nonceHash,
+        clientLabel: input.clientLabel,
+        chatId: null,
+        userId: null,
+        createdAt: input.createdAt,
+        expiresAt: input.expiresAt,
+      });
+    },
+    async get(id) {
+      const row = qrRows.find((r) => r.id === id);
+      return row ? { id: row.id, status: row.status, pollHash: row.pollHash, createdAt: row.createdAt, expiresAt: row.expiresAt } : null;
+    },
+    async open(nonceHash, chatId, userId, at) {
+      const row = qrRows.find((r) => r.nonceHash === nonceHash && r.status === 'aguardando' && r.expiresAt > at);
+      if (!row) return null;
+      row.status = userId === null ? 'recusado' : 'confirmar';
+      row.chatId = chatId;
+      row.userId = userId;
+      return { id: row.id, outcome: row.status === 'recusado' ? 'recusado' : 'confirmar', clientLabel: row.clientLabel, createdAt: row.createdAt };
+    },
+    async decide(id, chatId, userId, approve, at) {
+      const row = qrRows.find(
+        (r) => r.id === id && r.status === 'confirmar' && r.chatId === chatId && r.userId === userId && r.expiresAt > at,
+      );
+      if (!row) return null;
+      row.status = approve ? 'aprovado' : 'negado';
+      return row.status;
+    },
+    async consume(id, pollHash, at) {
+      const row = qrRows.find((r) => r.id === id && r.pollHash === pollHash && r.status === 'aprovado' && r.expiresAt > at);
+      if (!row) return null;
+      row.status = 'consumido';
+      return row.userId;
+    },
+    async release(id) {
+      const row = qrRows.find((r) => r.id === id && r.status === 'consumido');
+      if (row) row.status = 'aprovado';
+    },
+    async purgeExpired(at) {
+      const limit = at.getTime() - 10 * 60_000;
+      let n = 0;
+      for (let i = qrRows.length - 1; i >= 0; i--) {
+        if (qrRows[i]!.expiresAt.getTime() < limit) {
+          qrRows.splice(i, 1);
+          n++;
+        }
+      }
+      return n;
+    },
+    rows: () => qrRows,
+  };
   let accountSeq = 0;
   const accountsByTelegram = new Map<number, string>();
   const accounts: AccountProvisioner & {
@@ -878,6 +940,7 @@ export function createFakes(seed: { now?: Date } = {}) {
     telegram,
     links,
     invites,
+    qrLogins,
     accounts,
     briefings,
     reminderQueue,
