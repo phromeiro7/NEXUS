@@ -1,4 +1,4 @@
-import type { CaseDto, IsoDate, TaskDto } from '@aj/shared';
+import type { CaseDto, FinanceEntryDto, IsoDate, TaskDto } from '@aj/shared';
 
 type Row = Record<string, unknown>;
 
@@ -59,5 +59,25 @@ export function caseFromRow(row: Row): CaseDto {
     status: row.status as CaseDto['status'],
     createdAt: toIso(row.created_at)!,
     updatedAt: toIso(row.updated_at)!,
+  };
+}
+
+export const FINANCE_COLUMNS =
+  'id, kind, description, amount_cents, category, due_date, status, reminder_time, paid_at, created_at, updated_at';
+
+export function financeEntryFromRow(row: Row): FinanceEntryDto {
+  return {
+    id: row.id as string,
+    kind: row.kind as FinanceEntryDto['kind'],
+    description: row.description as string,
+    // bigint chega como número no JSON do PostgREST; o teto do produto cabe com folga em 2^53.
+    amountCents: Number(row.amount_cents),
+    category: (row.category as string | null) ?? null,
+    dueDate: row.due_date as IsoDate,
+    status: row.status as FinanceEntryDto['status'],
+    reminderTime: toHourMinute(row.reminder_time),
+    paidAt: toIso(row.paid_at),
+    createdAt: toIso(row.created_at) as string,
+    updatedAt: toIso(row.updated_at) as string,
   };
 }

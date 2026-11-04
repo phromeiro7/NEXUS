@@ -170,3 +170,76 @@ describe('createTelegramClient.sendMessage', () => {
     expect(logged.join('\n')).not.toContain(SECRET_TEXT);
   });
 });
+
+describe('createTelegramClient inline keyboards, edits and callback answers', () => {
+  const ok = () => json(200, { ok: true, result: { message_id: 7 } });
+
+  it('sendMessage adds reply_markup with callback_data and web_app buttons only when a keyboard is given', async () => {
+    const f = fakeFetch(ok);
+    const client = createTelegramClient({ token: TOKEN, fetch: f.impl });
+    await client.sendMessage(1, 'oi', {
+      keyboard: [[{ text: 'Confirmar', callbackData: 'c:1:ok' }], [{ text: 'Ver no Nexus', webAppUrl: 'https://app.example.test/mini' }]],
+    });
+    expect(JSON.parse(f.calls[0]!.init.body as string)).toEqual({
+      chat_id: 1,
+      text: 'oi',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: 'Confirmar', callback_data: 'c:1:ok' }],
+          [{ text: 'Ver no Nexus', web_app: { url: 'https://app.example.test/mini' } }],
+        ],
+      },
+    });
+  });
+
+  it('a url button becomes a plain link button', async () => {
+    const f = fakeFetch(ok);
+    const client = createTelegramClient({ token: TOKEN, fetch: f.impl });
+    await client.sendMessage(1, 'oi', { keyboard: [[{ text: 'Compartilhar', url: 'https://t.me/share/url?url=x' }]] });
+    expect(JSON.parse(f.calls[0]!.init.body as string).reply_markup).toEqual({
+      inline_keyboard: [[{ text: 'Compartilhar', url: 'https://t.me/share/url?url=x' }]],
+    });
+  });
+
+  it('editMessageText targets the message and clears the buttons when no keyboard is given', async () => {
+    const f = fakeFetch(ok);
+    const client = createTelegramClient({ token: TOKEN, fetch: f.impl });
+    expect(await client.editMessageText(5, 9, 'Pronto')).toEqual({ ok: true });
+    expect(f.calls[0]!.url).toBe('https://api.telegram.org/botTEST_TOKEN_123/editMessageText');
+    expect(JSON.parse(f.calls[0]!.init.body as string)).toEqual({
+      chat_id: 5,
+      message_id: 9,
+      text: 'Pronto',
+      reply_markup: { inline_keyboard: [] },
+    });
+  });
+
+  it('answerCallbackQuery sends the id and an optional short text', async () => {
+    const f = fakeFetch(() => json(200, { ok: true, result: true }));
+    const client = createTelegramClient({ token: TOKEN, fetch: f.impl });
+    expect(await client.answerCallbackQuery('cb1', 'Já anotado')).toEqual({ ok: true });
+    expect(await client.answerCallbackQuery('cb2')).toEqual({ ok: true });
+    expect(f.calls[0]!.url).toBe('https://api.telegram.org/botTEST_TOKEN_123/answerCallbackQuery');
+    expect(JSON.parse(f.calls[0]!.init.body as string)).toEqual({ callback_query_id: 'cb1', text: 'Já anotado' });
+    expect(JSON.parse(f.calls[1]!.init.body as string)).toEqual({ callback_query_id: 'cb2' });
+  });
+
+  it('classifies failures of edit and answer without leaking the body', async () => {
+    const f = fakeFetch(() => json(400, { ok: false, error_code: 400, description: 'Bad Request: message is not modified SEGREDO' }));
+    const client = createTelegramClient({ token: TOKEN, fetch: f.impl });
+    const edit = await client.editMessageText(1, 1, 'x');
+    const answer = await client.answerCallbackQuery('cb');
+    expect(edit.ok).toBe(false);
+    expect(answer.ok).toBe(false);
+    expect(JSON.stringify([edit, answer])).not.toContain('SEGREDO');
+  });
+
+  it('turns a network failure into a transient error for both calls', async () => {
+    const f = fakeFetch(() => {
+      throw new Error('boom');
+    });
+    const client = createTelegramClient({ token: TOKEN, fetch: f.impl });
+    expect(await client.editMessageText(1, 1, 'x')).toMatchObject({ ok: false, error: { kind: 'transient' } });
+    expect(await client.answerCallbackQuery('cb')).toMatchObject({ ok: false, error: { kind: 'transient' } });
+  });
+});

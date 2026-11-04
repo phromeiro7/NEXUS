@@ -45,10 +45,17 @@ histórico) e pode abrir também o Mini App. A conta do administrador é vincula
 
 ## 4. Contas criadas pelo bot
 
-- Conta criada por convite não tem e-mail. **A verificar no plano:** se o Supabase Auth admite usuário sem
-  e-mail; senão, usar um e-mail sintético não entregável, sem expô-lo ao usuário.
+- Conta criada por convite não tem e-mail de verdade. **Verificado (2026-11-04):** o Supabase Auth recusa
+  `admin.createUser` sem e-mail e sem telefone (`validation_failed`). Decisão: e-mail interno determinístico
+  `tg-<telegram_user_id>@telegram.invalid` (domínio reservado), já confirmado, sem senha, nunca exibido; o
+  login pelo Telegram gera o token de sessão com `admin.generateLink`, que não envia e-mail (caixa de testes
+  conferida: 0 mensagens). O perfil e as configurações padrão nascem pelo gatilho de sempre.
 - Convite: código aleatório de uso único, expiração, limite de tentativas inválidas (mesmo padrão do
-  código de vínculo do Plano 5), revogável pelo administrador.
+  código de vínculo do Plano 5), revogável pelo administrador. **Construído (2026-11-04):** `/convite`,
+  `/convites`, `/meuid` no bot, rotas `/invites` e seção "Convites" nas Configurações do Mini App. Administrador =
+  Telegram vinculado listado em `ADMIN_TELEGRAM_USER_IDS`. Convite de 12 caracteres, 7 dias, reserva atômica
+  (`claim_invite`). O cadastro público do web redireciona para `/entrar`; em produção o Supabase deve ter
+  `enable_signup = false` (README, seção Convites).
 - Um `telegram_user_id` só pode estar ligado a uma conta (já garantido pelo vínculo atual).
 
 ## 5. Telas (protótipo)

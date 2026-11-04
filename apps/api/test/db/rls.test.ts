@@ -104,9 +104,9 @@ describe('rls: setup', () => {
       anon: Object.fromEntries(ALL_TABLES.map((t) => [t, []])),
       authenticated: {
         profiles: ['SELECT'],
-        cases: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
-        tasks: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
-        holidays: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
+        cases: ['SELECT'],
+        tasks: ['SELECT'],
+        holidays: ['SELECT'],
         reminders: ['SELECT'],
         inbound_events: [],
         chat_messages: [],
@@ -162,27 +162,23 @@ describe('rls: own data (positive controls)', () => {
     });
   });
 
-  it('A can insert, update and delete its own case, task and holiday', async () => {
-    await asUser(a.id, async (q) => {
-      const c = await q(
-        `insert into public.cases (user_id, number) values ($1, 'novo') returning id`,
-        [a.id],
-      );
-      const t = await q(
-        `insert into public.tasks (user_id, case_id, title) values ($1, $2, 'nova') returning id`,
-        [a.id, c.rows[0].id],
-      );
-      const h = await q(
-        `insert into public.holidays (user_id, date, scope, name) values ($1, '2026-01-20', 'municipal', 'x') returning id`,
-        [a.id],
-      );
-      expect((await q(`update public.tasks set title = 'editada' where id = $1`, [t.rows[0].id])).rowCount).toBe(1);
-      expect((await q(`update public.cases set status = 'arquivado' where id = $1`, [c.rows[0].id])).rowCount).toBe(1);
-      expect((await q(`update public.holidays set name = 'y' where id = $1`, [h.rows[0].id])).rowCount).toBe(1);
-      expect((await q(`delete from public.tasks where id = $1`, [t.rows[0].id])).rowCount).toBe(1);
-      expect((await q(`delete from public.cases where id = $1`, [c.rows[0].id])).rowCount).toBe(1);
-      expect((await q(`delete from public.holidays where id = $1`, [h.rows[0].id])).rowCount).toBe(1);
-    });
+  it('A cannot write cases, tasks, holidays or finance entries directly: writes go through the API', async () => {
+    const own = [
+      `insert into public.cases (user_id, number) values ($1, 'novo')`,
+      `insert into public.tasks (user_id, title) values ($1, 'nova')`,
+      `insert into public.holidays (user_id, date, scope, name) values ($1, '2026-01-20', 'municipal', 'x')`,
+      `insert into public.finance_entries (user_id, kind, amount_cents, description) values ($1, 'despesa', 100, 'x')`,
+    ];
+    const byId = [
+      `update public.tasks set title = 'editada' where id = $1`,
+      `update public.cases set status = 'arquivado' where id = $1`,
+      `update public.holidays set name = 'y' where id = $1`,
+      `delete from public.tasks where id = $1`,
+      `delete from public.cases where id = $1`,
+      `delete from public.holidays where id = $1`,
+    ];
+    for (const sql of own) await expect(asUser(a.id, (q) => q(sql, [a.id]))).rejects.toMatchObject(DENIED);
+    for (const sql of byId) await expect(asUser(a.id, (q) => q(sql, [a.taskId]))).rejects.toMatchObject(DENIED);
   });
 
   it('A can update its own timezone', async () => {
@@ -219,24 +215,30 @@ describe('rls: isolation between users', () => {
     });
   });
 
-  it('B cannot update A\'s task, case, holiday or profile (0 rows)', async () => {
+  it('B cannot update A\'s task, case or holiday (writes are denied), nor A\'s profile (0 rows)', async () => {
+    for (const sql of [
+      `update public.tasks set title = 'hack' where id = $1`,
+      `update public.cases set client_name = 'hack' where id = $1`,
+      `update public.holidays set name = 'hack' where id = $1`,
+    ]) {
+      const id = sql.includes('tasks') ? a.taskId : sql.includes('cases') ? a.caseId : a.holidayId;
+      await expect(asUser(b.id, (q) => q(sql, [id]))).rejects.toMatchObject(DENIED);
+    }
     await asUser(b.id, async (q) => {
-      expect((await q(`update public.tasks set title = 'hack' where id = $1`, [a.taskId])).rowCount).toBe(0);
-      expect((await q(`update public.tasks set title = 'hack'`)).rowCount).toBe(1); // only B's own
-      expect((await q(`update public.cases set client_name = 'hack' where id = $1`, [a.caseId])).rowCount).toBe(0);
-      expect((await q(`update public.holidays set name = 'hack' where id = $1`, [a.holidayId])).rowCount).toBe(0);
       expect((await q(`update public.profiles set timezone = 'UTC' where id = $1`, [a.id])).rowCount).toBe(0);
     });
     const t = await pool.query(`select title from public.tasks where id = $1`, [a.taskId]);
     expect(t.rows).toEqual([{ title: 'Contestação' }]);
   });
 
-  it('B cannot delete A\'s task, case or holiday (0 rows)', async () => {
-    await asUser(b.id, async (q) => {
-      expect((await q(`delete from public.tasks where id = $1`, [a.taskId])).rowCount).toBe(0);
-      expect((await q(`delete from public.cases where id = $1`, [a.caseId])).rowCount).toBe(0);
-      expect((await q(`delete from public.holidays where id = $1`, [a.holidayId])).rowCount).toBe(0);
-    });
+  it('B cannot delete A\'s task, case or holiday (writes are denied)', async () => {
+    for (const [sql, id] of [
+      [`delete from public.tasks where id = $1`, a.taskId],
+      [`delete from public.cases where id = $1`, a.caseId],
+      [`delete from public.holidays where id = $1`, a.holidayId],
+    ] as const) {
+      await expect(asUser(b.id, (q) => q(sql, [id]))).rejects.toMatchObject(DENIED);
+    }
   });
 
   it('B cannot insert a task owned by A', async () => {
@@ -278,7 +280,7 @@ describe('rls: isolation between users', () => {
   it('A cannot link its task to B\'s case', async () => {
     await expect(
       asUser(a.id, (q) => q(`update public.tasks set case_id = $1 where id = $2`, [b.caseId, a.taskId])),
-    ).rejects.toMatchObject({ code: '23503' });
+    ).rejects.toMatchObject(DENIED);
   });
 });
 

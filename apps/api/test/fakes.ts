@@ -1,21 +1,35 @@
-import type { CaseDto, HolidayDto, IsoDate, SettingsDto, TaskDto } from '@aj/shared';
+import type { CaseDto, FinanceEntryDto, HolidayDto, IsoDate, SettingsDto, TaskDto } from '@aj/shared';
 import {
+  ChatAlreadyLinkedError,
   ConflictError,
   EventStateError,
   ForeignEventError,
+  InviteCodeCollisionError,
   LinkCodeCollisionError,
   ReminderLeaseError,
 } from '../src/application/errors.js';
+import { FINANCE_LIST_LIMIT } from '../src/application/ports.js';
 import { briefingLocalDate } from '../src/domain/briefing-window.js';
 import type {
+  AccountProvisioner,
   BriefingRepository,
+  InviteRecord,
+  InviteRepository,
+  QrLoginRecord,
+  QrLoginRepository,
   CaseRepository,
   ChatChannel,
   ChatRepository,
   ChatRole,
   ClaimedReminder,
   Clock,
+  FinanceEntryPatch,
+  FinanceEntryRepository,
+  CaptureEntity,
+  CaptureRecord,
+  CaptureRepository,
   ConfirmationRepository,
+  InlineKeyboard,
   LinkCodeRepository,
   MaintenanceRepository,
   ReminderQueue,
@@ -24,6 +38,7 @@ import type {
   InboundEventStatus,
   HolidayAdminRepository,
   HolidayRepository,
+  NewFinanceEntry,
   NewTask,
   ProfileRepository,
   ReminderRepository,
@@ -67,6 +82,7 @@ export function createFakes(seed: { now?: Date } = {}) {
   const caseRows: { userId: string; dto: CaseDto }[] = [];
   const holidayRows: { userId: string; dto: HolidayDto }[] = [];
   const profileRows = new Map<string, SettingsDto>();
+  const financeRows: { userId: string; dto: FinanceEntryDto }[] = [];
 
   const tasks: TaskRepository = {
     async create(userId, task: NewTask) {
@@ -226,6 +242,44 @@ export function createFakes(seed: { now?: Date } = {}) {
     },
   };
 
+
+  const finance: FinanceEntryRepository = {
+    async create(userId, entry: NewFinanceEntry) {
+      const id = entry.id ?? crypto.randomUUID();
+      if (financeRows.some((r) => r.dto.id === id)) throw new ConflictError('lancamento_ja_cadastrado');
+      const dto: FinanceEntryDto = { ...entry, id, createdAt: stamp(), updatedAt: stamp() };
+      financeRows.push({ userId, dto });
+      return { ...dto };
+    },
+    async get(userId, id) {
+      const row = financeRows.find((r) => r.userId === userId && r.dto.id === id);
+      return row ? { ...row.dto } : null;
+    },
+    async list(userId, query) {
+      return financeRows
+        .filter((r) => r.userId === userId)
+        .map((r) => r.dto)
+        .filter((d) => query.from === undefined || d.dueDate >= query.from)
+        .filter((d) => query.to === undefined || d.dueDate <= query.to)
+        .filter((d) => query.status === undefined || d.status === query.status)
+        .sort((a, b) => (a.dueDate === b.dueDate ? cmp(b.createdAt, a.createdAt) : cmp(b.dueDate, a.dueDate)))
+        .slice(0, FINANCE_LIST_LIMIT)
+        .map((d) => ({ ...d }));
+    },
+    async update(userId, id, patch: FinanceEntryPatch) {
+      const row = financeRows.find((r) => r.userId === userId && r.dto.id === id);
+      if (!row) return null;
+      row.dto = { ...row.dto, ...defined(patch), updatedAt: stamp() };
+      return { ...row.dto };
+    },
+    async remove(userId, id) {
+      const i = financeRows.findIndex((r) => r.userId === userId && r.dto.id === id);
+      if (i < 0) return false;
+      financeRows.splice(i, 1);
+      return true;
+    },
+  };
+
   const DAY_MS = 24 * 60 * 60 * 1000;
   const chatRows: { userId: string; channel: ChatChannel; role: ChatRole; content: string; createdAt: Date; expiresAt: Date }[] = [];
   const chat: ChatRepository = {
@@ -304,19 +358,33 @@ export function createFakes(seed: { now?: Date } = {}) {
 
   // ---- Telegram: cliente falso com respostas roteirizadas ----
   type SendResult = Awaited<ReturnType<TelegramClient['sendMessage']>>;
-  const sent: Array<{ chatId: number; text: string }> = [];
+  const sent: Array<{ chatId: number; text: string; keyboard?: InlineKeyboard }> = [];
+  const edits: Array<{ chatId: number; messageId: number; text: string; keyboard?: InlineKeyboard }> = [];
+  const answers: Array<{ id: string; text?: string }> = [];
   const scripted: SendResult[] = [];
   let nextMessageId = 1000;
   const telegram: TelegramClient & {
     sent: typeof sent;
+    edits: typeof edits;
+    answers: typeof answers;
     /** Próximas respostas, em ordem; esgotadas, devolve sucesso com `messageId` crescente. */
     script(...results: SendResult[]): void;
     failNext(error: TelegramErrorClass): void;
   } = {
     sent,
-    async sendMessage(chatId, text) {
-      sent.push({ chatId, text });
+    edits,
+    answers,
+    async sendMessage(chatId, text, options) {
+      sent.push({ chatId, text, ...(options?.keyboard !== undefined ? { keyboard: options.keyboard } : {}) });
       return scripted.shift() ?? { ok: true, messageId: nextMessageId++ };
+    },
+    async editMessageText(chatId, messageId, text, options) {
+      edits.push({ chatId, messageId, text, ...(options?.keyboard !== undefined ? { keyboard: options.keyboard } : {}) });
+      return { ok: true };
+    },
+    async answerCallbackQuery(id, text) {
+      answers.push({ id, ...(text !== undefined ? { text } : {}) });
+      return { ok: true };
     },
     script(...results) {
       scripted.push(...results);
@@ -380,6 +448,150 @@ export function createFakes(seed: { now?: Date } = {}) {
     chatFor: (userId) => chatOf.get(userId) ?? null,
     isPaused: (userId) => pausedUsers.has(userId),
     codesOf: (userId) => linkRows.filter((r) => r.userId === userId).map((r) => r.code),
+  };
+
+  // ---- Convites e contas por convite: mesma semântica de claim_invite / finish_invite / release_invite ----
+  type InviteRow = InviteRecord & { claimed: boolean };
+  const inviteRows: InviteRow[] = [];
+  const invites: InviteRepository & { rows(): InviteRow[]; seed(row: Partial<InviteRow> & { code: string }): void } = {
+    async create(createdBy, code, createdAt, expiresAt) {
+      if (inviteRows.some((r) => r.code === code)) throw new InviteCodeCollisionError();
+      inviteRows.push({ code, createdBy, createdAt, expiresAt, revokedAt: null, usedAt: null, claimed: false });
+    },
+    async list(limit) {
+      return [...inviteRows].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, limit);
+    },
+    async revoke(code, at) {
+      const row = inviteRows.find((r) => r.code === code && r.usedAt === null && r.revokedAt === null);
+      if (!row) return false;
+      row.revokedAt = at;
+      return true;
+    },
+    async claim(code, at) {
+      const row = inviteRows.find((r) => r.code === code);
+      if (!row || row.claimed || row.revokedAt !== null || row.expiresAt <= at) return false;
+      row.claimed = true;
+      return true;
+    },
+    async finish(code, _userId, at) {
+      const row = inviteRows.find((r) => r.code === code && r.claimed && r.usedAt === null);
+      if (!row) return false;
+      row.usedAt = at;
+      return true;
+    },
+    async release(code) {
+      const row = inviteRows.find((r) => r.code === code && r.usedAt === null);
+      if (row) row.claimed = false;
+    },
+    async telegramIdOf(userId) {
+      return chatOf.get(userId) ?? null;
+    },
+    rows: () => inviteRows,
+    seed(row) {
+      inviteRows.push({
+        createdBy: 'admin',
+        createdAt: now,
+        expiresAt: new Date(now.getTime() + 7 * 86_400_000),
+        revokedAt: null,
+        usedAt: null,
+        claimed: false,
+        ...row,
+      });
+    },
+  };
+  // ---- Pedidos de login por QR: mesma semântica de open_/decide_/consume_/release_qr_login ----
+  type QrRow = QrLoginRecord & { nonceHash: string; chatId: number | null; userId: string | null; clientLabel: string };
+  const qrRows: QrRow[] = [];
+  const qrLogins: QrLoginRepository & { rows(): QrRow[] } = {
+    async create(input) {
+      qrRows.push({
+        id: input.id,
+        status: 'aguardando',
+        pollHash: input.pollHash,
+        nonceHash: input.nonceHash,
+        clientLabel: input.clientLabel,
+        chatId: null,
+        userId: null,
+        createdAt: input.createdAt,
+        expiresAt: input.expiresAt,
+      });
+    },
+    async get(id) {
+      const row = qrRows.find((r) => r.id === id);
+      return row ? { id: row.id, status: row.status, pollHash: row.pollHash, createdAt: row.createdAt, expiresAt: row.expiresAt } : null;
+    },
+    async open(nonceHash, chatId, userId, at) {
+      const row = qrRows.find((r) => r.nonceHash === nonceHash && r.status === 'aguardando' && r.expiresAt > at);
+      if (!row) return null;
+      row.status = userId === null ? 'recusado' : 'confirmar';
+      row.chatId = chatId;
+      row.userId = userId;
+      return { id: row.id, outcome: row.status === 'recusado' ? 'recusado' : 'confirmar', clientLabel: row.clientLabel, createdAt: row.createdAt };
+    },
+    async decide(id, chatId, userId, approve, at) {
+      const row = qrRows.find(
+        (r) => r.id === id && r.status === 'confirmar' && r.chatId === chatId && r.userId === userId && r.expiresAt > at,
+      );
+      if (!row) return null;
+      row.status = approve ? 'aprovado' : 'negado';
+      return row.status;
+    },
+    async consume(id, pollHash, at) {
+      const row = qrRows.find((r) => r.id === id && r.pollHash === pollHash && r.status === 'aprovado' && r.expiresAt > at);
+      if (!row) return null;
+      row.status = 'consumido';
+      return row.userId;
+    },
+    async release(id) {
+      const row = qrRows.find((r) => r.id === id && r.status === 'consumido');
+      if (row) row.status = 'aprovado';
+    },
+    async purgeExpired(at) {
+      const limit = at.getTime() - 10 * 60_000;
+      let n = 0;
+      for (let i = qrRows.length - 1; i >= 0; i--) {
+        if (qrRows[i]!.expiresAt.getTime() < limit) {
+          qrRows.splice(i, 1);
+          n++;
+        }
+      }
+      return n;
+    },
+    rows: () => qrRows,
+  };
+  let accountSeq = 0;
+  const accountsByTelegram = new Map<number, string>();
+  const accounts: AccountProvisioner & {
+    created: string[];
+    removed: string[];
+    /** Faz a próxima ligação de chat falhar com este erro (simula corrida). */
+    failLinkWith: Error | null;
+    failCreateWith: Error | null;
+  } = {
+    created: [],
+    removed: [],
+    failLinkWith: null,
+    failCreateWith: null,
+    async createForTelegram(telegramUserId) {
+      if (accounts.failCreateWith) throw accounts.failCreateWith;
+      const existing = accountsByTelegram.get(telegramUserId);
+      if (existing !== undefined) return { userId: existing, created: false };
+      const userId = `invited-${++accountSeq}`;
+      accountsByTelegram.set(telegramUserId, userId);
+      accounts.created.push(userId);
+      return { userId, created: true };
+    },
+    async linkChat(userId, chatId) {
+      if (accounts.failLinkWith) throw accounts.failLinkWith;
+      if (ownerOfChat(chatId, userId) !== null) throw new ChatAlreadyLinkedError();
+      chatOf.set(userId, chatId);
+      profileRows.set(userId, { ...profileOf(userId), telegramLinked: true });
+    },
+    async remove(userId) {
+      accounts.removed.push(userId);
+      for (const [tg, id] of accountsByTelegram) if (id === userId) accountsByTelegram.delete(tg);
+      chatOf.delete(userId);
+    },
   };
 
   // ---- Briefing diário: mesma semântica de claim_briefing / release_briefing ----
@@ -594,6 +806,81 @@ export function createFakes(seed: { now?: Date } = {}) {
     },
   };
 
+  // ---- Propostas do chat (chat_captures) ----
+  const captureRows = new Map<string, CaptureRecord>();
+  let captureSeq = 0;
+  const HOUR = 60 * 60 * 1000;
+  const captures: CaptureRepository & { all(): CaptureRecord[] } = {
+    all: () => [...captureRows.values()],
+    async create(userId, chatId, payload, at) {
+      captureSeq += 1;
+      const id = `00000000-0000-4000-8000-${String(captureSeq).padStart(12, '0')}`;
+      const record: CaptureRecord = {
+        id,
+        userId,
+        chatId,
+        payload: structuredClone(payload),
+        status: 'pendente',
+        entity: null,
+        messageId: null,
+        expiresAt: new Date(at.getTime() + HOUR),
+      };
+      captureRows.set(id, record);
+      return structuredClone(record);
+    },
+    async get(id, at) {
+      const r = captureRows.get(id);
+      return r === undefined || r.expiresAt < at ? null : structuredClone(r);
+    },
+    async updatePayload(id, payload) {
+      const r = captureRows.get(id);
+      if (r === undefined || r.status !== 'pendente') return false;
+      r.payload = structuredClone(payload);
+      return true;
+    },
+    async setMessage(id, messageId) {
+      const r = captureRows.get(id);
+      if (r) r.messageId = messageId;
+    },
+    async beginConfirm(id, at) {
+      const r = captureRows.get(id);
+      if (r === undefined || r.status !== 'pendente' || r.expiresAt < at) return false;
+      r.status = 'confirmando';
+      return true;
+    },
+    async finishConfirm(id, entity: CaptureEntity, at) {
+      const r = captureRows.get(id);
+      if (r === undefined || r.status !== 'confirmando') throw new Error('proposta fora do estado esperado');
+      r.status = 'confirmada';
+      r.entity = entity;
+      r.expiresAt = new Date(at.getTime() + 24 * HOUR);
+    },
+    async abortConfirm(id) {
+      const r = captureRows.get(id);
+      if (r?.status === 'confirmando') r.status = 'pendente';
+    },
+    async beginUndo(id, at) {
+      const r = captureRows.get(id);
+      if (r === undefined || r.status !== 'confirmada' || r.entity === null || r.expiresAt < at) return null;
+      r.status = 'desfeita';
+      return r.entity;
+    },
+    async abortUndo(id) {
+      const r = captureRows.get(id);
+      if (r?.status === 'desfeita') r.status = 'confirmada';
+    },
+    async purgeExpired(at) {
+      let n = 0;
+      for (const [id, r] of captureRows) {
+        if (r.expiresAt < at) {
+          captureRows.delete(id);
+          n += 1;
+        }
+      }
+      return n;
+    },
+  };
+
   // ---- Manutenção ----
   const maintenance: MaintenanceRepository = {
     async purgeExpiredChatMessages(at) {
@@ -652,14 +939,19 @@ export function createFakes(seed: { now?: Date } = {}) {
   return {
     telegram,
     links,
+    invites,
+    qrLogins,
+    accounts,
     briefings,
     reminderQueue,
     confirmations,
+    captures,
     maintenance,
     tasks,
     cases,
     profiles,
     holidays,
+    finance,
     reminders,
     chat,
     inboundEvents,

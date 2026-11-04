@@ -200,7 +200,7 @@ describe('Telegram link flow and webhook (real repositories, scripted model, fak
       endStep('Anotei: reunião amanhã às 14h.'),
     ];
     telegram.script({ ok: true, messageId: CONFIRMATION_ID });
-    const res = await hook(update(chatA, { text: 'reunião amanhã às 14h' }));
+    const res = await hook(update(chatA, { text: 'pode marcar reunião amanhã às 14h?' }));
     expect(res.status).toBe(200);
     expect(sentTo(chatA).at(-1)).toBe('Anotei: reunião amanhã às 14h.\n\n• Reunião — ter, 27/10, 14:00');
     const rows = await taskRows(a.id);

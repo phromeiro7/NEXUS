@@ -175,3 +175,66 @@ describe('makeRunScheduler', () => {
     expect(SCHEDULER_BUDGETS_MS).toEqual({ reminders: 15_000, briefings: 8_000 });
   });
 });
+
+describe('makeRunScheduler chat captures', () => {
+  const maintenance: MaintenanceRepository = {
+    recoverStuckEvents: async () => ({ recovered: 0, failed: 0 }),
+    purgeExpiredChatMessages: async () => 0,
+    purgeExpiredLinkCodes: async () => 0,
+    purgeOldModelCalls: async () => 0,
+  };
+  const base = {
+    maintenance,
+    runReminders: async () => zeroReminders,
+    sendDailyBriefings: async () => zeroBriefings,
+    clock: { now: () => NOW },
+  };
+
+  it('purges expired captures when the chat capture is on and reports the count', async () => {
+    const seen: Date[] = [];
+    const run = makeRunScheduler({ ...base, purgeCaptures: async (at) => (seen.push(at), 4) });
+    expect((await run()).purged).toEqual({ chatMessages: 0, linkCodes: 0, modelCalls: 0, chatCaptures: 4 });
+    expect(seen).toEqual([NOW]);
+  });
+
+  it('a failing purge counts zero and never stops the run', async () => {
+    const run = makeRunScheduler({
+      ...base,
+      purgeCaptures: async () => {
+        throw new Error('boom');
+      },
+    });
+    expect((await run()).purged.chatCaptures).toBe(0);
+  });
+
+  it('leaves the key out when the chat capture is off', async () => {
+    expect((await makeRunScheduler(base)()).purged).toEqual({ chatMessages: 0, linkCodes: 0, modelCalls: 0 });
+  });
+
+  it('purges the Telegram login records when the login is on, and a failure counts zero', async () => {
+    const seen: Date[] = [];
+    const run = makeRunScheduler({ ...base, purgeTelegramAuth: async (at) => (seen.push(at), 3) });
+    expect((await run()).purged).toEqual({ chatMessages: 0, linkCodes: 0, modelCalls: 0, telegramAuth: 3 });
+    expect(seen).toEqual([NOW]);
+    const failing = makeRunScheduler({
+      ...base,
+      purgeTelegramAuth: async () => {
+        throw new Error('boom');
+      },
+    });
+    expect((await failing()).purged.telegramAuth).toBe(0);
+  });
+  it('purges the expired QR login requests when the QR login is on, and a failure counts zero', async () => {
+    const seen: Date[] = [];
+    const run = makeRunScheduler({ ...base, purgeQrLogin: async (at) => (seen.push(at), 2) });
+    expect((await run()).purged).toEqual({ chatMessages: 0, linkCodes: 0, modelCalls: 0, qrLogin: 2 });
+    expect(seen).toEqual([NOW]);
+    const failing = makeRunScheduler({
+      ...base,
+      purgeQrLogin: async () => {
+        throw new Error('boom');
+      },
+    });
+    expect((await failing()).purged.qrLogin).toBe(0);
+  });
+});

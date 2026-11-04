@@ -148,7 +148,9 @@ describe('app', () => {
       expect(res.status).toBe(204);
       expect(res.headers.get('access-control-allow-origin')).toBe(WEB_ORIGIN);
       expect(res.headers.get('access-control-allow-methods')).toBe('GET,POST,PATCH,DELETE,OPTIONS');
-      expect(res.headers.get('access-control-allow-headers')).toBe('Authorization,Content-Type');
+      // X-Poll-Secret: o navegador do login por QR prova que é dono do pedido; maxAge poupa um preflight por consulta.
+      expect(res.headers.get('access-control-allow-headers')).toBe('Authorization,Content-Type,X-Poll-Secret');
+      expect(res.headers.get('access-control-max-age')).toBe('600');
       expect(res.headers.get('access-control-allow-credentials')).toBeNull();
     });
 

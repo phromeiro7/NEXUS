@@ -2,11 +2,14 @@ import { type AppDeps, createApp } from '../src/app.js';
 import { makeCalculateDeadline } from '../src/application/calculate-deadline.js';
 import { makeGetBriefing } from '../src/application/briefing.js';
 import { makeCaseUseCases } from '../src/application/cases.js';
+import { makeCaptureInterpretUseCases } from '../src/application/capture-interpret.js';
+import { makeFinanceUseCases } from '../src/application/finance.js';
 import { makeHolidayUseCases } from '../src/application/holidays.js';
 import type { HolidayRepository, NewTask } from '../src/application/ports.js';
 import { makeSettingsUseCases } from '../src/application/settings.js';
 import { makeSyncReminders } from '../src/application/sync-reminders.js';
 import { makeTaskUseCases } from '../src/application/tasks.js';
+import { makeInviteUseCases } from '../src/application/invites.js';
 import { makeLinkUseCases } from '../src/application/telegram/link.js';
 import { createFakes } from './fakes.js';
 
@@ -26,6 +29,11 @@ export type HarnessOpts = {
   internalSecret?: AppDeps['internalSecret'];
   handleTelegramUpdate?: AppDeps['handleTelegramUpdate'];
   telegramWebhookSecret?: AppDeps['telegramWebhookSecret'];
+  telegramLogin?: AppDeps['telegramLogin'];
+  /** Login do painel por QR: o objeto pronto, ou uma função que monta o real sobre os fakes do harness. */
+  qrLogin?: AppDeps['qrLogin'] | ((fakes: ReturnType<typeof createFakes>) => AppDeps['qrLogin']);
+  /** Liga as rotas de convite: u1 ganha o chat 111 e `adminIds` diz quem administra (ausente = rotas fechadas). */
+  invites?: { adminIds: number[] };
   /** Padrão 'meu_bot'; `null` = sem nome de bot (vínculo indisponível). */
   botUsername?: string | null;
 };
@@ -45,6 +53,10 @@ export function buildApp(opts: HarnessOpts = {}) {
     }),
     ...opts.tasksOverride,
   };
+  if (opts.invites !== undefined) {
+    fakes.links.setChat('u1', 111);
+    fakes.links.setChat('u2', 222);
+  }
   const app = createApp({
     verifyToken: async (t) => {
       if (opts.verifierThrows) throw new Error('auth provider fora do ar');
@@ -56,6 +68,8 @@ export function buildApp(opts: HarnessOpts = {}) {
     tasks,
     cases: { ...makeCaseUseCases({ cases: fakes.cases }), ...opts.casesOverride },
     holidays: { ...makeHolidayUseCases({ holidays: fakes.holidays }), ...opts.holidaysOverride },
+    finance: makeFinanceUseCases({ finance: fakes.finance, clock: fakes.clock }),
+    capture: makeCaptureInterpretUseCases({ profiles: fakes.profiles, clock: fakes.clock }),
     settings: makeSettingsUseCases({
       profiles: fakes.profiles,
       tasks: fakes.tasks,
@@ -68,6 +82,20 @@ export function buildApp(opts: HarnessOpts = {}) {
       botUsername: opts.botUsername === null ? undefined : (opts.botUsername ?? 'meu_bot'),
       clock: fakes.clock,
     }),
+    ...(opts.invites !== undefined
+      ? {
+          invites: makeInviteUseCases({
+            invites: fakes.invites,
+            adminTelegramIds: new Set(opts.invites.adminIds),
+            botUsername: 'meu_bot',
+            clock: fakes.clock,
+          }),
+        }
+      : {}),
+    ...(opts.telegramLogin !== undefined ? { telegramLogin: opts.telegramLogin } : {}),
+    ...(opts.qrLogin !== undefined
+      ? { qrLogin: typeof opts.qrLogin === 'function' ? opts.qrLogin(fakes) : opts.qrLogin }
+      : {}),
     ...(opts.handleTelegramUpdate !== undefined ? { handleTelegramUpdate: opts.handleTelegramUpdate } : {}),
     ...(opts.telegramWebhookSecret !== undefined ? { telegramWebhookSecret: opts.telegramWebhookSecret } : {}),
     ...(opts.processMessage !== undefined ? { processMessage: opts.processMessage } : {}),

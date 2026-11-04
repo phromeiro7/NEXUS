@@ -29,6 +29,12 @@ function fakeTelegram() {
       sent.push({ chatId, text });
       return { ok: true, messageId: 1000 + sent.length };
     },
+    async editMessageText() {
+      return { ok: true };
+    },
+    async answerCallbackQuery() {
+      return { ok: true };
+    },
   };
   return { client, sent };
 }

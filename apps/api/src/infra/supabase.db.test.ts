@@ -8,6 +8,8 @@ import { getSupabaseEnv } from '../../test/db/supabase-env.js';
 import { createSupabaseAuthVerifier } from './supabase-auth.js';
 import { makeGetBriefing } from '../application/briefing.js';
 import { makeCaseUseCases } from '../application/cases.js';
+import { makeCaptureInterpretUseCases } from '../application/capture-interpret.js';
+import { makeFinanceUseCases } from '../application/finance.js';
 import { makeHolidayUseCases } from '../application/holidays.js';
 import { makeSettingsUseCases } from '../application/settings.js';
 import { makeSyncReminders } from '../application/sync-reminders.js';
@@ -15,6 +17,7 @@ import { makeTaskUseCases } from '../application/tasks.js';
 import { makeLinkUseCases } from '../application/telegram/link.js';
 import { createSupabaseLinkRepository } from './supabase-link-repository.js';
 import { createSupabaseCaseRepository } from './supabase-case-repository.js';
+import { createSupabaseFinanceRepository } from './supabase-finance-repository.js';
 import { createSupabaseHolidayRepository } from './supabase-holiday-repository.js';
 import { createSupabaseProfileRepository } from './supabase-profile-repository.js';
 import { createSupabaseReminderRepository } from './supabase-reminder-repository.js';
@@ -66,6 +69,8 @@ const app = createApp({
   }),
   cases: makeCaseUseCases({ cases: caseRepo }),
   holidays: makeHolidayUseCases({ holidays }),
+  finance: makeFinanceUseCases({ finance: createSupabaseFinanceRepository(admin), clock }),
+  capture: makeCaptureInterpretUseCases({ profiles: profileRepo, clock }),
   settings: makeSettingsUseCases({
     profiles: profileRepo,
     tasks: taskRepo,

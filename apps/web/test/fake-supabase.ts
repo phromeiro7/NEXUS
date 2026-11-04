@@ -30,6 +30,7 @@ export function fakeSupabase(o: Overrides = {}) {
       Promise.resolve({ data: {}, error: null as unknown }),
     ),
     updateUser: vi.fn(() => Promise.resolve({ data: {}, error: null as unknown })),
+    verifyOtp: vi.fn(() => Promise.resolve({ data: { session: null }, error: null as unknown })),
     signOut: vi.fn(() => Promise.resolve({ error: null as unknown })),
   };
   return { client: { auth } as unknown as AuthClient, auth, emit };

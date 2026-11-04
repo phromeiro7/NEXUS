@@ -191,3 +191,54 @@ describe('loadConfig', () => {
     }
   });
 });
+
+describe('loadConfig MINI_APP_URL', () => {
+  it('keeps only the https origin', () => {
+    expect(loadConfig({ ...base, MINI_APP_URL: 'https://nexus.example.com/mini/' }).miniAppUrl).toBe('https://nexus.example.com');
+  });
+  it('is optional, and empty means absent', () => {
+    expect(loadConfig(base).miniAppUrl).toBeUndefined();
+    expect(loadConfig({ ...base, MINI_APP_URL: '  ' }).miniAppUrl).toBeUndefined();
+  });
+  it.each(['http://nexus.example.com', 'nexus.example.com', 'ftp://x'])('rejects %s and names the variable', (value) => {
+    expect(() => loadConfig({ ...base, MINI_APP_URL: value })).toThrow('MINI_APP_URL');
+  });
+});
+
+describe('loadConfig TELEGRAM_LOGIN_MAX_AGE_SECONDS', () => {
+  it('is optional and keeps the integer', () => {
+    expect(loadConfig(base).telegramLoginMaxAgeSeconds).toBeUndefined();
+    expect(loadConfig({ ...base, TELEGRAM_LOGIN_MAX_AGE_SECONDS: ' ' }).telegramLoginMaxAgeSeconds).toBeUndefined();
+    expect(loadConfig({ ...base, TELEGRAM_LOGIN_MAX_AGE_SECONDS: '900' }).telegramLoginMaxAgeSeconds).toBe(900);
+  });
+  it.each(['59', '86401', '1h', '-5', '1.5'])('rejects %s and names the variable', (value) => {
+    expect(() => loadConfig({ ...base, TELEGRAM_LOGIN_MAX_AGE_SECONDS: value })).toThrow('TELEGRAM_LOGIN_MAX_AGE_SECONDS');
+  });
+});
+
+describe('convites: ADMIN_TELEGRAM_USER_IDS e INVITE_TTL_DAYS', () => {
+  const base = { SUPABASE_URL: 'http://x', SUPABASE_SERVICE_ROLE_KEY: 'k' };
+
+  it('lê os ids separados por vírgula', () => {
+    expect(loadConfig({ ...base, ADMIN_TELEGRAM_USER_IDS: '123, 456' }).adminTelegramUserIds).toEqual([123, 456]);
+  });
+  it('ausente ou vazio = ninguém administra', () => {
+    expect(loadConfig(base).adminTelegramUserIds).toBeUndefined();
+    expect(loadConfig({ ...base, ADMIN_TELEGRAM_USER_IDS: '  ' }).adminTelegramUserIds).toBeUndefined();
+  });
+  it('recusa id inválido e o erro não cita o valor', () => {
+    expect(() => loadConfig({ ...base, ADMIN_TELEGRAM_USER_IDS: '123,abc' })).toThrow(/ADMIN_TELEGRAM_USER_IDS/);
+    expect(() => loadConfig({ ...base, ADMIN_TELEGRAM_USER_IDS: '0' })).toThrow(/ADMIN_TELEGRAM_USER_IDS/);
+    try {
+      loadConfig({ ...base, ADMIN_TELEGRAM_USER_IDS: '123,segredo' });
+    } catch (e) {
+      expect(String((e as Error).message)).not.toContain('segredo');
+    }
+  });
+  it('validade dos convites: 1 a 90 dias', () => {
+    expect(loadConfig({ ...base, INVITE_TTL_DAYS: '14' }).inviteTtlDays).toBe(14);
+    expect(loadConfig(base).inviteTtlDays).toBeUndefined();
+    expect(() => loadConfig({ ...base, INVITE_TTL_DAYS: '0' })).toThrow(/INVITE_TTL_DAYS/);
+    expect(() => loadConfig({ ...base, INVITE_TTL_DAYS: '91' })).toThrow(/INVITE_TTL_DAYS/);
+  });
+});
