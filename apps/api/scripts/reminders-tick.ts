@@ -41,7 +41,7 @@ const COUNT_KEYS = {
   reminders: ['sent', 'retried', 'failed', 'cancelled', 'recovered', 'paused', 'leaseLost', 'deferred'],
   briefings: ['sent', 'skippedEmpty', 'retried', 'failed', 'paused', 'deferred'],
   eventsRecovered: ['recovered', 'failed'],
-  purged: ['chatMessages', 'linkCodes', 'modelCalls'],
+  purged: ['chatMessages', 'linkCodes', 'modelCalls', 'chatCaptures'],
 } as const;
 
 const KNOWN_ERROR_CODES = new Set(['nao_autenticado', 'agendador_desabilitado']);

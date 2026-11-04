@@ -101,6 +101,14 @@ describe('formatTickOutput', () => {
   });
 });
 
+describe('formatTickOutput chat captures', () => {
+  it('prints the chatCaptures purge count when the API reports it', () => {
+    expect(formatTickOutput(200, JSON.stringify({ purged: { chatMessages: 1, linkCodes: 2, modelCalls: 3, chatCaptures: 4 } }))).toBe(
+      'HTTP 200\n{"purged":{"chatMessages":1,"linkCodes":2,"modelCalls":3,"chatCaptures":4}}',
+    );
+  });
+});
+
 describe('main', () => {
   function capture() {
     const out: string[] = [];
