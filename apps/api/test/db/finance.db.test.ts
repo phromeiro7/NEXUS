@@ -69,23 +69,30 @@ describe('finance_entries: rls', () => {
     await expect(asAnon((q) => q(insertSql, [A]))).rejects.toMatchObject(DENIED);
   });
 
-  it('the owner reads and changes its own rows', async () => {
+  it('the owner reads its own rows but cannot write them: writes go through the API', async () => {
     await asUser(A, async (q) => {
       expect((await q(`select id from public.finance_entries where id = $1`, [aEntry])).rowCount).toBe(1);
-      expect((await q(`update public.finance_entries set description = 'meu' where id = $1`, [aEntry])).rowCount).toBe(1);
-      const own = await q(insertSql, [A]);
-      expect(own.rowCount).toBe(1);
-      expect((await q(`delete from public.finance_entries where id = $1`, [own.rows[0].id])).rowCount).toBe(1);
     });
+    await expect(
+      asUser(A, (q) => q(`update public.finance_entries set description = 'meu' where id = $1`, [aEntry])),
+    ).rejects.toMatchObject(DENIED);
+    await expect(asUser(A, (q) => q(insertSql, [A]))).rejects.toMatchObject(DENIED);
+    await expect(
+      asUser(A, (q) => q(`delete from public.finance_entries where id = $1`, [aEntry])),
+    ).rejects.toMatchObject(DENIED);
   });
 
-  it('another user sees, updates and deletes none of them', async () => {
+  it('another user sees none of them and cannot update or delete them', async () => {
     await asUser(B, async (q) => {
       expect((await q(`select 1 from public.finance_entries where id = $1`, [aEntry])).rowCount).toBe(0);
       expect((await q(`select 1 from public.finance_entries where user_id = $1`, [A])).rowCount).toBe(0);
-      expect((await q(`update public.finance_entries set description = 'hack' where id = $1`, [aEntry])).rowCount).toBe(0);
-      expect((await q(`delete from public.finance_entries where id = $1`, [aEntry])).rowCount).toBe(0);
     });
+    await expect(
+      asUser(B, (q) => q(`update public.finance_entries set description = 'hack' where id = $1`, [aEntry])),
+    ).rejects.toMatchObject(DENIED);
+    await expect(
+      asUser(B, (q) => q(`delete from public.finance_entries where id = $1`, [aEntry])),
+    ).rejects.toMatchObject(DENIED);
     const row = await pool.query(`select description from public.finance_entries where id = $1`, [aEntry]);
     expect(row.rows).toEqual([{ description: 'Segredo' }]);
   });
@@ -97,12 +104,12 @@ describe('finance_entries: rls', () => {
     ).rejects.toMatchObject(DENIED);
   });
 
-  it('authenticated has only select/insert/update/delete on the table', async () => {
+  it('authenticated has only select on the table', async () => {
     const { rows } = await pool.query<{ priv: string; ok: boolean }>(
       `select p.priv, has_table_privilege('authenticated', 'public.finance_entries', p.priv) as ok
          from unnest(array['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER']) as p(priv)`,
     );
-    expect(rows.filter((r) => r.ok).map((r) => r.priv).sort()).toEqual(['DELETE', 'INSERT', 'SELECT', 'UPDATE']);
+    expect(rows.filter((r) => r.ok).map((r) => r.priv).sort()).toEqual(['SELECT']);
     const anon = await pool.query(`select has_table_privilege('anon', 'public.finance_entries', 'SELECT') as ok`);
     expect(anon.rows[0].ok).toBe(false);
   });
