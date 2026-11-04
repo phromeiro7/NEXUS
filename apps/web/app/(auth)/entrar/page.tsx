@@ -30,6 +30,11 @@ function EntrarForm() {
 
   return (
     <AuthCard title="Entrar" lead="Sua rotina, conectada.">
+      {params.get("acesso") === "convite" && (
+        <p role="status" className="nx-note">
+          O acesso ao Nexus é por convite.
+        </p>
+      )}
       <AuthForm
         onSubmit={() => void onSubmit()}
         error={error}
@@ -51,7 +56,7 @@ function EntrarForm() {
         <Link href="/recuperar" className="nx-link">
           Esqueci a senha
         </Link>
-        {/* Sem "Criar conta" aqui: a conta virá do Telegram. /cadastro segue acessível por URL. */}
+        {/* Sem "Criar conta": o acesso é por convite. /cadastro só redireciona para esta tela. */}
       </p>
     </AuthCard>
   );
