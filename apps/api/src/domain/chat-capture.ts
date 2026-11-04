@@ -158,6 +158,8 @@ export function interpretCapture(text: string, today: IsoDate): CaptureProposal 
   const trimmed = text.trim().replace(/\s+/g, ' ');
   if (trimmed === '') return null;
   if (GREETINGS.has(fold(trimmed).replace(/[.,;:!?]+$/, ''))) return null;
+  // Pergunta não é registro: quem responde é o assistente (ou a ajuda).
+  if (trimmed.includes('?')) return null;
 
   const tokens: Token[] = trimmed.split(' ').map((raw) => ({ raw, key: fold(raw).replace(/[.,;:!?]+$/, '') }));
   const consumed = new Set<number>();
@@ -272,8 +274,9 @@ export function interpretCapture(text: string, today: IsoDate): CaptureProposal 
     // O prefixo "me lembra de" fica no começo das palavras originais; refaz a limpeza se ele estava lá.
     title = trimEdges(title.split(' ').filter((w) => w !== '')).join(' ');
     if (title === '' || title.length > TITLE_MAX) return null;
-    // Uma palavra só e sem data ("oi", "academia") é ambíguo demais para virar tarefa.
-    if (title.split(' ').length < 2 && dateSpec === undefined) return null;
+    // Sem data, só vira tarefa se começar por um verbo no infinitivo ("ligar pra Ana", "comprar pão"): uma
+    // frase qualquer ("oi", "academia", "me explica o prazo") é ambígua demais e fica para o assistente.
+    if (dateSpec === undefined && !/^\p{L}{2,}(?:ar|er|ir|or)$/u.test(fold(title.split(' ')[0] ?? ''))) return null;
     const date = dateSpec === undefined ? null : resolveDate(dateSpec, today, 'future');
     if (dateSpec !== undefined && date === null) return null;
     return { kind: 'tarefa', title, date, time: date === null ? null : time, vagueTime: date !== null && time === null && vagueTime };
