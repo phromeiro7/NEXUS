@@ -215,12 +215,23 @@ export interface AssistantModel {
  * Telegram e lembretes (Plano 5).
  */
 
+/** Botão em linha: ou devolve `callbackData` ao webhook (até 64 bytes) ou abre o Mini App (`webAppUrl`, https). */
+export type InlineButton = { text: string } & ({ callbackData: string } | { webAppUrl: string });
+export type InlineKeyboard = InlineButton[][];
+
+type TelegramCall<T> = Promise<({ ok: true } & T) | { ok: false; error: TelegramErrorClass }>;
+
 /** Envia texto simples. Nunca lança por falha do Telegram: devolve a classificação do erro. */
 export interface TelegramClient {
   sendMessage(
     chatId: number,
     text: string,
+    options?: { keyboard?: InlineKeyboard },
   ): Promise<{ ok: true; messageId: number } | { ok: false; error: TelegramErrorClass }>;
+  /** Troca o texto (e os botões; sem `keyboard` os botões somem) de uma mensagem já enviada. */
+  editMessageText(chatId: number, messageId: number, text: string, options?: { keyboard?: InlineKeyboard }): TelegramCall<unknown>;
+  /** Fecha o "carregando" do botão; `text` aparece como aviso curto para a pessoa. */
+  answerCallbackQuery(callbackQueryId: string, text?: string): TelegramCall<unknown>;
 }
 
 /** Lembrete reservado (`enviando`) com tudo o que o envio precisa; `attempts` é o token de reserva. */
@@ -297,6 +308,43 @@ export interface LinkCodeRepository {
   unlink(userId: string): Promise<void>;
   /** Dono do chat, ou `null` se nenhum usuário o tem vinculado. */
   userForChat(chatId: number): Promise<string | null>;
+}
+
+export type CaptureStatus = 'pendente' | 'confirmando' | 'confirmada' | 'desfeita';
+export type CaptureEntity = { kind: 'tarefa' | 'lancamento'; id: string };
+export type CaptureRecord = {
+  id: string;
+  userId: string;
+  chatId: number;
+  /** A proposta (JSON); quem lê valida o formato. */
+  payload: unknown;
+  status: CaptureStatus;
+  entity: CaptureEntity | null;
+  messageId: number | null;
+  expiresAt: Date;
+};
+
+/** Propostas do chat (chat_captures). Nada vai para tarefas nem lançamentos antes de `finishConfirm`. */
+export interface CaptureRepository {
+  /** Nova proposta `pendente`, válida por 1 h. */
+  create(userId: string, chatId: number, payload: unknown, now: Date): Promise<CaptureRecord>;
+  /** `null` se o id não existe, é inválido ou já expirou. */
+  get(id: string, now: Date): Promise<CaptureRecord | null>;
+  /** Troca a proposta só enquanto `pendente`; `false` se já não está. */
+  updatePayload(id: string, payload: unknown): Promise<boolean>;
+  setMessage(id: string, messageId: number): Promise<void>;
+  /** `pendente` -> `confirmando`, atômico: só um toque ganha (`true`). */
+  beginConfirm(id: string, now: Date): Promise<boolean>;
+  /** `confirmando` -> `confirmada`, guarda o que foi criado e estende a validade para 24 h. */
+  finishConfirm(id: string, entity: CaptureEntity, now: Date): Promise<void>;
+  /** `confirmando` -> `pendente` (a criação falhou, a pessoa pode tentar de novo). */
+  abortConfirm(id: string): Promise<void>;
+  /** `confirmada` -> `desfeita`, atômico; devolve o que apagar, ou `null` se não estava confirmada. */
+  beginUndo(id: string, now: Date): Promise<CaptureEntity | null>;
+  /** `desfeita` -> `confirmada` (a exclusão falhou). */
+  abortUndo(id: string): Promise<void>;
+  /** Apaga as expiradas; devolve quantas. */
+  purgeExpired(now: Date): Promise<number>;
 }
 
 export interface ConfirmationRepository {

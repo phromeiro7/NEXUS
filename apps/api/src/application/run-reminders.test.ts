@@ -40,6 +40,8 @@ function setup(opts: { telegram?: boolean } = {}) {
       inFlight -= 1;
       return res;
     },
+    editMessageText: (...args) => f.telegram.editMessageText(...args),
+    answerCallbackQuery: (...args) => f.telegram.answerCallbackQuery(...args),
   };
   const origFinish = f.reminderQueue.finish.bind(f.reminderQueue);
   const finishSpy = vi.spyOn(f.reminderQueue, 'finish');

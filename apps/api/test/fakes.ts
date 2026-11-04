@@ -18,7 +18,11 @@ import type {
   Clock,
   FinanceEntryPatch,
   FinanceEntryRepository,
+  CaptureEntity,
+  CaptureRecord,
+  CaptureRepository,
   ConfirmationRepository,
+  InlineKeyboard,
   LinkCodeRepository,
   MaintenanceRepository,
   ReminderQueue,
@@ -347,19 +351,33 @@ export function createFakes(seed: { now?: Date } = {}) {
 
   // ---- Telegram: cliente falso com respostas roteirizadas ----
   type SendResult = Awaited<ReturnType<TelegramClient['sendMessage']>>;
-  const sent: Array<{ chatId: number; text: string }> = [];
+  const sent: Array<{ chatId: number; text: string; keyboard?: InlineKeyboard }> = [];
+  const edits: Array<{ chatId: number; messageId: number; text: string; keyboard?: InlineKeyboard }> = [];
+  const answers: Array<{ id: string; text?: string }> = [];
   const scripted: SendResult[] = [];
   let nextMessageId = 1000;
   const telegram: TelegramClient & {
     sent: typeof sent;
+    edits: typeof edits;
+    answers: typeof answers;
     /** Próximas respostas, em ordem; esgotadas, devolve sucesso com `messageId` crescente. */
     script(...results: SendResult[]): void;
     failNext(error: TelegramErrorClass): void;
   } = {
     sent,
-    async sendMessage(chatId, text) {
-      sent.push({ chatId, text });
+    edits,
+    answers,
+    async sendMessage(chatId, text, options) {
+      sent.push({ chatId, text, ...(options?.keyboard !== undefined ? { keyboard: options.keyboard } : {}) });
       return scripted.shift() ?? { ok: true, messageId: nextMessageId++ };
+    },
+    async editMessageText(chatId, messageId, text, options) {
+      edits.push({ chatId, messageId, text, ...(options?.keyboard !== undefined ? { keyboard: options.keyboard } : {}) });
+      return { ok: true };
+    },
+    async answerCallbackQuery(id, text) {
+      answers.push({ id, ...(text !== undefined ? { text } : {}) });
+      return { ok: true };
     },
     script(...results) {
       scripted.push(...results);
@@ -637,6 +655,81 @@ export function createFakes(seed: { now?: Date } = {}) {
     },
   };
 
+  // ---- Propostas do chat (chat_captures) ----
+  const captureRows = new Map<string, CaptureRecord>();
+  let captureSeq = 0;
+  const HOUR = 60 * 60 * 1000;
+  const captures: CaptureRepository & { all(): CaptureRecord[] } = {
+    all: () => [...captureRows.values()],
+    async create(userId, chatId, payload, at) {
+      captureSeq += 1;
+      const id = `00000000-0000-4000-8000-${String(captureSeq).padStart(12, '0')}`;
+      const record: CaptureRecord = {
+        id,
+        userId,
+        chatId,
+        payload: structuredClone(payload),
+        status: 'pendente',
+        entity: null,
+        messageId: null,
+        expiresAt: new Date(at.getTime() + HOUR),
+      };
+      captureRows.set(id, record);
+      return structuredClone(record);
+    },
+    async get(id, at) {
+      const r = captureRows.get(id);
+      return r === undefined || r.expiresAt < at ? null : structuredClone(r);
+    },
+    async updatePayload(id, payload) {
+      const r = captureRows.get(id);
+      if (r === undefined || r.status !== 'pendente') return false;
+      r.payload = structuredClone(payload);
+      return true;
+    },
+    async setMessage(id, messageId) {
+      const r = captureRows.get(id);
+      if (r) r.messageId = messageId;
+    },
+    async beginConfirm(id, at) {
+      const r = captureRows.get(id);
+      if (r === undefined || r.status !== 'pendente' || r.expiresAt < at) return false;
+      r.status = 'confirmando';
+      return true;
+    },
+    async finishConfirm(id, entity: CaptureEntity, at) {
+      const r = captureRows.get(id);
+      if (r === undefined || r.status !== 'confirmando') throw new Error('proposta fora do estado esperado');
+      r.status = 'confirmada';
+      r.entity = entity;
+      r.expiresAt = new Date(at.getTime() + 24 * HOUR);
+    },
+    async abortConfirm(id) {
+      const r = captureRows.get(id);
+      if (r?.status === 'confirmando') r.status = 'pendente';
+    },
+    async beginUndo(id, at) {
+      const r = captureRows.get(id);
+      if (r === undefined || r.status !== 'confirmada' || r.entity === null || r.expiresAt < at) return null;
+      r.status = 'desfeita';
+      return r.entity;
+    },
+    async abortUndo(id) {
+      const r = captureRows.get(id);
+      if (r?.status === 'desfeita') r.status = 'confirmada';
+    },
+    async purgeExpired(at) {
+      let n = 0;
+      for (const [id, r] of captureRows) {
+        if (r.expiresAt < at) {
+          captureRows.delete(id);
+          n += 1;
+        }
+      }
+      return n;
+    },
+  };
+
   // ---- Manutenção ----
   const maintenance: MaintenanceRepository = {
     async purgeExpiredChatMessages(at) {
@@ -698,6 +791,7 @@ export function createFakes(seed: { now?: Date } = {}) {
     briefings,
     reminderQueue,
     confirmations,
+    captures,
     maintenance,
     tasks,
     cases,
