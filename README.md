@@ -165,6 +165,56 @@ devolve `{ "tokenHash": "..." }`. O cliente troca o token por sessão com
 - Sem `TELEGRAM_BOT_TOKEN` a rota responde `503 login_desabilitado`. Nada disso registra `initData`, token ou
   tokens de sessão em log.
 
+### Login do painel por QR code
+
+No computador a pessoa não tem e-mail nem senha (a conta nasceu pelo Telegram). A tela `/entrar` do painel mostra
+um **QR code** e o botão **Abrir no Telegram**; o celular confirma que é ela, como no WhatsApp Web. No celular a
+mesma tela mostra só o botão (ler o código com o próprio aparelho não serve). E-mail e senha continua existindo,
+como alternativa discreta ("Entrar com e-mail e senha") e como reserva quando o login pelo Telegram está desligado.
+
+Fluxo:
+
+1. O navegador chama `POST /auth/qr` (sem Bearer) e recebe `{ id, pollSecret, deepLink, expiresAt }`. O `deepLink`
+   é `https://t.me/<bot>?start=login_<nonce>`; o painel o transforma em QR **no próprio navegador**
+   (`qrcode-generator`, MIT, sem dependências; nenhum serviço externo de QR, porque o link leva o código do
+   pedido). O pedido vale **3 minutos**.
+2. A pessoa abre o link no Telegram. O bot recebe `/start login_<nonce>`: sem conta responde "Este Telegram
+   ainda não tem acesso ao Nexus. Peça um convite."; com conta pergunta "Entrar no painel do Nexus pelo
+   navegador?" com o navegador e a hora do pedido (ex.: "Chrome em macOS · 12:00"), avisa que só se confirma se foi
+   a própria pessoa quem abriu o painel, e mostra **Confirmar** e **Não fui eu**.
+3. Enquanto isso o navegador consulta `GET /auth/qr/:id` com o segredo no cabeçalho `X-Poll-Secret`
+   (a cada ~2 s, mais devagar depois de 30 s e de 90 s; pausa com a aba escondida). Estados: `aguardando`,
+   `confirmar`, `aprovado` (com `tokenHash`, uma vez), `negado`, `recusado`, `expirado`.
+4. Aprovado, o painel troca o `tokenHash` por sessão com `verifyOtp({ token_hash, type: 'magiclink' })`, como o login
+   automático do Mini App. Nenhum e-mail é enviado.
+
+O que garante:
+
+- O nonce (160 bits) e o `pollSecret` (256 bits) ficam no banco **só como hash SHA-256** (`qr_login_requests`,
+  tabela fechada: RLS ligada, sem acesso de cliente). O `id` público não revela nenhum dos dois, e o `pollSecret`
+  vive só na memória do navegador que criou o pedido: quem conhece o `id` mas não o segredo recebe `404`, igual a
+  um id inexistente.
+- Cada passo é um UPDATE atômico no banco: abrir (só `aguardando` e não vencido), decidir (só o chat que abriu, para
+  a conta perguntada, em `confirmar`) e recolher (só `aprovado`, não vencido, com o segredo certo, uma única vez;
+  um segundo recolhimento dá `401 ja_utilizado`). Toques repetidos do mesmo botão valem uma vez só.
+- O link ou QR de outra pessoa não entra sozinho: quem o abre no Telegram é perguntado e pode tocar em **Não fui
+  eu**, que bloqueia o pedido. Só confirme se foi você quem acabou de abrir o painel.
+- Limites em memória (valem por instância): 20 pedidos por IP a cada 10 minutos, 120 consultas por pedido por
+  minuto, e as tentativas inválidas por chat usam o mesmo limite do `/start` (5 em 10 minutos). `Retry-After` vem
+  no `429`.
+- O login por QR só liga com `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME` e `TELEGRAM_WEBHOOK_SECRET` (o bot
+  precisa receber mensagens); sem eles `POST /auth/qr` responde `503 login_desabilitado` e o painel abre direto no
+  e-mail e senha. O agendador apaga os pedidos vencidos há mais de 10 minutos. CORS: o cabeçalho `X-Poll-Secret`
+  é liberado só para a origem do painel (`WEB_ORIGIN`).
+- Nada registra nonce, `pollSecret`, token ou o `deepLink` em log.
+
+**Sessão no painel.** É a sessão padrão do Supabase, guardada no navegador: o token de acesso vale 1 h
+(`jwt_expiry = 3600`) e é renovado sozinho com o token de renovação (com rotação), então a pessoa fica entrando
+**até tocar em "Sair"** (ou até o token de renovação ser revogado). Não há limite de tempo total configurado
+(`[auth.sessions] timebox`/`inactivity_timeout` ficam desligados). Para encerrar o acesso de alguém no
+computador, "Sair" no painel; se perdeu o aparelho, `/desvincular` no bot corta o QR de novo, mas não derruba a
+sessão já aberta (isso exige revogar as sessões da conta no Supabase).
+
 ### Convites: dar acesso a outra pessoa
 
 O acesso ao Nexus é **por convite**: não há cadastro aberto (`/cadastro` só redireciona para `/entrar` com o
