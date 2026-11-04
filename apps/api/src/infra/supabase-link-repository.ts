@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { LinkCodeCollisionError } from '../application/errors.js';
 import type { LinkCodeRepository } from '../application/ports.js';
 import { maskEmail } from '../application/telegram/mask-email.js';
+import { isSyntheticEmail } from './supabase-account-provisioner.js';
 
 const UNIQUE_VIOLATION = '23505';
 
@@ -16,7 +17,8 @@ export function createSupabaseLinkRepository(client: SupabaseClient): LinkCodeRe
   async function accountHintFor(userId: string): Promise<string | null> {
     try {
       const { data, error } = await client.auth.admin.getUserById(userId);
-      if (error || !data.user?.email) return null;
+      // Conta criada por convite não tem e-mail de verdade: não há o que mostrar.
+      if (error || !data.user?.email || isSyntheticEmail(data.user.email)) return null;
       return maskEmail(data.user.email);
     } catch {
       return null;

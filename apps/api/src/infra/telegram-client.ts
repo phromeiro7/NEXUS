@@ -32,14 +32,16 @@ async function readBody(response: Response): Promise<TelegramBody | null> {
   }
 }
 
-/** `inline_keyboard` do Bot API: `callbackData` vira `callback_data`, `webAppUrl` vira `web_app.url`. */
+/** `inline_keyboard` do Bot API: `callbackData` vira `callback_data`, `webAppUrl` vira `web_app.url`, `url` vira `url`. */
 function toReplyMarkup(keyboard: InlineKeyboard): { inline_keyboard: unknown[][] } {
   return {
     inline_keyboard: keyboard.map((row) =>
       row.map((button) =>
         'callbackData' in button
           ? { text: button.text, callback_data: button.callbackData }
-          : { text: button.text, web_app: { url: button.webAppUrl } },
+          : 'url' in button
+            ? { text: button.text, url: button.url }
+            : { text: button.text, web_app: { url: button.webAppUrl } },
       ),
     ),
   };

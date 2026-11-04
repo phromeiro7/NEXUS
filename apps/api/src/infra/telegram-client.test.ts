@@ -192,6 +192,15 @@ describe('createTelegramClient inline keyboards, edits and callback answers', ()
     });
   });
 
+  it('a url button becomes a plain link button', async () => {
+    const f = fakeFetch(ok);
+    const client = createTelegramClient({ token: TOKEN, fetch: f.impl });
+    await client.sendMessage(1, 'oi', { keyboard: [[{ text: 'Compartilhar', url: 'https://t.me/share/url?url=x' }]] });
+    expect(JSON.parse(f.calls[0]!.init.body as string).reply_markup).toEqual({
+      inline_keyboard: [[{ text: 'Compartilhar', url: 'https://t.me/share/url?url=x' }]],
+    });
+  });
+
   it('editMessageText targets the message and clears the buttons when no keyboard is given', async () => {
     const f = fakeFetch(ok);
     const client = createTelegramClient({ token: TOKEN, fetch: f.impl });

@@ -16,6 +16,7 @@ import type { makeSettingsUseCases } from './application/settings.js';
 import type { makeTaskUseCases } from './application/tasks.js';
 import type { SchedulerResult } from './application/scheduler.js';
 import type { makeLinkUseCases } from './application/telegram/link.js';
+import { ForbiddenError } from './application/errors.js';
 import { errorResponse } from './http-errors.js';
 import { telegramRoutes } from './routes/telegram.js';
 import { internalRoutes } from './routes/internal.js';
@@ -25,6 +26,7 @@ import { briefingRoutes } from './routes/briefing.js';
 import { casesRoutes } from './routes/cases.js';
 import { financeRoutes } from './routes/finance.js';
 import { holidaysRoutes } from './routes/holidays.js';
+import { inviteRoutes, type InviteRoutesDeps } from './routes/invites.js';
 import { settingsRoutes } from './routes/settings.js';
 import { tasksRoutes } from './routes/tasks.js';
 
@@ -52,6 +54,8 @@ export type AppDeps = {
   telegramWebhookSecret?: string;
   /** Login do Mini App pelo `initData`; ausente = desligado (503 'login_desabilitado'). */
   telegramLogin?: AuthRoutesDeps['telegramLogin'];
+  /** Convites (administrador). Ausente = rotas respondem 403 a todos. */
+  invites?: InviteRoutesDeps['invites'];
 };
 
 export function createApp(deps: AppDeps) {
@@ -128,6 +132,25 @@ export function createApp(deps: AppDeps) {
   app.route('/cases', casesRoutes({ cases: deps.cases }, auth));
   app.route('/holidays', holidaysRoutes({ holidays: deps.holidays }, auth));
   app.route('/finance-entries', financeRoutes({ finance: deps.finance }, auth));
+  app.route(
+    '/invites',
+    inviteRoutes(
+      {
+        invites: deps.invites ?? {
+          create: async () => {
+            throw new ForbiddenError();
+          },
+          list: async () => {
+            throw new ForbiddenError();
+          },
+          revoke: async () => {
+            throw new ForbiddenError();
+          },
+        },
+      },
+      auth,
+    ),
+  );
   app.route('/settings', settingsRoutes({ settings: deps.settings }, auth));
   app.route('/briefing', briefingRoutes({ briefing: deps.briefing }, auth));
   app.route('/assistant', assistantRoutes({ processMessage: deps.processMessage }, auth));
