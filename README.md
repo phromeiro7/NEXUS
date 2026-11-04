@@ -345,9 +345,9 @@ a cada minuto com o cabeçalho `X-Internal-Secret: <INTERNAL_SECRET>`; o código
 Em qualquer opção, o agendador deve apontar para o **domínio de produção**, nunca para URLs de preview (a
 proteção de implantação da Vercel as bloqueia; o domínio de produção fica de fora da proteção padrão).
 
-**Hospedagem.** O alvo é a Vercel (domínio gratuito `*.vercel.app`; o plano Hobby é só para uso não comercial).
-O adaptador existe (`apps/api/src/vercel.ts`, empacotado por esbuild em `apps/api/.vercel/output`, Build Output API v3; veja
-"Publicar na Vercel (API)" abaixo), mas **nenhum deploy real foi feito ainda** e a primeira publicação pode exigir um ajuste.
+**Hospedagem.** Está na Vercel (domínio gratuito `*.vercel.app`; o plano Hobby é só para uso não comercial). O adaptador
+é `apps/api/src/vercel.ts`, empacotado por esbuild em `apps/api/.vercel/output` (Build Output API v3); veja
+"Publicar na Vercel (API)" e "Em produção hoje" abaixo.
 
 #### Publicar na Vercel (API)
 
@@ -405,28 +405,42 @@ da API ou da rede repete a atualização. Variáveis: `TELEGRAM_BOT_TOKEN` e `TE
 - Portas: o `local-up.sh` usa 3110 (site) e 3111 (API), porque a 3000 e a 3001 costumam estar ocupadas.
   `NEXT_PUBLIC_API_URL` e `WEB_ORIGIN` precisam acompanhar essas portas.
 
-### Colocar no ar (outras pessoas usando)
+### Em produção hoje
 
-Alvo: site na **Vercel** (Hobby, uso não comercial), API no **Render** (plano gratuito, `render.yaml`), banco no
-**Supabase Cloud**, lembretes pelo `pg_cron` do Supabase e Telegram por **webhook** (sem polling). O plano gratuito do
-Render hiberna a API após ~15 min sem requisições; o `pg_cron` chamando a API a cada minuto a mantém acordada.
+Dois projetos da Vercel ligados a este repositório (conta `phromeiro7`); cada push na `main` publica os dois.
 
-1. **Código no GitHub.** O Render e a Vercel leem o repositório: dê push da branch.
-2. **API no Render.** New > Blueprint, escolha o repositório e a branch (lê o `render.yaml`). Preencha os segredos:
-   `SUPABASE_SERVICE_ROLE_KEY` (`supabase projects api-keys --project-ref <ref>`), `TELEGRAM_BOT_TOKEN`,
-   `TELEGRAM_WEBHOOK_SECRET` e `INTERNAL_SECRET` (valores no `.env.telegram` ou gerados com `openssl rand -hex 32`),
-   e `ADMIN_TELEGRAM_USER_IDS`. Deixe `WEB_ORIGIN` e `MINI_APP_URL` para o passo 4. Confira `https://<api>/health`.
-3. **Site na Vercel.** Import do repositório, **Root Directory** `apps/web`, com "Include source files outside of
-   the Root Directory" ligado. Variáveis: `NEXT_PUBLIC_API_URL` (URL da API), `NEXT_PUBLIC_SUPABASE_URL` e
-   `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
-4. **Fechar o círculo.** No Render, preencha `WEB_ORIGIN` e `MINI_APP_URL` com a URL do site (origem https, sem barra
-   final) e reimplante. No Supabase (Authentication > URL Configuration), ponha essa URL em Site URL.
-5. **Webhook do Telegram.** Pare o polling local (`scripts/local-up.sh`) e rode
-   `scripts/telegram-webhook.sh set https://<api>` (`info` consulta, `delete` remove).
-6. **Lembretes.** Rode o SQL do passo 6 do runbook acima no SQL Editor (Vault + `cron.schedule`), com a URL da API.
-7. **Backup.** `scripts/backup-db.sh` grava os dados (inclui as contas do `auth`) em `~/Backups/nexus`, guardando os 14
-   mais recentes; agende no `launchd`/`cron`. O plano gratuito do Supabase não garante backup automático.
-8. **Convidar.** Com seu ID do Telegram em `ADMIN_TELEGRAM_USER_IDS`, gere os convites (veja "Convites").
+| Peça | Onde | Endereço |
+|---|---|---|
+| Painel e Mini App | Vercel, projeto `nexus-web` (raiz `apps/web`) | https://nexus-web-five-sandy.vercel.app |
+| API | Vercel, projeto `nexus-api` (raiz `apps/api`) | https://nexus-api-lilac.vercel.app |
+| Banco e login | Supabase Cloud, projeto NEXUS | região `sa-east-1` |
+| Lembretes | `pg_cron` do Supabase (`reminders-tick`, todo minuto) chamando `/internal/reminders/run` | segredos no Vault |
+| Bot | webhook em `https://nexus-api-lilac.vercel.app/telegram/webhook` | `@NexusAssitant_bot` |
+
+Cuidado com os endereços: o domínio público de cada projeto **não segue um padrão** (`nexus-api-lilac`, mas
+`nexus-web-five-sandy`). Confira com `vercel inspect <deploy>` (lista os *Aliases*) e abra a página antes de
+gravar o endereço em `WEB_ORIGIN` ou `MINI_APP_URL`: já houve um endereço parecido que era de outro projeto. Os
+endereços `*-phromeiro7.vercel.app` e de preview pedem login da Vercel; só os domínios acima são públicos.
+
+Variáveis da API (Vercel, produção; os valores ficam fora do Git): `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
+`INTERNAL_SECRET`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET`, `WEB_ORIGIN` (origem do
+painel, sem barra final), `MINI_APP_URL` (o mesmo valor) e `ADMIN_TELEGRAM_USER_IDS`. Do painel:
+`NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY`. Depois de mudar uma variável,
+refaça o deploy (`vercel redeploy <domínio> --target=production`).
+
+Operação:
+- **Webhook:** `scripts/telegram-webhook.sh set https://nexus-api-lilac.vercel.app` (`info` consulta, `delete` remove).
+  O polling local apaga o webhook ao iniciar: use-o só para depurar e registre o webhook de volta.
+- **Botão do bot:** configurado no BotFather (Bot Settings > Menu Button), com o endereço do painel mais `/mini`.
+  Mande o endereço e o título em mensagens separadas; `/empty` junto do endereço apaga a configuração.
+- **Supabase Auth:** Site URL com o endereço do painel (a recuperação de senha usa `/nova-senha`).
+- **Banco:** `supabase db push --linked` (rode antes com `--dry-run`). O projeto é o de produção: não rode `db reset`
+  nem `test:db` com um `.env` apontando para ele.
+- **Backup:** `scripts/backup-db.sh` grava os dados (inclui as contas do `auth`) em `~/Backups/nexus`, guardando os 14
+  mais recentes. Para agendar no `launchd` do Mac (todo dia às 03:00, só com o Mac ligado e o Docker aberto), rode você mesmo
+  `scripts/agendar-backup.sh instalar` (`status`, `agora` e `remover` também existem). O plano gratuito do Supabase não
+  garante backup automático.
+- **Convidar:** o administrador (`ADMIN_TELEGRAM_USER_IDS`) manda `/convite` ao bot; veja "Convites".
 
 ### Assistente de IA
 
