@@ -7,6 +7,7 @@
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
     "reminders:tick": "tsx --env-file-if-exists=.env scripts/reminders-tick.ts",
+    "reminders:loop": "tsx --env-file-if-exists=.env scripts/reminders-loop.ts",
     "smoke:assistant": "tsx scripts/assistant-smoke.ts",
     "test": "vitest run --passWithNoTests",
     "test:db": "vitest run --config vitest.db.config.ts --passWithNoTests",

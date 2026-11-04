@@ -88,6 +88,13 @@ destino precisa de `https:`. O script não segue redirecionamentos, imprime só 
 (em erro, só o código conhecido da API) e sai com código diferente de zero se o status não for 200. Em produção, um agendador externo deve chamar a rota a
 cada minuto (veja "Telegram e lembretes: runbook", abaixo).
 
+**Laço local provisório.** `pnpm --filter @aj/api reminders:loop` repete o `reminders:tick` a cada 60 s
+(`REMINDERS_LOOP_SECONDS`, de 5 a 3600) até Ctrl+C ou SIGTERM; uma passada que falha vira só a linha
+`tick falhou` e o laço segue. Com a API em outra porta: `REMINDERS_URL=http://localhost:3201 pnpm --filter @aj/api reminders:loop`.
+Serve para testar em desenvolvimento; em produção troque pelo `pg_cron` do runbook (passo 6) ou por um Cron
+da hospedagem (por exemplo, o Vercel Cron chamando `POST /internal/reminders/run` com o cabeçalho
+`X-Internal-Secret`) e não deixe o laço rodando num notebook.
+
 ### Telegram (vínculo e webhook)
 
 - `POST /telegram/link-codes` (autenticado) gera um código de 8 caracteres (alfabeto sem ambíguos,
