@@ -50,10 +50,12 @@ const endStep = (text: string): ModelStep => ({ stopReason: 'end_turn', blocks: 
 const fakes = createFakes();
 const telegram = fakes.telegram;
 const slowTelegram: TelegramClient = {
-  async sendMessage(chatId, text) {
+  async sendMessage(chatId, text, options) {
     await new Promise((r) => setTimeout(r, 100));
-    return telegram.sendMessage(chatId, text);
+    return telegram.sendMessage(chatId, text, options);
   },
+  editMessageText: (...args) => telegram.editMessageText(...args),
+  answerCallbackQuery: (...args) => telegram.answerCallbackQuery(...args),
 };
 
 const app = buildApp(
@@ -171,7 +173,7 @@ describe('journey: link -> create by message -> reschedule by reply -> reminder 
       endStep('Anotei: reunião amanhã às 14h.'),
     ];
     telegram.script({ ok: true, messageId: CONFIRMATION_ID });
-    expect((await hook(update(chat, { text: 'reunião amanhã às 14h' }))).status).toBe(200);
+    expect((await hook(update(chat, { text: 'pode marcar reunião amanhã às 14h?' }))).status).toBe(200);
     expect(sentTo(chat).at(-1)).toBe('Anotei: reunião amanhã às 14h.\n\n• Reunião — qui, 10/03, 14:00');
 
     const tasks = await tasksOf(user.id);
@@ -272,7 +274,7 @@ describe('failure paths end to end', () => {
       toolStep('criar_tarefa', { title: 'Duplicada', type: 'tarefa', dueDate: '2033-03-30' }),
       endStep('Anotado.'),
     ];
-    const msg = update(chat, { text: 'duplicada para o dia 30' });
+    const msg = update(chat, { text: 'duplicada para o dia 30?' });
     modelCalls.length = 0;
     expect((await hook(msg)).status).toBe(200);
     expect(modelCalls).toHaveLength(2);

@@ -40,7 +40,8 @@ autenticação. Veja `.env.example` para as variáveis.
 | `GET/POST /holidays`, `DELETE /holidays/:id` | Feriados do usuário |
 | `GET/PATCH /settings` | Configurações (o `PATCH` reconstrói lembretes quando preciso) |
 | `GET /briefing` | Briefing diário |
-| `POST /assistant/message` | Mensagem ao assistente de IA (painel) |
+| `POST /capture/interpret` | Lê uma frase ("gastei 100 em roupa") com as regras do bot e devolve a proposta, sem gravar |
+| `POST /assistant/message` | Mensagem ao assistente de IA |
 | `POST /telegram/link-codes` | Gera o código de vínculo do Telegram (`{ code, deepLink, expiresAt }`) |
 | `DELETE /telegram/link` | Desvincula o Telegram da conta (`204`) |
 | `POST /telegram/webhook` | Webhook do bot (sem token de usuário; exige `X-Telegram-Bot-Api-Secret-Token`) |
@@ -88,6 +89,13 @@ destino precisa de `https:`. O script não segue redirecionamentos, imprime só 
 (em erro, só o código conhecido da API) e sai com código diferente de zero se o status não for 200. Em produção, um agendador externo deve chamar a rota a
 cada minuto (veja "Telegram e lembretes: runbook", abaixo).
 
+**Laço local provisório.** `pnpm --filter @aj/api reminders:loop` repete o `reminders:tick` a cada 60 s
+(`REMINDERS_LOOP_SECONDS`, de 5 a 3600) até Ctrl+C ou SIGTERM; uma passada que falha vira só a linha
+`tick falhou` e o laço segue. Com a API em outra porta: `REMINDERS_URL=http://localhost:3201 pnpm --filter @aj/api reminders:loop`.
+Serve para testar em desenvolvimento; em produção troque pelo `pg_cron` do runbook (passo 6) ou por um Cron
+da hospedagem (por exemplo, o Vercel Cron chamando `POST /internal/reminders/run` com o cabeçalho
+`X-Internal-Secret`) e não deixe o laço rodando num notebook.
+
 ### Telegram (vínculo e webhook)
 
 - `POST /telegram/link-codes` (autenticado) gera um código de 8 caracteres (alfabeto sem ambíguos,
@@ -116,7 +124,135 @@ Se você não reconhece esta conta, envie /desvincular agora.`; sem e-mail dispo
 aparece em respostas nem em logs. `/comando@outro_bot` só é comando se o sufixo for o nome do nosso bot
 (`TELEGRAM_BOT_USERNAME`, sem distinguir maiúsculas); os comandos também não distinguem maiúsculas. Um chat só pode estar ligado a uma conta (`Este Telegram já está ligado a outra conta.`).
 
-Variáveis (só os nomes): `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET`.
+**Registro pelo chat (regras, sem IA).** Antes do assistente, a mensagem de texto de um chat vinculado passa por
+um interpretador de regras em português (`apps/api/src/domain/chat-capture.ts`): `gastei 45 no mercado`,
+`recebi 800 de um serviço`, `internet 119,90 vence dia 8`, `reunião com a equipe sexta 9h30`. O bot responde com uma
+proposta e botões; nada vai para tarefas nem lançamentos antes de **Confirmar**.
+
+- Gasto e entrada: Confirmar, Mudar categoria, Mudar data. Conta a pagar: também Mudar horário; sem data não há
+  Confirmar até a pessoa escolher o dia. Tarefa: Confirmar, Mudar dia, Mudar horário (só com data). O aviso da
+  tarefa segue as configurações da pessoa (`earlyReminderMinutes`), não é escolhido por tarefa.
+- Depois de confirmar: "Pronto, anotado." com **Desfazer** (vale 24 h) e, com `MINI_APP_URL`, **Ver no Nexus**.
+- As propostas ficam em `chat_captures` (migração `0008`, só `service_role`): 1 h para confirmar; o agendador
+  apaga as expiradas (`purged.chatCaptures`). Confirmar e desfazer são trocas atômicas de estado: dois toques
+  seguidos criam uma só entrada. O botão só vale para o dono da proposta e do chat.
+- Nunca assume o que a pessoa não disse: tarefa sem data fica "sem data" e o bot pergunta; "de manhã/tarde/noite"
+  não vira horário. Dois valores, duas datas ou verbo de dinheiro sem valor = não entendeu.
+- O que as regras não entendem vai ao assistente de IA, se `ANTHROPIC_API_KEY` estiver configurada; senão o bot
+  responde com exemplos (`/ajuda` também). Perguntas (`?`) e frases soltas vão para o assistente, nunca viram tarefa.
+- Não cobre: "semana que vem", "daqui a 2 dias", valores por extenso, parcelas, mais de um lançamento por mensagem.
+- Os botões exigem `allowed_updates` com `callback_query` no `setWebhook` (veja o runbook).
+- Lembretes das **contas a pagar** ainda não saem pelo chat: o formulário só guarda o horário.
+
+Variáveis (só os nomes): `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET`, `MINI_APP_URL`
+(opcional, origem https do Mini App; habilita "Ver no Nexus").
+
+### Login automático do Mini App pelo Telegram
+
+`POST /auth/telegram` (sem Bearer) recebe `{ "initData": "..." }`, o que o Telegram entrega ao Mini App, e
+devolve `{ "tokenHash": "..." }`. O cliente troca o token por sessão com
+`supabase.auth.verifyOtp({ token_hash, type: 'magiclink' })`. Como funciona e o que garante:
+
+- A assinatura é validada com HMAC-SHA256 (chave derivada de `WebAppData` + token do bot), em tempo constante,
+  **antes** de ler qualquer campo; `auth_date` precisa estar dentro da janela (`TELEGRAM_LOGIN_MAX_AGE_SECONDS`,
+  padrão 3600, de 60 a 86400).
+- Só entra quem já tem o Telegram **vinculado** (o vínculo de Configurações). O usuário da sessão vem só do
+  vínculo guardado no servidor. Telegram não vinculado recebe `403 telegram_nao_vinculado` e o `initData` não é
+  consumido. Quem não tem conta entra por convite (seção abaixo).
+- Cada `initData` abre **uma** sessão (tabela `telegram_auth_replays`; limpeza pelo agendador); repetir dá
+  `401 ja_utilizado`. O token de sessão também é de uso único. `admin.generateLink` não envia e-mail algum.
+- Limite de tentativas: 30 por IP e 10 por usuário do Telegram a cada 10 minutos, em memória (vale por
+  instância). Atrás de proxy ou túnel vale o primeiro IP de `cf-connecting-ip`/`x-forwarded-for`.
+- Sem `TELEGRAM_BOT_TOKEN` a rota responde `503 login_desabilitado`. Nada disso registra `initData`, token ou
+  tokens de sessão em log.
+
+### Login do painel por QR code
+
+No computador a pessoa não tem e-mail nem senha (a conta nasceu pelo Telegram). A tela `/entrar` do painel mostra
+um **QR code** e o botão **Abrir no Telegram**; o celular confirma que é ela, como no WhatsApp Web. No celular a
+mesma tela mostra só o botão (ler o código com o próprio aparelho não serve). E-mail e senha continua existindo,
+como alternativa discreta ("Entrar com e-mail e senha") e como reserva quando o login pelo Telegram está desligado.
+
+Fluxo:
+
+1. O navegador chama `POST /auth/qr` (sem Bearer) e recebe `{ id, pollSecret, deepLink, expiresAt }`. O `deepLink`
+   é `https://t.me/<bot>?start=login_<nonce>`; o painel o transforma em QR **no próprio navegador**
+   (`qrcode-generator`, MIT, sem dependências; nenhum serviço externo de QR, porque o link leva o código do
+   pedido). O pedido vale **3 minutos**.
+2. A pessoa abre o link no Telegram. O bot recebe `/start login_<nonce>`: sem conta responde "Este Telegram
+   ainda não tem acesso ao Nexus. Peça um convite."; com conta pergunta "Entrar no painel do Nexus pelo
+   navegador?" com o navegador e a hora do pedido (ex.: "Chrome em macOS · 12:00"), avisa que só se confirma se foi
+   a própria pessoa quem abriu o painel, e mostra **Confirmar** e **Não fui eu**.
+3. Enquanto isso o navegador consulta `GET /auth/qr/:id` com o segredo no cabeçalho `X-Poll-Secret`
+   (a cada ~2 s, mais devagar depois de 30 s e de 90 s; pausa com a aba escondida). Estados: `aguardando`,
+   `confirmar`, `aprovado` (com `tokenHash`, uma vez), `negado`, `recusado`, `expirado`.
+4. Aprovado, o painel troca o `tokenHash` por sessão com `verifyOtp({ token_hash, type: 'magiclink' })`, como o login
+   automático do Mini App. Nenhum e-mail é enviado.
+
+O que garante:
+
+- O nonce (160 bits) e o `pollSecret` (256 bits) ficam no banco **só como hash SHA-256** (`qr_login_requests`,
+  tabela fechada: RLS ligada, sem acesso de cliente). O `id` público não revela nenhum dos dois, e o `pollSecret`
+  vive só na memória do navegador que criou o pedido: quem conhece o `id` mas não o segredo recebe `404`, igual a
+  um id inexistente.
+- Cada passo é um UPDATE atômico no banco: abrir (só `aguardando` e não vencido), decidir (só o chat que abriu, para
+  a conta perguntada, em `confirmar`) e recolher (só `aprovado`, não vencido, com o segredo certo, uma única vez;
+  um segundo recolhimento dá `401 ja_utilizado`). Toques repetidos do mesmo botão valem uma vez só.
+- O link ou QR de outra pessoa não entra sozinho: quem o abre no Telegram é perguntado e pode tocar em **Não fui
+  eu**, que bloqueia o pedido. Só confirme se foi você quem acabou de abrir o painel.
+- Limites em memória (valem por instância): 20 pedidos por IP a cada 10 minutos, 120 consultas por pedido por
+  minuto, e as tentativas inválidas por chat usam o mesmo limite do `/start` (5 em 10 minutos). `Retry-After` vem
+  no `429`.
+- O login por QR só liga com `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME` e `TELEGRAM_WEBHOOK_SECRET` (o bot
+  precisa receber mensagens); sem eles `POST /auth/qr` responde `503 login_desabilitado` e o painel abre direto no
+  e-mail e senha. O agendador apaga os pedidos vencidos há mais de 10 minutos. CORS: o cabeçalho `X-Poll-Secret`
+  é liberado só para a origem do painel (`WEB_ORIGIN`).
+- Nada registra nonce, `pollSecret`, token ou o `deepLink` em log.
+
+**Sessão no painel.** É a sessão padrão do Supabase, guardada no navegador: o token de acesso vale 1 h
+(`jwt_expiry = 3600`) e é renovado sozinho com o token de renovação (com rotação), então a pessoa fica entrando
+**até tocar em "Sair"** (ou até o token de renovação ser revogado). Não há limite de tempo total configurado
+(`[auth.sessions] timebox`/`inactivity_timeout` ficam desligados). Para encerrar o acesso de alguém no
+computador, "Sair" no painel; se perdeu o aparelho, `/desvincular` no bot corta o QR de novo, mas não derruba a
+sessão já aberta (isso exige revogar as sessões da conta no Supabase).
+
+### Convites: dar acesso a outra pessoa
+
+O acesso ao Nexus é **por convite**: não há cadastro aberto (`/cadastro` só redireciona para `/entrar` com o
+aviso "O acesso ao Nexus é por convite."). O convidado não digita e-mail nem senha.
+
+**Para você (administrador), em 3 passos:**
+
+1. No bot, envie `/convite` (ou, no Mini App, **Configurações > Convites > Gerar convite**).
+2. Toque em **Compartilhar** (ou **Copiar link**) e mande o link a quem quiser convidar.
+3. A pessoa abre o link, toca **Iniciar** e pronto: a conta é criada e já fica vinculada ao Telegram dela. Depois
+   é só abrir o Nexus pelo botão do bot (entra sozinha).
+
+Detalhes e garantias:
+
+- Cada convite vale por **7 dias** (`INVITE_TTL_DAYS`, de 1 a 90) e abre **uma conta só**. `/convites` lista os
+  ativos, cada um com **Revogar**; o Mini App também mostra usados, expirados e revogados.
+- Código de 12 caracteres sem ambíguos (≈ 59 bits), reservado de forma atômica: duas pessoas com o mesmo código,
+  só uma entra. Código desconhecido, vencido, usado ou revogado recebe a mesma resposta ("Convite inválido ou
+  expirado.") e há limite de tentativas inválidas por chat.
+- Quem já tem conta não gasta o convite. Se falhar a criação, o código é devolvido e dá para tentar de novo.
+- **Administrador** = conta cujo Telegram **vinculado** está em `ADMIN_TELEGRAM_USER_IDS` (ids numéricos do
+  Telegram, separados por vírgula). Não existe coluna de "admin" no banco: a lista fica só no ambiente. Para
+  descobrir o seu id, envie `/meuid` ao bot. Quem não é administrador não vê `/convite` nem a seção do Mini App
+  (as rotas `/invites` respondem `403`).
+- **Conta sem e-mail:** o Supabase Auth recusa usuário sem e-mail e sem telefone. A conta nasce com um e-mail
+  interno `tg-<id>@telegram.invalid` (domínio reservado, já confirmado, **sem senha**), que nunca é mostrado nem
+  recebe mensagem. Só entra pelo Telegram (`POST /auth/telegram`). Com `/desvincular` e um novo convite, o mesmo
+  Telegram volta à mesma conta.
+
+Variáveis (só os nomes): `ADMIN_TELEGRAM_USER_IDS`, `INVITE_TTL_DAYS` (opcional).
+
+**Produção: feche o cadastro no Supabase.** No Supabase local `enable_signup = true` fica ligado de propósito
+(os testes de banco criam usuários por ali). No projeto de **produção**, desligue o cadastro público em
+*Authentication > Sign In / Providers > "Allow new users to sign up"* (ou `enable_signup = false` no
+`config.toml` aplicado ao projeto), senão qualquer pessoa ainda poderia criar conta chamando a API de Auth
+direto. Convites não dependem disso: a API cria as contas com a chave de serviço. Depois de desligar, confirme
+que `POST <SUPABASE_URL>/auth/v1/signup` responde `422 signup_disabled`.
 
 ### Telegram e lembretes: runbook
 
@@ -134,6 +270,8 @@ logs, issues ou mensagens. Se vazar, use `/revoke` no BotFather e gere outro.
 - `TELEGRAM_WEBHOOK_SECRET`: segredo que você inventa (16 a 256 caracteres de `A-Z a-z 0-9 _ -`; gere com
   `openssl rand -hex 32`). Sem ele o webhook responde `503`.
 - `INTERNAL_SECRET`: segredo do agendador (mínimo de 16 caracteres; também `openssl rand -hex 32`). Sem ele a rota interna responde `503`.
+- `MINI_APP_URL` (opcional): origem https do Mini App, para o botão "Ver no Nexus" nas respostas do bot.
+- `TELEGRAM_LOGIN_MAX_AGE_SECONDS` (opcional): janela do `auth_date` do login automático (padrão 3600).
 
 **3. Registrar o webhook** (depois que a API estiver no ar em HTTPS, no domínio de produção). Com o token e o
 segredo nas variáveis do shell e `<API>` o endereço público:
@@ -142,7 +280,7 @@ segredo nas variáveis do shell e `<API>` o endereço público:
 curl -sS "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
   -d "url=<API>/telegram/webhook" \
   -d "secret_token=$TELEGRAM_WEBHOOK_SECRET" \
-  -d 'allowed_updates=["message"]'
+  -d 'allowed_updates=["message","callback_query"]'
 
 curl -sS "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo"
 ```
@@ -244,6 +382,52 @@ O `apps/api/vercel.json` só define o `buildCommand` (`pnpm run build`). O build
 Limites verificados na documentação da Vercel: no Hobby o `maxDuration` vai até 300 s (usamos 60 s, acima dos ~45 s do
 pior caso do agendador) e a função roda em uma única região (`gru1`).
 
+### Rodar no Mac, sem túnel (validação)
+
+O Telegram só entrega por webhook em HTTPS público, que o Mac não tem. Sem túnel, use o **long polling**:
+`pnpm --filter @aj/api telegram:poll` busca as mensagens com `getUpdates` e repassa cada uma à rota
+`/telegram/webhook` da própria API (mesmo segredo, mesma lógica). Só avança quando a API responde 200; falha
+da API ou da rede repete a atualização. Variáveis: `TELEGRAM_BOT_TOKEN` e `TELEGRAM_WEBHOOK_SECRET`
+(`TELEGRAM_POLL_URL` opcional; padrão `http://localhost:$PORT`).
+
+- Ao iniciar, o script **apaga o webhook** do bot: o Telegram não entrega por polling e webhook ao mesmo tempo.
+  Para voltar ao webhook, rode o `setWebhook` do runbook acima.
+- `scripts/local-up.sh` sobe API, site, lembretes e polling juntos, sob `caffeinate -i` (o Mac não dorme
+  enquanto rodar). `--sem-telegram` omite o polling. Ajustes do Sistema: desative o repouso automático na tomada e
+  deixe a tampa aberta.
+- **Banco na nuvem.** A API e o site podem apontar para o Supabase Cloud (projeto NEXUS) em vez do local: troque
+  `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` em `apps/api/.env` e `NEXT_PUBLIC_SUPABASE_URL` e
+  `NEXT_PUBLIC_SUPABASE_ANON_KEY` em `apps/web/.env.local` (as chaves saem de
+  `supabase projects api-keys --project-ref <ref>`). As migrations vão com `supabase db push --linked` (use
+  `--dry-run` antes). O banco da nuvem pode ser o de produção: não rode `db reset` nem `test:db` com esses `.env`.
+- O Supabase local **não é lugar para dados de outras pessoas**: `supabase db reset`, `stop --no-backup` e a limpeza
+  de volumes do Docker apagam tudo, e não há backup.
+- Portas: o `local-up.sh` usa 3110 (site) e 3111 (API), porque a 3000 e a 3001 costumam estar ocupadas.
+  `NEXT_PUBLIC_API_URL` e `WEB_ORIGIN` precisam acompanhar essas portas.
+
+### Colocar no ar (outras pessoas usando)
+
+Alvo: site na **Vercel** (Hobby, uso não comercial), API no **Render** (plano gratuito, `render.yaml`), banco no
+**Supabase Cloud**, lembretes pelo `pg_cron` do Supabase e Telegram por **webhook** (sem polling). O plano gratuito do
+Render hiberna a API após ~15 min sem requisições; o `pg_cron` chamando a API a cada minuto a mantém acordada.
+
+1. **Código no GitHub.** O Render e a Vercel leem o repositório: dê push da branch.
+2. **API no Render.** New > Blueprint, escolha o repositório e a branch (lê o `render.yaml`). Preencha os segredos:
+   `SUPABASE_SERVICE_ROLE_KEY` (`supabase projects api-keys --project-ref <ref>`), `TELEGRAM_BOT_TOKEN`,
+   `TELEGRAM_WEBHOOK_SECRET` e `INTERNAL_SECRET` (valores no `.env.telegram` ou gerados com `openssl rand -hex 32`),
+   e `ADMIN_TELEGRAM_USER_IDS`. Deixe `WEB_ORIGIN` e `MINI_APP_URL` para o passo 4. Confira `https://<api>/health`.
+3. **Site na Vercel.** Import do repositório, **Root Directory** `apps/web`, com "Include source files outside of
+   the Root Directory" ligado. Variáveis: `NEXT_PUBLIC_API_URL` (URL da API), `NEXT_PUBLIC_SUPABASE_URL` e
+   `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+4. **Fechar o círculo.** No Render, preencha `WEB_ORIGIN` e `MINI_APP_URL` com a URL do site (origem https, sem barra
+   final) e reimplante. No Supabase (Authentication > URL Configuration), ponha essa URL em Site URL.
+5. **Webhook do Telegram.** Pare o polling local (`scripts/local-up.sh`) e rode
+   `scripts/telegram-webhook.sh set https://<api>` (`info` consulta, `delete` remove).
+6. **Lembretes.** Rode o SQL do passo 6 do runbook acima no SQL Editor (Vault + `cron.schedule`), com a URL da API.
+7. **Backup.** `scripts/backup-db.sh` grava os dados (inclui as contas do `auth`) em `~/Backups/nexus`, guardando os 14
+   mais recentes; agende no `launchd`/`cron`. O plano gratuito do Supabase não garante backup automático.
+8. **Convidar.** Com seu ID do Telegram em `ADMIN_TELEGRAM_USER_IDS`, gere os convites (veja "Convites").
+
 ### Assistente de IA
 
 `POST /assistant/message` (autenticado) recebe `{ "text": string, "clientMessageId": uuid }`
@@ -328,18 +512,22 @@ confirmar e os e-mails de teste aparecem na interface web do servidor de e-mail 
 link para `/nova-senha`; essa URL está em `additional_redirect_urls` do mesmo arquivo (reinicie
 o Supabase local depois de alterar o `config.toml`).
 
-**O que está implementado:** entrar, recuperação e redefinição de senha; Painel com
-adição rápida e visões Dia, Semana e Mês (hoje no fuso das configurações), resumo lateral,
-troca de status otimista, criação, edição e exclusão de tarefas (prazo, audiência, vínculo a
-processo existente); calculadora de prazos com criação de tarefa a partir do resultado;
-histórico de tarefas concluídas (com canceladas opcionais); configurações (fuso, UF, cidade,
-antecedência do lembrete, horário do resumo, aviso de tarefas que mantiveram lembretes antigos
-quando a API devolve `skipped`), vínculo com o Telegram por código (gerar, desvincular, aviso de canal
-pausado; o envio dos lembretes e do resumo pelo Telegram existe) e feriados locais.
+**O que está implementado:** entrar (QR code pelo Telegram, ou e-mail e senha), recuperação e
+redefinição de senha; o **painel para computador** (menu lateral que vira só ícones abaixo de
+1180 px): **Hoje** em duas colunas (tarefas atrasadas, de hoje, sem data e dos próximos dias, com
+concluir, adiar, editar, cancelar e excluir; contas a pagar com "Paguei"; frase do mês; "Ver
+concluídas"), **Finanças** (tabela do mês com busca, filtros, ordenação, dar baixa, excluir e
+novo lançamento), **Configurações** (nome, fuso, antecedência, horário do resumo, vínculo do
+Telegram, sessão) e **Convites** (só administradores). A **barra de captura** (Hoje e Finanças)
+lê a frase com as mesmas regras do bot (`POST /capture/interpret`), mostra a proposta e só grava ao
+**Confirmar**. Atalhos: `N` nova tarefa, `/` barra de captura, `?` lista de atalhos, `Esc` fecha.
 
-**O que não está:** barra de comando e IA (Plano 4; há um espaço reservado no cabeçalho),
-tela de Processos (fora do escopo; o processo só aparece como referência na tarefa). A paleta de cores
-é provisória e está isolada em tokens CSS em `apps/web/app/globals.css` para troca posterior.
+**O que não está:** e-mail e senha opcionais e "sair de todos os aparelhos" nas Configurações (o
+cliente de autenticação do app ainda não troca e-mail nem encerra as outras sessões); a IA no
+painel (a barra de comando do plano 4 saiu da interface; a rota `POST /assistant/message` segue na
+API). O painel antigo do projeto jurídico (calculadora de prazos, histórico, feriados locais,
+processos) saiu da interface: `/calculadora` e `/historico` levam a Hoje. Os endpoints
+`/deadlines/calculate`, `/cases`, `/holidays` e `/briefing` continuam na API, sem tela.
 
 ## Banco local (testes de banco)
 

@@ -7,7 +7,6 @@ import {
   type UseMutationOptions,
 } from "@tanstack/react-query";
 import type {
-  CreateHolidayInput,
   CreateTaskInput,
   ListTasksQuery,
   TaskDto,
@@ -20,8 +19,6 @@ export const queryKeys = {
   tasks: (query: ListTasksQuery) => ["tasks", query] as const,
   settings: ["settings"] as const,
   briefing: ["briefing"] as const,
-  holidays: ["holidays"] as const,
-  cases: ["cases"] as const,
 };
 
 export function useSettings() {
@@ -34,19 +31,9 @@ export function useTasks(query: ListTasksQuery) {
   return useQuery({ queryKey: queryKeys.tasks(query), queryFn: () => api.listTasks(query) });
 }
 
-export function useBriefing() {
+export function useTask(id: string) {
   const api = useApi();
-  return useQuery({ queryKey: queryKeys.briefing, queryFn: () => api.getBriefing() });
-}
-
-export function useHolidays() {
-  const api = useApi();
-  return useQuery({ queryKey: queryKeys.holidays, queryFn: () => api.listHolidays() });
-}
-
-export function useCases() {
-  const api = useApi();
-  return useQuery({ queryKey: queryKeys.cases, queryFn: () => api.listCases() });
+  return useQuery({ queryKey: ["task", id] as const, queryFn: () => api.getTask(id) });
 }
 
 export function useInvalidateTasks() {
@@ -54,6 +41,7 @@ export function useInvalidateTasks() {
   return () =>
     Promise.all([
       client.invalidateQueries({ queryKey: ["tasks"] }),
+      client.invalidateQueries({ queryKey: ["task"] }),
       client.invalidateQueries({ queryKey: ["briefing"] }),
     ]);
 }
@@ -113,20 +101,3 @@ export function useUpdateSettings() {
   });
 }
 
-export function useCreateHoliday() {
-  const api = useApi();
-  const client = useQueryClient();
-  return useMutation({
-    mutationFn: (input: CreateHolidayInput) => api.createHoliday(input),
-    onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.holidays }),
-  });
-}
-
-export function useDeleteHoliday() {
-  const api = useApi();
-  const client = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => api.deleteHoliday(id),
-    onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.holidays }),
-  });
-}

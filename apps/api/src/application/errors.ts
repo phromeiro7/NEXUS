@@ -1,14 +1,14 @@
 import type { TaskDto } from '@aj/shared';
 
 export class NotFoundError extends Error {
-  constructor(readonly resource: 'tarefa' | 'processo' | 'feriado') {
+  constructor(readonly resource: 'tarefa' | 'processo' | 'feriado' | 'lancamento' | 'convite' | 'login') {
     super(`Não encontrado: ${resource}`);
     this.name = 'NotFoundError';
   }
 }
 
 export class ConflictError extends Error {
-  constructor(readonly code: 'tarefa_encerrada' | 'numero_ja_cadastrado' | 'feriado_ja_cadastrado') {
+  constructor(readonly code: 'tarefa_encerrada' | 'numero_ja_cadastrado' | 'feriado_ja_cadastrado' | 'lancamento_ja_cadastrado') {
     super(`Conflito: ${code}`);
     this.name = 'ConflictError';
   }
@@ -62,7 +62,7 @@ export class AssistantUnavailableError extends Error {
 }
 
 export class InvalidInputError extends Error {
-  constructor(readonly code: 'hora_sem_data' | 'mensagem_vazia') {
+  constructor(readonly code: 'hora_sem_data' | 'lancamento_inconsistente' | 'mensagem_vazia') {
     super(`Entrada inválida: ${code}`);
     this.name = 'InvalidInputError';
   }
@@ -124,5 +124,49 @@ export class TargetTasksGoneError extends Error {
   constructor() {
     super('Tarefas-alvo não encontradas');
     this.name = 'TargetTasksGoneError';
+  }
+}
+
+/**
+ * Falha do login pelo Telegram. `code` é o que o cliente recebe; nada aqui carrega `initData`, token ou
+ * identificador do usuário. `retryAfterSeconds` só vale para 'muitas_tentativas'.
+ */
+export class TelegramAuthError extends Error {
+  constructor(
+    readonly code:
+      | 'login_desabilitado'
+      | 'assinatura_invalida'
+      | 'sessao_expirada'
+      | 'ja_utilizado'
+      | 'telegram_nao_vinculado'
+      | 'muitas_tentativas',
+    readonly retryAfterSeconds?: number,
+  ) {
+    super(`Login pelo Telegram: ${code}`);
+    this.name = 'TelegramAuthError';
+  }
+}
+
+/** Só administradores criam, listam e revogam convites (→ 403). */
+export class ForbiddenError extends Error {
+  constructor() {
+    super('Apenas administradores');
+    this.name = 'ForbiddenError';
+  }
+}
+
+/** O código de convite gerado já existe (violação de unicidade em `invites`): gere outro. */
+export class InviteCodeCollisionError extends Error {
+  constructor() {
+    super('Código de convite já existe');
+    this.name = 'InviteCodeCollisionError';
+  }
+}
+
+/** O `telegram_chat_id` já pertence a outra conta (corrida entre dois aceites do mesmo Telegram). */
+export class ChatAlreadyLinkedError extends Error {
+  constructor() {
+    super('Telegram já vinculado');
+    this.name = 'ChatAlreadyLinkedError';
   }
 }

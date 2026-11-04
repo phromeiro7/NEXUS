@@ -28,8 +28,6 @@ describe("chaves de consulta", () => {
     expect(queryKeys.tasks({ from: "2026-10-26" } as never)).toEqual(["tasks", { from: "2026-10-26" }]);
     expect(queryKeys.settings).toEqual(["settings"]);
     expect(queryKeys.briefing).toEqual(["briefing"]);
-    expect(queryKeys.holidays).toEqual(["holidays"]);
-    expect(queryKeys.cases).toEqual(["cases"]);
   });
 });
 

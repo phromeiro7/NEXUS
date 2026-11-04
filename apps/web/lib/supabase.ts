@@ -1,6 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
 
-export type AuthSession = { access_token: string; user?: { id: string } };
+export type AuthSession = {
+  access_token: string;
+  user?: { id: string; user_metadata?: { display_name?: unknown } };
+};
 
 export type AuthApiError = { code?: string; status?: number; message?: string };
 
@@ -21,7 +24,12 @@ export type AuthClient = {
       email: string,
       o?: { redirectTo?: string },
     ): Promise<{ error: AuthApiError | null }>;
-    updateUser(attrs: { password: string }): Promise<{ error: AuthApiError | null }>;
+    updateUser(attrs: {
+      password?: string;
+      data?: { display_name: string | null };
+    }): Promise<{ error: AuthApiError | null }>;
+    /** Troca o token de uso único da API (login pelo Telegram) por uma sessão. */
+    verifyOtp(p: { token_hash: string; type: "magiclink" }): Promise<AuthResponse>;
     signOut(o?: { scope: "local" | "global" | "others" }): Promise<{ error: AuthApiError | null }>;
   };
 };

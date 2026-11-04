@@ -2,6 +2,8 @@ import type {
   CaseDto,
   CreateCaseInput,
   CreateHolidayInput,
+  FinanceEntryDto,
+  ListFinanceEntriesQuery,
   Holiday,
   HolidayDto,
   IsoDate,
@@ -80,6 +82,29 @@ export interface ReminderRepository {
 
 export interface Clock {
   now(): Date;
+}
+
+export type NewFinanceEntry = Omit<FinanceEntryDto, 'id' | 'createdAt' | 'updatedAt'> & { id?: string };
+export type FinanceEntryPatch = Partial<
+  Pick<FinanceEntryDto, 'description' | 'amountCents' | 'category' | 'dueDate' | 'status' | 'reminderTime' | 'paidAt'>
+>;
+
+/** Teto de linhas por listagem: a API devolve as mais recentes e nunca uma resposta sem limite. */
+export const FINANCE_LIST_LIMIT = 2000;
+
+export interface FinanceEntryRepository {
+  /** Lança `ConflictError('lancamento_ja_cadastrado')` se `entry.id` já existe. */
+  create(userId: string, entry: NewFinanceEntry): Promise<FinanceEntryDto>;
+  get(userId: string, id: string): Promise<FinanceEntryDto | null>;
+  /**
+   * Filtros: `from`/`to` (inclusivos, sobre `dueDate`) e `status`. Ordem: `dueDate` desc, depois
+   * `createdAt` desc; no máximo `FINANCE_LIST_LIMIT` linhas (as mais recentes).
+   */
+  list(userId: string, query: ListFinanceEntriesQuery): Promise<FinanceEntryDto[]>;
+  /** `null` se o id não existe para o usuário; senão o lançamento atualizado. */
+  update(userId: string, id: string, patch: FinanceEntryPatch): Promise<FinanceEntryDto | null>;
+  /** `true` somente se um lançamento do usuário foi apagado. */
+  remove(userId: string, id: string): Promise<boolean>;
 }
 
 export type ChatChannel = 'painel' | 'telegram';
@@ -190,12 +215,23 @@ export interface AssistantModel {
  * Telegram e lembretes (Plano 5).
  */
 
+/** Botão em linha: devolve `callbackData` ao webhook (até 64 bytes), abre o Mini App (`webAppUrl`, https) ou abre um link (`url`, https). */
+export type InlineButton = { text: string } & ({ callbackData: string } | { webAppUrl: string } | { url: string });
+export type InlineKeyboard = InlineButton[][];
+
+type TelegramCall<T> = Promise<({ ok: true } & T) | { ok: false; error: TelegramErrorClass }>;
+
 /** Envia texto simples. Nunca lança por falha do Telegram: devolve a classificação do erro. */
 export interface TelegramClient {
   sendMessage(
     chatId: number,
     text: string,
+    options?: { keyboard?: InlineKeyboard },
   ): Promise<{ ok: true; messageId: number } | { ok: false; error: TelegramErrorClass }>;
+  /** Troca o texto (e os botões; sem `keyboard` os botões somem) de uma mensagem já enviada. */
+  editMessageText(chatId: number, messageId: number, text: string, options?: { keyboard?: InlineKeyboard }): TelegramCall<unknown>;
+  /** Fecha o "carregando" do botão; `text` aparece como aviso curto para a pessoa. */
+  answerCallbackQuery(callbackQueryId: string, text?: string): TelegramCall<unknown>;
 }
 
 /** Lembrete reservado (`enviando`) com tudo o que o envio precisa; `attempts` é o token de reserva. */
@@ -274,6 +310,43 @@ export interface LinkCodeRepository {
   userForChat(chatId: number): Promise<string | null>;
 }
 
+export type CaptureStatus = 'pendente' | 'confirmando' | 'confirmada' | 'desfeita';
+export type CaptureEntity = { kind: 'tarefa' | 'lancamento'; id: string };
+export type CaptureRecord = {
+  id: string;
+  userId: string;
+  chatId: number;
+  /** A proposta (JSON); quem lê valida o formato. */
+  payload: unknown;
+  status: CaptureStatus;
+  entity: CaptureEntity | null;
+  messageId: number | null;
+  expiresAt: Date;
+};
+
+/** Propostas do chat (chat_captures). Nada vai para tarefas nem lançamentos antes de `finishConfirm`. */
+export interface CaptureRepository {
+  /** Nova proposta `pendente`, válida por 1 h. */
+  create(userId: string, chatId: number, payload: unknown, now: Date): Promise<CaptureRecord>;
+  /** `null` se o id não existe, é inválido ou já expirou. */
+  get(id: string, now: Date): Promise<CaptureRecord | null>;
+  /** Troca a proposta só enquanto `pendente`; `false` se já não está. */
+  updatePayload(id: string, payload: unknown): Promise<boolean>;
+  setMessage(id: string, messageId: number): Promise<void>;
+  /** `pendente` -> `confirmando`, atômico: só um toque ganha (`true`). */
+  beginConfirm(id: string, now: Date): Promise<boolean>;
+  /** `confirmando` -> `confirmada`, guarda o que foi criado e estende a validade para 24 h. */
+  finishConfirm(id: string, entity: CaptureEntity, now: Date): Promise<void>;
+  /** `confirmando` -> `pendente` (a criação falhou, a pessoa pode tentar de novo). */
+  abortConfirm(id: string): Promise<void>;
+  /** `confirmada` -> `desfeita`, atômico; devolve o que apagar, ou `null` se não estava confirmada. */
+  beginUndo(id: string, now: Date): Promise<CaptureEntity | null>;
+  /** `desfeita` -> `confirmada` (a exclusão falhou). */
+  abortUndo(id: string): Promise<void>;
+  /** Apaga as expiradas; devolve quantas. */
+  purgeExpired(now: Date): Promise<number>;
+}
+
 export interface ConfirmationRepository {
   /** Idempotente (chave primária). */
   record(chatId: number, messageId: number, taskIds: string[]): Promise<void>;
@@ -286,4 +359,95 @@ export interface MaintenanceRepository {
   purgeExpiredLinkCodes(now: Date): Promise<number>;
   purgeOldModelCalls(now: Date): Promise<number>;
   recoverStuckEvents(now: Date): Promise<{ recovered: number; failed: number }>;
+}
+
+/** Guarda dos `initData` já usados: cada assinatura só abre uma sessão (anti-reuso). */
+export interface TelegramAuthReplayRepository {
+  /** Registra o hash; `false` se ele já tinha sido usado. Atômico: dois pedidos simultâneos, um só vence. */
+  claim(hash: string, now: Date): Promise<boolean>;
+  /** Apaga os registros que já não podem ser reaproveitados (a janela do `auth_date` passou); devolve quantos. */
+  purgeExpired(now: Date): Promise<number>;
+}
+
+/** Emite o que o cliente troca por uma sessão da conta `userId`. Nunca envia e-mail. */
+export interface SessionIssuer {
+  /** `tokenHash` de uso único para `verifyOtp`, ou `null` se a conta não pode receber sessão (sem e-mail, etc.). */
+  issue(userId: string): Promise<{ tokenHash: string } | null>;
+}
+
+/** Convite como guardado no banco; o estado (ativo, usado...) é calculado a partir destes campos. */
+export type InviteRecord = {
+  code: string;
+  createdBy: string;
+  createdAt: Date;
+  expiresAt: Date;
+  revokedAt: Date | null;
+  usedAt: Date | null;
+};
+
+export interface InviteRepository {
+  /** Lança `InviteCodeCollisionError` se o código já existe. */
+  create(createdBy: string, code: string, createdAt: Date, expiresAt: Date): Promise<void>;
+  /** Os mais recentes primeiro. */
+  list(limit: number): Promise<InviteRecord[]>;
+  /** Revoga só um convite ainda não usado nem revogado; `false` = nada a revogar. */
+  revoke(code: string, now: Date): Promise<boolean>;
+  /** Reserva o código para UM chamador (atômico); `false` = inexistente, vencido, revogado ou já reservado. */
+  claim(code: string, now: Date): Promise<boolean>;
+  /** Marca o código reservado como usado pela conta criada. */
+  finish(code: string, userId: string, now: Date): Promise<boolean>;
+  /** Devolve um código reservado e não usado (a criação da conta falhou). */
+  release(code: string): Promise<void>;
+  /** Telegram (chat privado) vinculado à conta, ou `null`. */
+  telegramIdOf(userId: string): Promise<number | null>;
+}
+
+/** Cria a conta de quem aceitou um convite e a liga ao Telegram. Sem e-mail real, sem senha. */
+export interface AccountProvisioner {
+  /** Conta nova (ou a conta anterior desse Telegram, se já existir) ligada ao `telegramUserId`. */
+  createForTelegram(telegramUserId: number): Promise<{ userId: string; created: boolean }>;
+  /** Liga o chat à conta; lança `ChatAlreadyLinkedError` se o chat já é de outra conta. */
+  linkChat(userId: string, chatId: number): Promise<void>;
+  /** Desfaz uma conta criada nesta tentativa (a ligação falhou). */
+  remove(userId: string): Promise<void>;
+}
+
+/** Pedido de login do painel por QR code, como guardado (segredos só em hash). */
+export type QrLoginRecord = {
+  id: string;
+  status: 'aguardando' | 'confirmar' | 'aprovado' | 'negado' | 'recusado' | 'consumido';
+  /** SHA-256 (hex) do segredo de consulta do navegador. */
+  pollHash: string;
+  createdAt: Date;
+  expiresAt: Date;
+};
+
+export interface QrLoginRepository {
+  create(input: {
+    id: string;
+    nonceHash: string;
+    pollHash: string;
+    clientLabel: string;
+    createdAt: Date;
+    expiresAt: Date;
+  }): Promise<void>;
+  get(id: string): Promise<QrLoginRecord | null>;
+  /**
+   * O bot recebeu `/start login_<nonce>`. Atômico: só vale com o pedido `aguardando` e não vencido (senão `null`).
+   * Com conta (`userId`) o pedido vira `confirmar`; sem conta, `recusado`.
+   */
+  open(
+    nonceHash: string,
+    chatId: number,
+    userId: string | null,
+    now: Date,
+  ): Promise<{ id: string; outcome: 'confirmar' | 'recusado'; clientLabel: string; createdAt: Date } | null>;
+  /** A pessoa respondeu ao bot. Só o chat que abriu o pedido, para a conta perguntada, com o pedido em `confirmar`. */
+  decide(id: string, chatId: number, userId: string, approve: boolean, now: Date): Promise<'aprovado' | 'negado' | null>;
+  /** O navegador dono do segredo recolhe a aprovação: atômico, devolve o usuário uma única vez (`consumido`). */
+  consume(id: string, pollHash: string, now: Date): Promise<string | null>;
+  /** Devolve um pedido consumido a `aprovado` (a emissão da sessão falhou). */
+  release(id: string): Promise<void>;
+  /** Apaga os vencidos há mais de dez minutos; devolve quantos. */
+  purgeExpired(now: Date): Promise<number>;
 }

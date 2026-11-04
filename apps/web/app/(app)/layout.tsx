@@ -1,13 +1,15 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { AppShell } from "@/components/app-shell";
 import { AuthGuard } from "@/components/auth-guard";
+import { PanelShell } from "@/components/panel/panel-shell";
+import "../nexus.css";
+import "../nexus-panel.css";
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   return (
     <AuthGuard>
-      <AppShell>{children}</AppShell>
+      <PanelShell>{children}</PanelShell>
     </AuthGuard>
   );
 }

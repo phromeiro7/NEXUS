@@ -10,18 +10,25 @@ import {
 import { authMiddleware, type AuthVerifier } from './auth.js';
 import type { makeCalculateDeadline } from './application/calculate-deadline.js';
 import type { makeCaseUseCases } from './application/cases.js';
+import type { makeCaptureInterpretUseCases } from './application/capture-interpret.js';
+import type { makeFinanceUseCases } from './application/finance.js';
 import type { makeHolidayUseCases } from './application/holidays.js';
 import type { makeSettingsUseCases } from './application/settings.js';
 import type { makeTaskUseCases } from './application/tasks.js';
 import type { SchedulerResult } from './application/scheduler.js';
 import type { makeLinkUseCases } from './application/telegram/link.js';
+import { ForbiddenError } from './application/errors.js';
 import { errorResponse } from './http-errors.js';
 import { telegramRoutes } from './routes/telegram.js';
 import { internalRoutes } from './routes/internal.js';
 import { assistantRoutes, type ProcessMessage } from './routes/assistant.js';
+import { authRoutes, type AuthRoutesDeps } from './routes/auth.js';
 import { briefingRoutes } from './routes/briefing.js';
+import { captureRoutes } from './routes/capture.js';
 import { casesRoutes } from './routes/cases.js';
+import { financeRoutes } from './routes/finance.js';
 import { holidaysRoutes } from './routes/holidays.js';
+import { inviteRoutes, type InviteRoutesDeps } from './routes/invites.js';
 import { settingsRoutes } from './routes/settings.js';
 import { tasksRoutes } from './routes/tasks.js';
 
@@ -31,6 +38,9 @@ export type AppDeps = {
   tasks: ReturnType<typeof makeTaskUseCases>;
   cases: ReturnType<typeof makeCaseUseCases>;
   holidays: ReturnType<typeof makeHolidayUseCases>;
+  finance: ReturnType<typeof makeFinanceUseCases>;
+  /** Barra de captura do painel: lê a frase com as regras do bot, sem gravar. */
+  capture: ReturnType<typeof makeCaptureInterpretUseCases>;
   settings: ReturnType<typeof makeSettingsUseCases>;
   briefing: (userId: string) => Promise<BriefingDto>;
   /** Única origem de navegador autorizada por CORS (o painel). */
@@ -46,6 +56,12 @@ export type AppDeps = {
   handleTelegramUpdate?: (update: unknown) => Promise<void>;
   /** Nunca logar. */
   telegramWebhookSecret?: string;
+  /** Login do Mini App pelo `initData`; ausente = desligado (503 'login_desabilitado'). */
+  telegramLogin?: AuthRoutesDeps['telegramLogin'];
+  /** Login do painel por QR code; ausente = desligado (503 'login_desabilitado'). */
+  qrLogin?: AuthRoutesDeps['qrLogin'];
+  /** Convites (administrador). Ausente = rotas respondem 403 a todos. */
+  invites?: InviteRoutesDeps['invites'];
 };
 
 export function createApp(deps: AppDeps) {
@@ -59,8 +75,10 @@ export function createApp(deps: AppDeps) {
     '*',
     cors({
       origin: (origin) => (origin === deps.webOrigin ? origin : null),
-      allowHeaders: ['Authorization', 'Content-Type'],
+      // X-Poll-Secret: o navegador do login por QR prova que é dono do pedido. maxAge evita um preflight a cada consulta.
+      allowHeaders: ['Authorization', 'Content-Type', 'X-Poll-Secret'],
       allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+      maxAge: 600,
     }),
   );
 
@@ -81,6 +99,7 @@ export function createApp(deps: AppDeps) {
       if (
         c.req.path.startsWith('/assistant') ||
         c.req.path.startsWith('/internal') ||
+        c.req.path.startsWith('/auth') ||
         c.req.path.startsWith('/telegram')
       ) {
         console.error('[api] erro não tratado', err instanceof Error ? err.name : 'desconhecido');
@@ -120,9 +139,39 @@ export function createApp(deps: AppDeps) {
   app.route('/tasks', tasksRoutes({ tasks: deps.tasks }, auth));
   app.route('/cases', casesRoutes({ cases: deps.cases }, auth));
   app.route('/holidays', holidaysRoutes({ holidays: deps.holidays }, auth));
+  app.route('/finance-entries', financeRoutes({ finance: deps.finance }, auth));
+  app.route('/capture', captureRoutes({ capture: deps.capture }, auth));
+  app.route(
+    '/invites',
+    inviteRoutes(
+      {
+        invites: deps.invites ?? {
+          create: async () => {
+            throw new ForbiddenError();
+          },
+          list: async () => {
+            throw new ForbiddenError();
+          },
+          revoke: async () => {
+            throw new ForbiddenError();
+          },
+        },
+      },
+      auth,
+    ),
+  );
   app.route('/settings', settingsRoutes({ settings: deps.settings }, auth));
   app.route('/briefing', briefingRoutes({ briefing: deps.briefing }, auth));
   app.route('/assistant', assistantRoutes({ processMessage: deps.processMessage }, auth));
+
+  // Sem Bearer: a prova de identidade é a assinatura do `initData` (dentro do caso de uso).
+  app.route(
+    '/auth',
+    authRoutes({
+      ...(deps.telegramLogin !== undefined ? { telegramLogin: deps.telegramLogin } : {}),
+      ...(deps.qrLogin !== undefined ? { qrLogin: deps.qrLogin } : {}),
+    }),
+  );
 
   // `link-codes` e `link` com autenticação; o webhook sem usuário (segredo do cabeçalho, dentro da rota).
   app.route(

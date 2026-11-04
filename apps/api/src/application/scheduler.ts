@@ -6,7 +6,8 @@ export type SchedulerResult = {
   reminders: RunRemindersResult;
   briefings: SendDailyBriefingsResult;
   eventsRecovered: { recovered: number; failed: number };
-  purged: { chatMessages: number; linkCodes: number; modelCalls: number };
+  /** `chatCaptures` só aparece quando o registro pelo chat está ligado. */
+  purged: { chatMessages: number; linkCodes: number; modelCalls: number; chatCaptures?: number; telegramAuth?: number; qrLogin?: number };
 };
 
 /** Orçamentos dos sub-passos (o pior caso real é de ~45 s: cada orçamento é checado antes de cada item, então o último ainda envia e ressincroniza; o `timeout_milliseconds` do `pg_net` é 60000). */
@@ -16,6 +17,12 @@ export type RunSchedulerDeps = {
   maintenance: MaintenanceRepository;
   runReminders: () => Promise<RunRemindersResult>;
   sendDailyBriefings: () => Promise<SendDailyBriefingsResult>;
+  /** Limpa as propostas expiradas do chat; ausente = o registro pelo chat não está ligado. */
+  purgeCaptures?: (now: Date) => Promise<number>;
+  /** Limpa os registros antigos do login pelo Telegram; ausente = o login não está ligado. */
+  purgeTelegramAuth?: (now: Date) => Promise<number>;
+  /** Limpa os pedidos de login por QR vencidos; ausente = o login por QR não está ligado. */
+  purgeQrLogin?: (now: Date) => Promise<number>;
   clock: Clock;
   logger?: RemindersLogger;
 };
@@ -55,7 +62,24 @@ export function makeRunScheduler(deps: RunSchedulerDeps): () => Promise<Schedule
     const linkCodes = await step('purge_link_codes', 0, () => maintenance.purgeExpiredLinkCodes(clock.now()));
     const modelCalls = await step('purge_model_calls', 0, () => maintenance.purgeOldModelCalls(clock.now()));
 
-    const result: SchedulerResult = { reminders, briefings, eventsRecovered, purged: { chatMessages, linkCodes, modelCalls } };
+    const chatCaptures =
+      deps.purgeCaptures === undefined ? undefined : await step('purge_chat_captures', 0, () => deps.purgeCaptures!(clock.now()));
+
+    const telegramAuth =
+      deps.purgeTelegramAuth === undefined ? undefined : await step('purge_telegram_auth', 0, () => deps.purgeTelegramAuth!(clock.now()));
+
+    const qrLogin =
+      deps.purgeQrLogin === undefined ? undefined : await step('purge_qr_login', 0, () => deps.purgeQrLogin!(clock.now()));
+
+    const result: SchedulerResult = {
+      reminders,
+      briefings,
+      eventsRecovered,
+      purged: { chatMessages, linkCodes, modelCalls, ...(chatCaptures !== undefined ? { chatCaptures } : {}),
+        ...(telegramAuth !== undefined ? { telegramAuth } : {}),
+        ...(qrLogin !== undefined ? { qrLogin } : {}),
+      },
+    };
     logger?.info('scheduler.run', {
       sent: reminders.sent,
       briefingsSent: briefings.sent,

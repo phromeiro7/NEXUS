@@ -26,7 +26,7 @@ export default function RecuperarPage() {
   }
 
   return (
-    <AuthCard title="Recuperar senha">
+    <AuthCard title="Recuperar senha" lead="Informe o e-mail da conta. Enviamos um link para criar uma nova senha.">
       <AuthForm
         onSubmit={() => void onSubmit()}
         error={error}
@@ -37,12 +37,12 @@ export default function RecuperarPage() {
         <Field id="email" label="E-mail" type="email" value={email} onChange={setEmail} autoComplete="email" />
       </AuthForm>
       {sent && (
-        <p role="status" className="mt-3 text-sm">
+        <p role="status" className="nx-ok">
           Se o e-mail estiver cadastrado, enviaremos um link para redefinir a senha.
         </p>
       )}
-      <p className="mt-4 text-sm">
-        <Link href="/entrar" className="underline">
+      <p className="nx-links">
+        <Link href="/entrar" className="nx-link">
           Voltar para entrar
         </Link>
       </p>
