@@ -43,6 +43,19 @@ export function EntryForm() {
 
 function EntryFormContent({ today }: { today: IsoDate }) {
   const router = useRouter();
+  return (
+    <main>
+      <Link href="/mini/financas" className="mini-back">
+        <BackIcon /> Finanças
+      </Link>
+      <h1 style={{ margin: "8px 0 0", fontSize: "1.75rem", letterSpacing: "-0.02em" }}>Novo lançamento</h1>
+      <EntryFormFields today={today} onSaved={() => router.push("/mini/financas")} />
+    </main>
+  );
+}
+
+/** O formulário de lançamento sem moldura, para o Mini App (página) e o painel (diálogo). `onSaved` roda após salvar. */
+export function EntryFormFields({ today, onSaved }: { today: IsoDate; onSaved: () => void }) {
   const toast = useToast();
   const finance = useFinance();
   const ids = useId();
@@ -96,7 +109,7 @@ function EntryFormContent({ today }: { today: IsoDate }) {
       message: `${incoming ? "Entrada" : pending ? "Conta" : "Gasto"} anotado: ${title}, ${formatBRL(cents)}.`,
       undo: () => finance.remove(saved.id),
     });
-    router.push("/mini/financas");
+    onSaved();
   }
 
   const preview = parseValor(valor);
@@ -114,12 +127,6 @@ function EntryFormContent({ today }: { today: IsoDate }) {
   );
 
   return (
-    <main>
-      <Link href="/mini/financas" className="mini-back">
-        <BackIcon /> Finanças
-      </Link>
-      <h1 style={{ margin: "8px 0 0", fontSize: "1.75rem", letterSpacing: "-0.02em" }}>Novo lançamento</h1>
-
       <form className="mini-form" onSubmit={submit} noValidate aria-label="Novo lançamento">
         <fieldset className="mini-step">
           <legend>Tipo</legend>
@@ -230,6 +237,5 @@ function EntryFormContent({ today }: { today: IsoDate }) {
           Salvar lançamento
         </button>
       </form>
-    </main>
   );
 }

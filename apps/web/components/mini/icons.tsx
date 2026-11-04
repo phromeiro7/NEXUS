@@ -117,3 +117,21 @@ export const TrashIcon = (p: SVGProps<SVGSVGElement>) => (
     <path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 12.5h9l1-12.5M10 11v5M14 11v5" />
   </Icon>
 );
+
+export const CloseIcon = (p: SVGProps<SVGSVGElement>) => (
+  <Icon {...p}>
+    <path d="M6 6l12 12M18 6L6 18" />
+  </Icon>
+);
+export const SettingsIcon = (p: SVGProps<SVGSVGElement>) => (
+  <Icon {...p}>
+    <circle cx="12" cy="12" r="3" />
+    <path d="M12 3.5v2.2M12 18.3v2.2M20.5 12h-2.2M5.7 12H3.5M18 6l-1.6 1.6M7.6 16.4L6 18M18 18l-1.6-1.6M7.6 7.6L6 6" />
+  </Icon>
+);
+export const InviteIcon = (p: SVGProps<SVGSVGElement>) => (
+  <Icon {...p}>
+    <rect x="3.5" y="5.5" width="17" height="13" rx="3.5" />
+    <path d="M4.5 8l7.5 5.5L19.5 8" />
+  </Icon>
+);

@@ -86,7 +86,7 @@ export function SettingsScreen() {
   return <SettingsForm key={JSON.stringify(q.data)} settings={q.data} back={back} />;
 }
 
-function NameForm() {
+export function NameForm() {
   const { displayName, saveDisplayName } = useAuth();
   const toast = useToast();
   const [name, setName] = useState(displayName ?? "");
@@ -136,7 +136,8 @@ function NameForm() {
   );
 }
 
-function SettingsForm({ settings, back }: { settings: SettingsDto; back: React.ReactNode }) {
+/** Fuso, antecedência e horário do resumo, com o aviso de lembretes que não puderam ser refeitos. Usado no Mini App e no painel. */
+export function SettingsFields({ settings }: { settings: SettingsDto }) {
   const update = useUpdateSettings();
   const toast = useToast();
   const busy = useRef(false);
@@ -179,15 +180,7 @@ function SettingsForm({ settings, back }: { settings: SettingsDto; back: React.R
   }
 
   return (
-    <main>
-      {back}
-      <header className="mini-hero">
-        <h1 style={{ fontSize: "2rem" }}>Configurações</h1>
-        <p className="mini-hero-date">Como o Nexus avisa você</p>
-      </header>
-
-      <NameForm />
-
+    <>
       <form className="mini-card mini-sheet" onSubmit={submit} noValidate aria-label="Configurações">
         <label className="mini-label">
           Fuso horário
@@ -237,6 +230,22 @@ function SettingsForm({ settings, back }: { settings: SettingsDto; back: React.R
           Salvo, mas não foi possível refazer o lembrete de: {warning.join(", ")}. Abra a tarefa e revise o horário.
         </p>
       )}
+    </>
+  );
+}
+
+function SettingsForm({ settings, back }: { settings: SettingsDto; back: React.ReactNode }) {
+  return (
+    <main>
+      {back}
+      <header className="mini-hero">
+        <h1 style={{ fontSize: "2rem" }}>Configurações</h1>
+        <p className="mini-hero-date">Como o Nexus avisa você</p>
+      </header>
+
+      <NameForm />
+
+      <SettingsFields settings={settings} />
 
       <TelegramCard linked={settings.telegramLinked} paused={settings.channelPaused} />
 
