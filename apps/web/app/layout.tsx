@@ -4,7 +4,7 @@ import "./globals.css";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
-  title: "Assistente Jurídico",
+  title: "Nexus",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

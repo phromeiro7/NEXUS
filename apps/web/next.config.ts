@@ -7,6 +7,13 @@ const nextConfig: NextConfig = {
   // Reavaliar quando o Turbopack suportar extension aliasing ou quando o shared deixar de usar
   // o sufixo .js. Para reverter: remover este `webpack` (extensionAlias) e as flags --webpack
   // dos scripts dev/build em apps/web/package.json.
+  // O painel antigo (calculadora de prazos e histórico) saiu: os endereços velhos levam a Hoje.
+  async redirects() {
+    return [
+      { source: "/calculadora", destination: "/", permanent: false },
+      { source: "/historico", destination: "/", permanent: false },
+    ];
+  },
   webpack: (config) => {
     config.resolve.extensionAlias = {
       ...config.resolve.extensionAlias,
