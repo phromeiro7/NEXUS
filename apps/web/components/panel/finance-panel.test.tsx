@@ -66,7 +66,7 @@ describe("FinancePanel", () => {
 
   it("a barra de captura aparece em Finanças", async () => {
     renderPanel();
-    expect(await screen.findByLabelText("Anotar tarefa, gasto ou conta")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Nova tarefa ou lançamento")).toBeInTheDocument();
   });
 
   it("a tabela tem cabeçalhos semânticos e só os lançamentos do mês", async () => {
