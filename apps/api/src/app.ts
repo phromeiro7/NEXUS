@@ -152,7 +152,10 @@ export function createApp(deps: AppDeps) {
           list: async () => {
             throw new ForbiddenError();
           },
-          revoke: async () => {
+          summary: async () => {
+            throw new ForbiddenError();
+          },
+          remove: async () => {
             throw new ForbiddenError();
           },
         },

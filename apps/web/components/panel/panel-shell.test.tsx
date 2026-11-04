@@ -5,6 +5,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api";
 import { PanelShell } from "./panel-shell";
 
+const summaryOf = (invites: Array<{ status: string }>) => ({
+  total: invites.length,
+  ativos: invites.filter((i) => i.status === "ativo").length,
+  usados: invites.filter((i) => i.status === "usado").length,
+  expirados: invites.filter((i) => i.status === "expirado").length,
+  revogados: invites.filter((i) => i.status === "revogado").length,
+});
+const listOf = <T extends { status: string }>(invites: T[]) => ({ invites, summary: summaryOf(invites) });
+
 const holder = vi.hoisted(() => ({
   pathname: "/",
   signOut: vi.fn(),
@@ -32,7 +41,7 @@ beforeEach(() => {
   holder.pathname = "/";
   holder.displayName = "Paulo";
   holder.signOut.mockReset();
-  holder.api.listInvites.mockReset().mockResolvedValue({ invites: [] });
+  holder.api.listInvites.mockReset().mockResolvedValue(listOf([]));
 });
 
 describe("PanelShell", () => {

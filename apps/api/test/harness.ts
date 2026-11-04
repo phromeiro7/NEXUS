@@ -86,6 +86,7 @@ export function buildApp(opts: HarnessOpts = {}) {
       ? {
           invites: makeInviteUseCases({
             invites: fakes.invites,
+            accounts: fakes.accounts,
             adminTelegramIds: new Set(opts.invites.adminIds),
             botUsername: 'meu_bot',
             clock: fakes.clock,

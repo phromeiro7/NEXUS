@@ -3,17 +3,17 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { InviteDto } from "@aj/shared";
-import { copyLink, shareInvite, statusLabel, validityDays } from "@/components/mini/invites-card";
-import { isForbidden, useCreateInvite, useInvites, useRevokeInvite } from "@/hooks/use-invites";
+import { copyLink, deleteWarning, shareInvite, statusLabel, summaryText, validityDays } from "@/components/mini/invites-card";
+import { isForbidden, useCreateInvite, useInvites, useDeleteInvite } from "@/hooks/use-invites";
 import { messageFor } from "@/lib/messages";
 
 const created = (iso: string) => new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 
-/** Convites (só administradores): gerar, copiar, compartilhar e revogar. Quem não administra vê um aviso gentil. */
+/** Convites (só administradores): gerar, copiar, compartilhar e apagar. Quem não administra vê um aviso gentil. */
 export function InvitesPanel() {
   const invites = useInvites();
   const create = useCreateInvite();
-  const revoke = useRevokeInvite();
+  const remove = useDeleteInvite();
   const [fresh, setFresh] = useState<InviteDto | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -62,12 +62,12 @@ export function InvitesPanel() {
     if ((await copyLink(invite)) === "copiado") setNotice("Link copiado.");
     else setError("Não foi possível copiar. Selecione o link e copie.");
   }
-  async function confirmRevoke(code: string) {
+  async function confirmDelete(invite: InviteDto) {
     setError(null);
     try {
-      await revoke.mutateAsync(code);
-      if (fresh?.code === code) setFresh(null);
-      setNotice("Convite revogado.");
+      await remove.mutateAsync(invite.code);
+      if (fresh?.code === invite.code) setFresh(null);
+      setNotice(invite.status === "usado" ? "Convite apagado. A pessoa perdeu o acesso." : "Convite apagado.");
     } catch (err) {
       setError(messageFor(err));
     } finally {
@@ -132,6 +132,11 @@ export function InvitesPanel() {
         )}
 
         <h2 className="pn-h2">Todos os convites</h2>
+        {invites.data !== undefined && invites.data.summary.total > 0 && (
+          <p className="pn-sub" data-testid="invites-summary" style={{ margin: "0 0 12px" }}>
+            {summaryText(invites.data.summary)}
+          </p>
+        )}
         <div className="pn-table-wrap">
           <table className="pn-table">
             <caption style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap" }}>Convites gerados</caption>
@@ -152,26 +157,30 @@ export function InvitesPanel() {
                   <td className="pn-sub">{created(invite.createdAt)}</td>
                   <td>{statusLabel(invite)}</td>
                   <td className="act">
-                    {invite.status === "ativo" &&
-                      (confirming === invite.code ? (
-                        <span role="group" aria-label="Revogar este convite?">
-                          <button type="button" className="mini-btn danger pn-small-btn" disabled={revoke.isPending} onClick={() => void confirmRevoke(invite.code)}>
-                            {revoke.isPending ? "Revogando…" : "Sim, revogar"}
-                          </button>
-                          <button type="button" className="mini-btn pn-small-btn" disabled={revoke.isPending} onClick={() => setConfirming(null)}>
-                            Cancelar
-                          </button>
+                    {confirming === invite.code ? (
+                      <span role="group" aria-label="Apagar este convite?">
+                        <span className="pn-sub" style={{ display: "block", marginBottom: 6 }}>
+                          {deleteWarning(invite)}
                         </span>
-                      ) : (
-                        <>
+                        <button type="button" className="mini-btn danger pn-small-btn" disabled={remove.isPending} onClick={() => void confirmDelete(invite)}>
+                          {remove.isPending ? "Apagando…" : "Sim, apagar"}
+                        </button>
+                        <button type="button" className="mini-btn pn-small-btn" disabled={remove.isPending} onClick={() => setConfirming(null)}>
+                          Cancelar
+                        </button>
+                      </span>
+                    ) : (
+                      <>
+                        {invite.status === "ativo" && (
                           <button type="button" className="mini-btn pn-small-btn" onClick={() => void share(invite)}>
                             Compartilhar
                           </button>
-                          <button type="button" className="mini-btn pn-small-btn" aria-label={`Revogar o convite ${invite.code}`} onClick={() => setConfirming(invite.code)}>
-                            Revogar
-                          </button>
-                        </>
-                      ))}
+                        )}
+                        <button type="button" className="mini-btn pn-small-btn" aria-label={`Apagar o convite ${invite.code}`} onClick={() => setConfirming(invite.code)}>
+                          Apagar
+                        </button>
+                      </>
+                    )}
                   </td>
                 </tr>
               ))}

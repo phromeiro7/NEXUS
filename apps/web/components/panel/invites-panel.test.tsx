@@ -5,7 +5,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api";
 import { InvitesPanel } from "./invites-panel";
 
-const holder = vi.hoisted(() => ({ api: { listInvites: vi.fn(), createInvite: vi.fn(), revokeInvite: vi.fn() } }));
+const summaryOf = (invites: Array<{ status: string }>) => ({
+  total: invites.length,
+  ativos: invites.filter((i) => i.status === "ativo").length,
+  usados: invites.filter((i) => i.status === "usado").length,
+  expirados: invites.filter((i) => i.status === "expirado").length,
+  revogados: invites.filter((i) => i.status === "revogado").length,
+});
+const listOf = <T extends { status: string }>(invites: T[]) => ({ invites, summary: summaryOf(invites) });
+
+const holder = vi.hoisted(() => ({ api: { listInvites: vi.fn(), createInvite: vi.fn(), deleteInvite: vi.fn() } }));
 vi.mock("@/components/auth-provider", () => ({ useApi: () => holder.api }));
 
 const invite = (over: Record<string, unknown> = {}) => ({
@@ -28,9 +37,9 @@ function renderPanel() {
 }
 
 beforeEach(() => {
-  holder.api.listInvites.mockReset().mockResolvedValue({ invites: [] });
+  holder.api.listInvites.mockReset().mockResolvedValue(listOf([]));
   holder.api.createInvite.mockReset();
-  holder.api.revokeInvite.mockReset();
+  holder.api.deleteInvite.mockReset();
 });
 afterEach(() => vi.unstubAllGlobals());
 
@@ -52,7 +61,7 @@ describe("InvitesPanel", () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal("navigator", { clipboard: { writeText } });
     holder.api.createInvite.mockResolvedValue(invite());
-    holder.api.listInvites.mockResolvedValueOnce({ invites: [] }).mockResolvedValue({ invites: [invite()] });
+    holder.api.listInvites.mockResolvedValueOnce(listOf([])).mockResolvedValue(listOf([invite()]));
     renderPanel();
     await userEvent.click(await screen.findByRole("button", { name: "Gerar convite" }));
     expect(await screen.findByText("Convite criado.", { selector: "strong" })).toBeInTheDocument();
@@ -64,14 +73,12 @@ describe("InvitesPanel", () => {
   });
 
   it("a tabela lista todos os convites com a situação de cada um", async () => {
-    holder.api.listInvites.mockResolvedValue({
-      invites: [
+    holder.api.listInvites.mockResolvedValue(listOf([
         invite(),
         invite({ code: "USADOUSADO12", status: "usado", usedAt: "2026-11-05T10:00:00.000Z" }),
         invite({ code: "EXPIRADOEXP1", status: "expirado" }),
         invite({ code: "REVOGADOREV1", status: "revogado" }),
-      ],
-    });
+      ]));
     renderPanel();
     const table = await screen.findByRole("table", { name: "Convites gerados" });
     expect(within(table).getByText("Ativo, vale até 11/11")).toBeInTheDocument();
@@ -82,16 +89,16 @@ describe("InvitesPanel", () => {
     expect(within(table).getAllByRole("button", { name: "Compartilhar" })).toHaveLength(1);
   });
 
-  it("revogar pede confirmação e só então chama a API", async () => {
-    holder.api.listInvites.mockResolvedValue({ invites: [invite()] });
-    holder.api.revokeInvite.mockResolvedValue(undefined);
+  it("apagar pede confirmação e só então chama a API", async () => {
+    holder.api.listInvites.mockResolvedValue(listOf([invite()]));
+    holder.api.deleteInvite.mockResolvedValue(undefined);
     renderPanel();
-    await userEvent.click(await screen.findByRole("button", { name: "Revogar o convite ABCDEFGHJKMN" }));
-    expect(holder.api.revokeInvite).not.toHaveBeenCalled();
-    const group = screen.getByRole("group", { name: "Revogar este convite?" });
-    await userEvent.click(within(group).getByRole("button", { name: "Sim, revogar" }));
-    await waitFor(() => expect(holder.api.revokeInvite).toHaveBeenCalledWith("ABCDEFGHJKMN"));
-    expect(await screen.findByText("Convite revogado.")).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("button", { name: "Apagar o convite ABCDEFGHJKMN" }));
+    expect(holder.api.deleteInvite).not.toHaveBeenCalled();
+    const group = screen.getByRole("group", { name: "Apagar este convite?" });
+    await userEvent.click(within(group).getByRole("button", { name: "Sim, apagar" }));
+    await waitFor(() => expect(holder.api.deleteInvite).toHaveBeenCalledWith("ABCDEFGHJKMN"));
+    expect(await screen.findByText("Convite apagado.")).toBeInTheDocument();
   });
 
   it("falha ao gerar mostra o erro e falha ao listar oferece Tentar de novo", async () => {
@@ -102,7 +109,7 @@ describe("InvitesPanel", () => {
   });
 
   it("erro de rede ao listar não é tratado como falta de permissão", async () => {
-    holder.api.listInvites.mockRejectedValueOnce(new Error("rede")).mockResolvedValue({ invites: [] });
+    holder.api.listInvites.mockRejectedValueOnce(new Error("rede")).mockResolvedValue(listOf([]));
     renderPanel();
     expect(await screen.findByText("Não foi possível carregar os convites.")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Tentar de novo" }));

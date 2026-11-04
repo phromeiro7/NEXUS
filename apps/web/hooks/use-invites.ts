@@ -24,11 +24,11 @@ export function useCreateInvite() {
   });
 }
 
-export function useRevokeInvite() {
+export function useDeleteInvite() {
   const api = useApi();
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (code: string) => api.revokeInvite(code),
+    mutationFn: (code: string) => api.deleteInvite(code),
     onSuccess: () => client.invalidateQueries({ queryKey: inviteKeys.all }),
   });
 }

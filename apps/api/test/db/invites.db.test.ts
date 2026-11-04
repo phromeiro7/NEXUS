@@ -101,7 +101,7 @@ describe('invites: repository', () => {
 });
 
 describe('invites: end to end with a real account', () => {
-  const useCases = makeInviteUseCases({ invites, adminTelegramIds: new Set([ADMIN_TG]), botUsername: 'nexus_bot', clock });
+  const useCases = makeInviteUseCases({ invites, accounts, adminTelegramIds: new Set([ADMIN_TG]), botUsername: 'nexus_bot', clock });
   const accept = makeAcceptInvite({ invites, accounts, links, clock });
 
   it('Auth refuses a user with no e-mail and no phone (why the synthetic e-mail exists)', async () => {
