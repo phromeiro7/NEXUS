@@ -19,7 +19,7 @@ const gasto: CaptureProposalDto = { kind: "gasto", description: "roupa", amountC
 const conta: CaptureProposalDto = { kind: "conta", description: "luz", amountCents: 18740, category: "Moradia", date: "2026-11-08" as IsoDate, time: null, status: "a_pagar" };
 const contaSemData: CaptureProposalDto = { ...conta, date: null };
 const entrada: CaptureProposalDto = { kind: "entrada", description: "freela", amountCents: 150000, category: "Freela", date: today, time: null, status: "paga" };
-const tarefa: CaptureProposalDto = { kind: "tarefa", title: "ligar pra vidinha", date: today, time: "14:00", vagueTime: false };
+const tarefa: CaptureProposalDto = { kind: "tarefa", title: "Reunião com a equipe", date: today, time: "14:00", vagueTime: false };
 const tarefaSemData: CaptureProposalDto = { kind: "tarefa", title: "comprar ração", date: null, time: null, vagueTime: false };
 
 describe("proposalSummary", () => {
@@ -39,8 +39,8 @@ describe("proposalSummary", () => {
     expect(proposalSummary(contaSemData, today)).toBe("conta de R$ 187,40 em Moradia (luz)");
   });
   it("descreve a tarefa com dia e horário, ou sem data", () => {
-    expect(proposalSummary(tarefa, today)).toBe("ligar pra vidinha, hoje às 14h");
-    expect(proposalSummary({ ...tarefa, date: "2026-11-05" as IsoDate, time: "09:30" }, today)).toBe("ligar pra vidinha, amanhã às 9h30");
+    expect(proposalSummary(tarefa, today)).toBe("Reunião com a equipe, hoje às 14h");
+    expect(proposalSummary({ ...tarefa, date: "2026-11-05" as IsoDate, time: "09:30" }, today)).toBe("Reunião com a equipe, amanhã às 9h30");
     expect(proposalSummary(tarefaSemData, today)).toBe("comprar ração, sem data");
   });
 });
@@ -95,7 +95,7 @@ describe("toCreation", () => {
   it("tarefa vira CreateTaskInput sem assumir data nem hora", () => {
     expect(toCreation(tarefa, today)).toEqual({
       kind: "tarefa",
-      input: { title: "ligar pra vidinha", type: "tarefa", caseId: null, dueDate: today, dueTime: "14:00", fatal: false },
+      input: { title: "Reunião com a equipe", type: "tarefa", caseId: null, dueDate: today, dueTime: "14:00", fatal: false },
     });
     expect(toCreation(tarefaSemData, today)).toMatchObject({ kind: "tarefa", input: { dueDate: null, dueTime: null } });
   });

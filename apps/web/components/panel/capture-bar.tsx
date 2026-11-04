@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { CaptureProposalDto, IsoDate } from "@aj/shared";
 import { useApi } from "@/components/auth-provider";
+import { PlusIcon } from "@/components/mini/icons";
 import { useToast } from "@/components/mini/toast";
 import { useFinance } from "@/hooks/finance";
 import { useCreateTask, useDeleteTask } from "@/hooks/queries";
@@ -21,8 +22,8 @@ import {
 import { messageFor } from "@/lib/messages";
 import { useShortcuts } from "./shortcuts";
 
-const EXAMPLES = ["gastei 100 em roupa", "ligar pra vidinha hoje 14h", "luz 187,40 vence dia 8"];
-const HELP_TEXT = "Tente: gastei 42 no almoço · ligar pra Ana amanhã 14h · luz 187,40 vence dia 8";
+const EXAMPLES = ["Pagar a conta de internet amanhã às 10h", "Reunião com a equipe sexta 9h30", "Gastei 45 no mercado"];
+const HELP_TEXT = "Tente: gastei 45 no mercado · recebi 800 de um serviço · reunião com a equipe sexta 9h30";
 
 type Open = { proposal: CaptureProposalDto; today: IsoDate };
 
@@ -45,8 +46,16 @@ export function CaptureBar() {
   const [miss, setMiss] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [understanding, setUnderstanding] = useState(false);
+  const [seq, setSeq] = useState(0);
+  const actions = useRef<HTMLDivElement>(null);
 
   useEffect(() => registerCapture(() => field.current?.focus()), [registerCapture]);
+
+  // Quando uma proposta nova abre, o foco vai para a primeira ação possível (Confirmar; Editar se ainda falta o dia).
+  useEffect(() => {
+    if (seq > 0) actions.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
+  }, [seq]);
 
   function reset() {
     setText("");
@@ -59,6 +68,7 @@ export function CaptureBar() {
   async function interpret(value: string) {
     if (busy.current || value.trim() === "") return;
     busy.current = true;
+    setUnderstanding(true);
     setError(null);
     setMiss(false);
     setEditing(false);
@@ -69,17 +79,23 @@ export function CaptureBar() {
         setMiss(true);
       } else {
         setOpen({ proposal: result.proposal, today: result.today });
+        setSeq((n) => n + 1);
       }
     } catch (err) {
       setOpen(null);
       setError(messageFor(err));
     } finally {
       busy.current = false;
+      setUnderstanding(false);
     }
   }
 
   function submit(e: FormEvent) {
     e.preventDefault();
+    if (empty) {
+      field.current?.focus();
+      return;
+    }
     void interpret(text);
   }
 
@@ -113,23 +129,34 @@ export function CaptureBar() {
 
   const proposal = open?.proposal ?? null;
   const note = proposal === null ? null : proposalNote(proposal);
+  const empty = text.trim() === "";
+  const showExamples = empty && open === null && !miss && !understanding;
 
   return (
     <div className="pn-head">
-      <div style={{ display: "flex", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
-        <form onSubmit={submit} className="pn-capture" style={{ flex: 1, minWidth: 320 }} role="search" aria-label="Anotar">
+      <div className="pn-capture-block">
+        <div className="pn-capture-top">
+          <label htmlFor="pn-capture" className="pn-capture-label">
+            Nova tarefa ou lançamento
+          </label>
+          <button type="button" className="pn-link-btn" aria-expanded={helpOpen} aria-controls="pn-help" onClick={toggleHelp}>
+            Atalhos <kbd className="pn-kbd">?</kbd>
+          </button>
+        </div>
+        <form onSubmit={submit} className="pn-capture" role="search" aria-label="Anotar">
           <div className="pn-capture-field">
-            <label htmlFor="pn-capture" style={srOnly}>
-              Anotar tarefa, gasto ou conta
-            </label>
+            <span className="pn-capture-plus" aria-hidden="true">
+              <PlusIcon />
+            </span>
             <input
               ref={field}
               id="pn-capture"
-              className="mini-field"
+              className="mini-field pn-capture-input"
               value={text}
               maxLength={500}
               autoComplete="off"
-              placeholder="Anote algo: gastei 100 em roupa, ligar pra vidinha hoje 14h"
+              placeholder="Escreva uma tarefa ou um gasto"
+              aria-describedby="pn-capture-hint"
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Escape") reset();
@@ -139,31 +166,33 @@ export function CaptureBar() {
               /
             </kbd>
           </div>
-          <button type="submit" className="mini-btn primary">
-            Anotar
+          <button type="submit" className="mini-btn primary pn-capture-btn" disabled={understanding}>
+            {understanding ? "Entendendo…" : "Adicionar"}
           </button>
         </form>
-        <button type="button" className="mini-btn" aria-expanded={helpOpen} aria-controls="pn-help" onClick={toggleHelp}>
-          Atalhos <kbd className="pn-kbd">?</kbd>
-        </button>
+        <p id="pn-capture-hint" className="pn-capture-hint">
+          Enter também adiciona. Nada é salvo antes de você confirmar.
+        </p>
       </div>
 
-      <div className="pn-examples">
-        <span className="pn-sub">Experimente:</span>
-        {EXAMPLES.map((example) => (
-          <button
-            key={example}
-            type="button"
-            className="mini-chip"
-            onClick={() => {
-              setText(example);
-              void interpret(example);
-            }}
-          >
-            {example}
-          </button>
-        ))}
-      </div>
+      {showExamples && (
+        <div className="pn-examples">
+          <span className="pn-sub">Exemplos:</span>
+          {EXAMPLES.map((example) => (
+            <button
+              key={example}
+              type="button"
+              className="mini-chip"
+              onClick={() => {
+                setText(example);
+                void interpret(example);
+              }}
+            >
+              {example}
+            </button>
+          ))}
+        </div>
+      )}
 
       {helpOpen && (
         <div id="pn-help" role="region" aria-label="Atalhos de teclado" className="pn-help">
@@ -185,11 +214,19 @@ export function CaptureBar() {
         </div>
       )}
 
-      {miss && (
-        <p role="status" style={{ margin: 0, maxWidth: 780 }}>
-          <strong>Não entendi.</strong> <span className="pn-sub">{HELP_TEXT}</span>
-        </p>
-      )}
+      <div role="status" aria-live="polite" className="pn-live">
+        {understanding && <p className="pn-sub">Entendendo o que você escreveu…</p>}
+        {miss && (
+          <p>
+            <strong>Não entendi.</strong> <span className="pn-sub">{HELP_TEXT}</span>
+          </p>
+        )}
+        {open !== null && proposal !== null && (
+          <p className="pn-proposal-text">
+            <strong>Anotei:</strong> {proposalSummary(proposal, open.today)}
+          </p>
+        )}
+      </div>
       {error !== null && (
         <p role="alert" className="mini-fielderr" style={{ margin: 0 }}>
           {error}
@@ -197,12 +234,9 @@ export function CaptureBar() {
       )}
 
       {open !== null && proposal !== null && (
-        <section role="status" aria-label="Proposta" className="pn-proposal">
-          <p style={{ fontSize: "1.0625rem", lineHeight: 1.4 }}>
-            <strong>Anotei:</strong> {proposalSummary(proposal, open.today)}
-          </p>
+        <section role="group" aria-label="Proposta" className="pn-proposal">
           {note !== null && <p className="pn-sub">{note}</p>}
-          <div className="pn-dialog-actions">
+          <div className="pn-dialog-actions" ref={actions}>
             <button type="button" className="mini-btn primary pn-small-btn" disabled={!canConfirm(proposal) || saving} onClick={() => void confirm()}>
               {saving ? "Anotando…" : "Confirmar"}
             </button>
@@ -219,8 +253,6 @@ export function CaptureBar() {
     </div>
   );
 }
-
-const srOnly = { position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap" } as const;
 
 function EditChips({ open, onChange }: { open: Open; onChange: (p: CaptureProposalDto) => void }) {
   const { proposal, today } = open;

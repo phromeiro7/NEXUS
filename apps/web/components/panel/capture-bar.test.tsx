@@ -22,7 +22,7 @@ const deleteTask = vi.fn();
 
 const TODAY = "2026-11-04";
 const gasto = { kind: "gasto", description: "roupa", amountCents: 10000, category: "Roupas", date: TODAY, time: null, status: "paga" };
-const tarefa = { kind: "tarefa", title: "ligar pra vidinha", date: TODAY, time: "14:00", vagueTime: false };
+const tarefa = { kind: "tarefa", title: "Reunião com a equipe", date: TODAY, time: "14:00", vagueTime: false };
 const conta = { kind: "conta", description: "luz", amountCents: 18740, category: "Moradia", date: null, time: null, status: "a_pagar" };
 
 function renderBar() {
@@ -39,7 +39,7 @@ function renderBar() {
 }
 
 async function send(text: string) {
-  await userEvent.type(screen.getByLabelText("Anotar tarefa, gasto ou conta"), `${text}{Enter}`);
+  await userEvent.type(screen.getByLabelText("Nova tarefa ou lançamento"), `${text}{Enter}`);
 }
 
 beforeEach(() => {
@@ -70,7 +70,7 @@ describe("CaptureBar", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Confirmar" }));
     await waitFor(() => expect(fake.rows.size).toBe(1));
     expect([...fake.rows.values()][0]).toMatchObject({ kind: "gasto", description: "roupa", amountCents: 10000, category: "Roupas", dueDate: TODAY, status: "paga" });
-    expect(screen.getByLabelText("Anotar tarefa, gasto ou conta")).toHaveValue("");
+    expect(screen.getByLabelText("Nova tarefa ou lançamento")).toHaveValue("");
     expect(screen.queryByRole("button", { name: "Confirmar" })).not.toBeInTheDocument();
     const toast = screen.getAllByRole("status").find((n) => n.textContent?.includes("Anotado"))!;
     expect(toast).toHaveTextContent("Anotado: R$ 100,00 em Roupas, hoje.");
@@ -81,11 +81,11 @@ describe("CaptureBar", () => {
   it("Confirmar cria a tarefa com dia e horário, sem assumir nada", async () => {
     interpretCapture.mockResolvedValue({ today: TODAY, proposal: tarefa });
     renderBar();
-    await send("ligar pra vidinha hoje 14h");
-    expect(await screen.findByText(/ligar pra vidinha, hoje às 14h/)).toBeInTheDocument();
+    await send("Reunião com a equipe sexta 9h30");
+    expect(await screen.findByText(/Reunião com a equipe, hoje às 14h/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Confirmar" }));
     await waitFor(() => expect(createTask).toHaveBeenCalledTimes(1));
-    expect(createTask.mock.calls[0]![0]).toEqual({ title: "ligar pra vidinha", type: "tarefa", caseId: null, dueDate: TODAY, dueTime: "14:00", fatal: false });
+    expect(createTask.mock.calls[0]![0]).toEqual({ title: "Reunião com a equipe", type: "tarefa", caseId: null, dueDate: TODAY, dueTime: "14:00", fatal: false });
     const toast = screen.getAllByRole("status").find((n) => n.textContent?.includes("Anotado"))!;
     await userEvent.click(within(toast).getByRole("button", { name: "Desfazer" }));
     await waitFor(() => expect(deleteTask).toHaveBeenCalledWith("novo"));
@@ -98,7 +98,7 @@ describe("CaptureBar", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Descartar" }));
     expect(screen.queryByRole("button", { name: "Confirmar" })).not.toBeInTheDocument();
     expect(fake.api.createFinanceEntry).not.toHaveBeenCalled();
-    expect(screen.getByLabelText("Anotar tarefa, gasto ou conta")).toHaveValue("");
+    expect(screen.getByLabelText("Nova tarefa ou lançamento")).toHaveValue("");
   });
 
   it("quando as regras não entendem, mostra exemplos e não grava", async () => {
@@ -106,7 +106,7 @@ describe("CaptureBar", () => {
     renderBar();
     await send("quanto gastei?");
     expect(await screen.findByText("Não entendi.")).toBeInTheDocument();
-    expect(screen.getByText(/Tente: gastei 42 no almoço/)).toBeInTheDocument();
+    expect(screen.getByText(/Tente: gastei 45 no mercado/)).toBeInTheDocument();
     expect(fake.api.createFinanceEntry).not.toHaveBeenCalled();
   });
 
@@ -140,9 +140,9 @@ describe("CaptureBar", () => {
   it("um exemplo clicado já é interpretado", async () => {
     interpretCapture.mockResolvedValue({ today: TODAY, proposal: tarefa });
     renderBar();
-    await userEvent.click(screen.getByRole("button", { name: "ligar pra vidinha hoje 14h" }));
-    expect(await screen.findByText(/ligar pra vidinha, hoje às 14h/)).toBeInTheDocument();
-    expect(interpretCapture).toHaveBeenCalledWith({ text: "ligar pra vidinha hoje 14h" });
+    await userEvent.click(screen.getByRole("button", { name: "Reunião com a equipe sexta 9h30" }));
+    expect(await screen.findByText(/Reunião com a equipe, hoje às 14h/)).toBeInTheDocument();
+    expect(interpretCapture).toHaveBeenCalledWith({ text: "Reunião com a equipe sexta 9h30" });
   });
 
   it("falha da API aparece como aviso e nada é gravado", async () => {
@@ -153,9 +153,27 @@ describe("CaptureBar", () => {
     expect(fake.api.createFinanceEntry).not.toHaveBeenCalled();
   });
 
-  it("não envia frase vazia", async () => {
+  it("não envia frase vazia: Adicionar sem texto só devolve o foco ao campo", async () => {
     renderBar();
-    await userEvent.type(screen.getByLabelText("Anotar tarefa, gasto ou conta"), "   {Enter}");
+    await userEvent.click(screen.getByRole("button", { name: "Adicionar" }));
+    expect(screen.getByLabelText("Nova tarefa ou lançamento")).toHaveFocus();
+    await userEvent.type(screen.getByLabelText("Nova tarefa ou lançamento"), "   {Enter}");
     expect(interpretCapture).not.toHaveBeenCalled();
+  });
+
+  it("o botão Adicionar envia a frase e o foco vai para Confirmar na proposta", async () => {
+    interpretCapture.mockResolvedValue({ today: TODAY, proposal: gasto });
+    renderBar();
+    await userEvent.type(screen.getByLabelText("Nova tarefa ou lançamento"), "Gastei 100 em roupa");
+    await userEvent.click(screen.getByRole("button", { name: "Adicionar" }));
+    const confirm = await screen.findByRole("button", { name: "Confirmar" });
+    await waitFor(() => expect(confirm).toHaveFocus());
+    expect(screen.getByRole("group", { name: "Proposta" })).toBeInTheDocument();
+  });
+
+  it("os exemplos são genéricos", () => {
+    renderBar();
+    expect(screen.getByRole("button", { name: "Gastei 45 no mercado" })).toBeInTheDocument();
+    expect(screen.queryByText(/vidinha|roupa/i)).not.toBeInTheDocument();
   });
 });

@@ -36,7 +36,7 @@ describe("atalhos de teclado", () => {
   it("/ leva o foco para a barra de captura", async () => {
     renderWith(<CaptureBar />);
     await userEvent.keyboard("/");
-    expect(screen.getByLabelText("Anotar tarefa, gasto ou conta")).toHaveFocus();
+    expect(screen.getByLabelText("Nova tarefa ou lançamento")).toHaveFocus();
   });
 
   it("N abre a nova tarefa e Esc fecha, devolvendo o foco a quem estava", async () => {
@@ -72,10 +72,10 @@ describe("atalhos de teclado", () => {
 
   it("não aciona nada enquanto a pessoa digita num campo", async () => {
     renderWith(<CaptureBar />);
-    await userEvent.type(screen.getByLabelText("Anotar tarefa, gasto ou conta"), "n/?");
+    await userEvent.type(screen.getByLabelText("Nova tarefa ou lançamento"), "n/?");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Atalhos de teclado" })).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Anotar tarefa, gasto ou conta")).toHaveValue("n/?");
+    expect(screen.getByLabelText("Nova tarefa ou lançamento")).toHaveValue("n/?");
   });
 
   it("não aciona com Ctrl, Cmd ou Alt", async () => {
@@ -83,7 +83,7 @@ describe("atalhos de teclado", () => {
     await userEvent.keyboard("{Control>}n{/Control}");
     await userEvent.keyboard("{Meta>}/{/Meta}");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Anotar tarefa, gasto ou conta")).not.toHaveFocus();
+    expect(screen.getByLabelText("Nova tarefa ou lançamento")).not.toHaveFocus();
   });
 
   it("fora de Hoje e Finanças (sem barra de captura) as teclas não fazem nada", async () => {

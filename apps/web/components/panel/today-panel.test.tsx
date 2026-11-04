@@ -102,7 +102,7 @@ describe("TodayPanel", () => {
 
   it("a barra de captura aparece em Hoje", async () => {
     renderPanel();
-    expect(await screen.findByLabelText("Anotar tarefa, gasto ou conta")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Nova tarefa ou lançamento")).toBeInTheDocument();
   });
 
   it("concluir marca a tarefa na API e avisa com Desfazer", async () => {
