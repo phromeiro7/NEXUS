@@ -7,6 +7,17 @@ export const inviteCodeSchema = z.string().regex(/^[ABCDEFGHJKMNPQRSTUVWXYZ23456
 export const inviteStatusSchema = z.enum(['ativo', 'usado', 'expirado', 'revogado']);
 export type InviteStatus = z.infer<typeof inviteStatusSchema>;
 
+export const INVITE_LABEL_MAX = 60;
+export const createInviteInputSchema = z.object({
+  label: z
+    .string()
+    .trim()
+    .max(INVITE_LABEL_MAX)
+    .optional()
+    .transform((v) => (v === undefined || v === '' ? undefined : v)),
+});
+export type CreateInviteInput = z.input<typeof createInviteInputSchema>;
+
 export const inviteDtoSchema = z.object({
   code: inviteCodeSchema,
   /** https://t.me/<bot>?start=<codigo>: pronto para encaminhar. */
@@ -15,6 +26,8 @@ export const inviteDtoSchema = z.object({
   createdAt: z.string(),
   expiresAt: z.string(),
   usedAt: z.string().nullable(),
+  /** Nome dado pelo administrador ao criar, só para controle. */
+  label: z.string().nullable(),
 });
 export type InviteDto = z.infer<typeof inviteDtoSchema>;
 

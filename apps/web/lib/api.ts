@@ -137,7 +137,7 @@ export function createApiClient(opts: ApiClientOptions) {
     createLinkCode: () => request<LinkCodeDto>('POST', '/telegram/link-codes'),
     unlinkTelegram: () => request<void>('DELETE', '/telegram/link'),
     listInvites: () => request<InviteListDto>('GET', '/invites'),
-    createInvite: () => request<InviteDto>('POST', '/invites'),
+    createInvite: (label?: string) => request<InviteDto>('POST', '/invites', label === undefined ? undefined : { label }),
     deleteInvite: (code: string) => request<void>('DELETE', `/invites/${encodeURIComponent(code)}`),
     getBriefing: () => request<BriefingDto>('GET', '/briefing'),
     listFinanceEntries: (query: FinanceListQuery = {}) =>

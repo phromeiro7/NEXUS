@@ -454,9 +454,9 @@ export function createFakes(seed: { now?: Date } = {}) {
   type InviteRow = InviteRecord & { claimed: boolean };
   const inviteRows: InviteRow[] = [];
   const invites: InviteRepository & { rows(): InviteRow[]; seed(row: Partial<InviteRow> & { code: string }): void } = {
-    async create(createdBy, code, createdAt, expiresAt) {
+    async create(createdBy, code, createdAt, expiresAt, label) {
       if (inviteRows.some((r) => r.code === code)) throw new InviteCodeCollisionError();
-      inviteRows.push({ code, createdBy, createdAt, expiresAt, revokedAt: null, usedAt: null, claimed: false });
+      inviteRows.push({ code, createdBy, createdAt, expiresAt, revokedAt: null, usedAt: null, label: label ?? null, claimed: false });
     },
     async list(limit) {
       return [...inviteRows].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, limit);

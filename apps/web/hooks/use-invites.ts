@@ -19,7 +19,7 @@ export function useCreateInvite() {
   const api = useApi();
   const client = useQueryClient();
   return useMutation({
-    mutationFn: () => api.createInvite(),
+    mutationFn: (label?: string) => api.createInvite(label),
     onSuccess: () => client.invalidateQueries({ queryKey: inviteKeys.all }),
   });
 }
