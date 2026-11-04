@@ -17,3 +17,4 @@ export * from './invite-api.js';
 export * from './briefing.js';
 export * from './assistant.js';
 export * from './responses.js';
+export * from './capture-api.js';

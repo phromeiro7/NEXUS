@@ -8,6 +8,7 @@ import { getSupabaseEnv } from '../../test/db/supabase-env.js';
 import { createSupabaseAuthVerifier } from './supabase-auth.js';
 import { makeGetBriefing } from '../application/briefing.js';
 import { makeCaseUseCases } from '../application/cases.js';
+import { makeCaptureInterpretUseCases } from '../application/capture-interpret.js';
 import { makeFinanceUseCases } from '../application/finance.js';
 import { makeHolidayUseCases } from '../application/holidays.js';
 import { makeSettingsUseCases } from '../application/settings.js';
@@ -69,6 +70,7 @@ const app = createApp({
   cases: makeCaseUseCases({ cases: caseRepo }),
   holidays: makeHolidayUseCases({ holidays }),
   finance: makeFinanceUseCases({ finance: createSupabaseFinanceRepository(admin), clock }),
+  capture: makeCaptureInterpretUseCases({ profiles: profileRepo, clock }),
   settings: makeSettingsUseCases({
     profiles: profileRepo,
     tasks: taskRepo,
