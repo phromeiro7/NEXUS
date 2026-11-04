@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 150" role="img" aria-labelledby="title desc">
+  <title id="title">Nexus</title>
+  <desc id="desc">Símbolo N contínuo azul petróleo com ponto terracota, ao lado do nome nexus.</desc>
+  <g transform="translate(18 15)">
+    <rect width="120" height="120" rx="34" fill="#142D3A"/>
+    <path d="M32 91V30C32 24 39 22 43 27L78 69C82 74 89 71 89 65V30" fill="none" stroke="#F5F6F2" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="101" cy="30" r="5" fill="#C05640"/>
+  </g>
+  <text x="166" y="99" fill="#142D3A" font-family="Inter, Geist, Arial, sans-serif" font-size="72" font-weight="600" letter-spacing="-4">nexus</text>
+</svg>
