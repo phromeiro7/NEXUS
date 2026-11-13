@@ -70,6 +70,7 @@ function FinanceContent({ today }: { today: IsoDate }) {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<Sort>({ key: "data", dir: "desc" });
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<Lancamento | null>(null);
 
   const list = finance.lancamentos;
   const totals = monthTotals(list, ym);
@@ -181,6 +182,9 @@ function FinanceContent({ today }: { today: IsoDate }) {
                           {action}
                         </button>
                       )}
+                      <button type="button" className="mini-btn quiet pn-small-btn" aria-label={`Editar: ${l.descricao}`} onClick={() => setEditing(l)}>
+                        Editar
+                      </button>
                       <button type="button" className="mini-btn quiet pn-small-btn" aria-label={`Excluir: ${l.descricao}`} onClick={() => drop(l)}>
                         Excluir
                       </button>
@@ -210,6 +214,11 @@ function FinanceContent({ today }: { today: IsoDate }) {
       {adding && (
         <Dialog title="Novo lançamento" onClose={() => setAdding(false)}>
           <EntryFormFields today={today} onSaved={() => setAdding(false)} />
+        </Dialog>
+      )}
+      {editing && (
+        <Dialog title="Editar lançamento" onClose={() => setEditing(null)}>
+          <EntryFormFields today={today} entry={editing} onSaved={() => setEditing(null)} />
         </Dialog>
       )}
     </section>

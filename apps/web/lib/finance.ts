@@ -24,6 +24,9 @@ export type Lancamento = {
 
 export type LancamentoInput = Omit<Lancamento, "id" | "criadoEm">;
 
+/** O que dá para mudar num lançamento: o tipo e a situação não mudam por aqui. */
+export type LancamentoPatch = Partial<Pick<Lancamento, "descricao" | "valorCentavos" | "categoria" | "data" | "lembreteHora">>;
+
 export const MAX_CENTAVOS = 99_999_999_999; // R$ 999.999.999,99
 
 /** Valor digitado ("119,90", "1.200", "R$ 100", "12.5") em centavos; null se inválido ou <= 0. */
@@ -135,6 +138,13 @@ export function billsOfMonth(list: readonly Lancamento[], ym: YearMonth): Lancam
 /** Entradas ainda por receber no mês. */
 export function receivablesOfMonth(list: readonly Lancamento[], ym: YearMonth): Lancamento[] {
   return list.filter((l) => l.tipo === "entrada" && l.situacao === "a_pagar" && monthOf(l.data) === ym).sort(byDue);
+}
+
+/** Saídas e entradas já pagas ou recebidas no mês, as mais recentes primeiro (para editar ou excluir). */
+export function paidOfMonth(list: readonly Lancamento[], ym: YearMonth): Lancamento[] {
+  return list
+    .filter((l) => l.situacao === "paga" && monthOf(l.data) === ym)
+    .sort((a, b) => (a.data === b.data ? b.criadoEm.localeCompare(a.criadoEm) : a.data < b.data ? 1 : -1));
 }
 
 /** Contas que pedem atenção em Hoje: vencidas e as de hoje. */

@@ -1,12 +1,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api";
 import type { Lancamento } from "@/lib/finance";
 import { createFakeFinanceApi } from "@/test/fake-finance-api";
-import { EntryForm } from "./entry-form";
+import { EntryEdit, EntryForm } from "./entry-form";
 import { FinanceScreen } from "./finance-screen";
 import { ToastProvider } from "./toast";
 
@@ -193,6 +193,114 @@ describe("FinanceScreen", () => {
     expect(await screen.findByText(/Não foi possível salvar a última alteração/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Marcar Internet como paga" })).toBeInTheDocument();
     expect(fake.rows.get(bill.id)).toMatchObject({ status: "a_pagar" });
+  });
+});
+
+describe("FinanceScreen: excluir e editar", () => {
+  it("lista o que já foi pago e permite excluir, com Desfazer", async () => {
+    const gasto = fake.seed({ kind: "gasto", description: "Almoço", amountCents: 4200, category: "Lazer" });
+    wrap(<FinanceScreen />);
+    expect(await screen.findByRole("heading", { name: /Já lançados/ })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Excluir Almoço" }));
+    expect(screen.queryByText("Almoço")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Lançamento excluído: Almoço.");
+    await waitFor(() => expect(fake.rows.has(gasto.id)).toBe(false));
+    await userEvent.click(within(screen.getByRole("status")).getByRole("button", { name: "Desfazer" }));
+    await waitFor(() => expect(fake.rows.has(gasto.id)).toBe(true));
+    expect(await screen.findByText("Almoço")).toBeInTheDocument();
+  });
+
+  it("conta a pagar também pode ser excluída e abre a edição pelo toque", async () => {
+    const bill = fake.seed({ kind: "conta", description: "Internet", amountCents: 11990, status: "a_pagar" });
+    wrap(<FinanceScreen />);
+    expect(await screen.findByRole("link", { name: "Editar Internet" })).toHaveAttribute("href", `/mini/financas/${bill.id}`);
+    await userEvent.click(screen.getByRole("button", { name: "Excluir Internet" }));
+    await waitFor(() => expect(fake.rows.has(bill.id)).toBe(false));
+  });
+
+  it("se a API recusar a exclusão, o lançamento volta e a tela avisa", async () => {
+    const gasto = fake.seed({ kind: "gasto", description: "Almoço", amountCents: 4200 });
+    fake.api.deleteFinanceEntry.mockRejectedValueOnce(new ApiError(500, "erro_interno", null));
+    wrap(<FinanceScreen />);
+    await userEvent.click(await screen.findByRole("button", { name: "Excluir Almoço" }));
+    expect(await screen.findByText(/Não foi possível salvar a última alteração/)).toBeInTheDocument();
+    expect(await screen.findByText("Almoço")).toBeInTheDocument();
+    expect(fake.rows.has(gasto.id)).toBe(true);
+  });
+});
+
+describe("EntryEdit", () => {
+  it("abre com os dados do lançamento e salva só o que mudou, em centavos", async () => {
+    const gasto = fake.seed({ kind: "gasto", description: "Almoço", amountCents: 4200, category: "Lazer" });
+    wrap(<EntryEdit id={gasto.id} />);
+    const valor = await screen.findByLabelText(/Valor/);
+    expect(valor).toHaveValue("42,00");
+    expect(screen.getByLabelText("O que foi")).toHaveValue("Almoço");
+    expect(screen.getByRole("button", { name: "Lazer" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByRole("button", { name: "Entrada" })).not.toBeInTheDocument();
+    await userEvent.clear(valor);
+    await userEvent.type(valor, "45,50");
+    await userEvent.click(screen.getByRole("button", { name: "Mercado" }));
+    await userEvent.click(screen.getByRole("button", { name: "Salvar alterações" }));
+    await waitFor(() => expect(fake.rows.get(gasto.id)).toMatchObject({ amountCents: 4550, category: "Mercado", description: "Almoço", kind: "gasto", status: "paga" }));
+    expect(fake.api.updateFinanceEntry).toHaveBeenCalledWith(gasto.id, { amountCents: 4550, category: "Mercado" });
+    expect(push).toHaveBeenCalledWith("/mini/financas");
+    // Desfazer devolve os valores anteriores.
+    await userEvent.click(within(screen.getByRole("status")).getByRole("button", { name: "Desfazer" }));
+    await waitFor(() => expect(fake.rows.get(gasto.id)).toMatchObject({ amountCents: 4200, category: "Lazer" }));
+  });
+
+  it("conta a pagar: muda vencimento e lembrete, e mantém a situação", async () => {
+    const bill = fake.seed({ kind: "conta", description: "Aluguel", amountCents: 120000, status: "a_pagar", dueDate: "2026-11-05", reminderTime: "09:00" });
+    wrap(<EntryEdit id={bill.id} />);
+    const data = await screen.findByLabelText("Vence em");
+    fireEvent.change(data, { target: { value: "2026-11-10" } });
+    fireEvent.change(screen.getByLabelText("Lembrar às"), { target: { value: "" } });
+    await userEvent.click(screen.getByRole("button", { name: "Salvar alterações" }));
+    await waitFor(() => expect(fake.rows.get(bill.id)).toMatchObject({ dueDate: "2026-11-10", reminderTime: null, status: "a_pagar", paidAt: null }));
+    expect(fake.api.updateFinanceEntry).toHaveBeenCalledWith(bill.id, { dueDate: "2026-11-10", reminderTime: null });
+  });
+
+  it("valida como no cadastro e não chama a API", async () => {
+    const gasto = fake.seed({ kind: "gasto", description: "Almoço", amountCents: 4200 });
+    wrap(<EntryEdit id={gasto.id} />);
+    const valor = await screen.findByLabelText(/Valor/);
+    await userEvent.clear(valor);
+    await userEvent.click(screen.getByRole("button", { name: "Salvar alterações" }));
+    expect(screen.getByText(/Digite um valor maior que zero/)).toBeInTheDocument();
+    expect(fake.api.updateFinanceEntry).not.toHaveBeenCalled();
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it("sem mudanças, não chama a API", async () => {
+    const gasto = fake.seed({ kind: "gasto", description: "Almoço", amountCents: 4200 });
+    wrap(<EntryEdit id={gasto.id} />);
+    await userEvent.click(await screen.findByRole("button", { name: "Salvar alterações" }));
+    expect(fake.api.updateFinanceEntry).not.toHaveBeenCalled();
+    expect(push).toHaveBeenCalledWith("/mini/financas");
+  });
+
+  it("id inexistente: explica e oferece voltar", async () => {
+    wrap(<EntryEdit id="nao-existe" />);
+    expect(await screen.findByText("Não encontramos esse lançamento.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Finanças/ })).toHaveAttribute("href", "/mini/financas");
+  });
+
+  it("se a API recusar a edição, a tela volta ao valor guardado e avisa", async () => {
+    const gasto = fake.seed({ kind: "gasto", description: "Almoço", amountCents: 4200 });
+    fake.api.updateFinanceEntry.mockRejectedValueOnce(new ApiError(500, "erro_interno", null));
+    wrap(
+      <>
+        <EntryEdit id={gasto.id} />
+        <FinanceScreen />
+      </>,
+    );
+    const valor = (await screen.findAllByLabelText(/Valor/))[0]!;
+    await userEvent.clear(valor);
+    await userEvent.type(valor, "99");
+    await userEvent.click(screen.getByRole("button", { name: "Salvar alterações" }));
+    expect((await screen.findAllByText(/Não foi possível salvar a última alteração/)).length).toBeGreaterThan(0);
+    expect(fake.rows.get(gasto.id)).toMatchObject({ amountCents: 4200 });
   });
 });
 

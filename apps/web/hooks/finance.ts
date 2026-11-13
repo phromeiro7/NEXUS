@@ -5,8 +5,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FinanceEntryDto, FinanceStatus } from "@aj/shared";
 import { useApi, useAuth } from "@/components/auth-provider";
 import { ApiError } from "@/lib/api";
-import type { Lancamento, LancamentoInput } from "@/lib/finance";
-import { byCreation, toCreateInput, toLancamento } from "@/lib/finance-map";
+import type { Lancamento, LancamentoInput, LancamentoPatch } from "@/lib/finance";
+import { byCreation, toCreateInput, toLancamento, toUpdateInput } from "@/lib/finance-map";
 import { clearLocalLancamentos, readLocalLancamentos } from "@/lib/finance-local";
 
 /** Todos os lançamentos do usuário numa consulta só: as telas filtram por mês, dia e tipo. */
@@ -29,6 +29,8 @@ export type FinanceApi = {
   marcarPaga(id: string): void;
   desmarcarPaga(id: string): void;
   remove(id: string): void;
+  /** Muda descrição, valor, categoria, data ou lembrete; o tipo e a situação ficam como estão. */
+  edit(id: string, patch: LancamentoPatch): void;
 };
 
 function newId(): string {
@@ -152,6 +154,30 @@ export function useFinance(): FinanceApi {
     onSettled: settle,
   });
 
+  const update = useMutation({
+    mutationKey: MUTATION_KEY,
+    mutationFn: ({ id, patch }: { id: string; patch: LancamentoPatch }) => api.updateFinanceEntry(id, toUpdateInput(patch)),
+    onMutate: async ({ id, patch }) => {
+      await qc.cancelQueries({ queryKey: KEY });
+      patchCache((list) =>
+        list.map((e) =>
+          e.id === id
+            ? {
+                ...e,
+                ...(patch.descricao !== undefined ? { description: patch.descricao } : {}),
+                ...(patch.valorCentavos !== undefined ? { amountCents: patch.valorCentavos } : {}),
+                ...(patch.categoria !== undefined ? { category: patch.categoria } : {}),
+                ...(patch.data !== undefined ? { dueDate: patch.data } : {}),
+                ...(patch.lembreteHora !== undefined ? { reminderTime: patch.lembreteHora } : {}),
+              }
+            : e,
+        ),
+      );
+    },
+    onError: fail,
+    onSettled: settle,
+  });
+
   const data = query.data;
   const lancamentos = useMemo(() => (data ? data.map(toLancamento).sort(byCreation) : EMPTY), [data]);
 
@@ -193,6 +219,14 @@ export function useFinance(): FinanceApi {
     },
     [destroy, setSaveFailed],
   );
+  const edit = useCallback(
+    (id: string, patch: LancamentoPatch) => {
+      if (Object.keys(patch).length === 0) return;
+      setSaveFailed(false);
+      update.mutate({ id, patch });
+    },
+    [update, setSaveFailed],
+  );
   const reload = useCallback(() => void query.refetch(), [query]);
   const dismissError = useCallback(() => setSaveFailed(false), [setSaveFailed]);
 
@@ -210,8 +244,9 @@ export function useFinance(): FinanceApi {
       marcarPaga,
       desmarcarPaga,
       remove,
+      edit,
     }),
-    [lancamentos, query.isPending, query.isError, error, reload, dismissError, add, restore, marcarPaga, desmarcarPaga, remove],
+    [lancamentos, query.isPending, query.isError, error, reload, dismissError, add, restore, marcarPaga, desmarcarPaga, remove, edit],
   );
 }
 

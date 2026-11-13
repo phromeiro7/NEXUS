@@ -1,5 +1,5 @@
-import type { CreateFinanceEntryInput, FinanceEntryDto } from "@aj/shared";
-import type { Lancamento } from "./finance";
+import type { CreateFinanceEntryInput, FinanceEntryDto, UpdateFinanceEntryInput } from "@aj/shared";
+import type { Lancamento, LancamentoPatch } from "./finance";
 
 /** DTO da API (inglês, vindo do contrato compartilhado) → modelo das telas. */
 export function toLancamento(dto: FinanceEntryDto): Lancamento {
@@ -27,6 +27,17 @@ export function toCreateInput(item: Lancamento): CreateFinanceEntryInput {
     dueDate: item.data,
     status: item.situacao,
     reminderTime: item.lembreteHora,
+  };
+}
+
+/** Mudanças do modelo das telas → corpo do PATCH (só os campos presentes). */
+export function toUpdateInput(patch: LancamentoPatch): UpdateFinanceEntryInput {
+  return {
+    ...(patch.descricao !== undefined ? { description: patch.descricao } : {}),
+    ...(patch.valorCentavos !== undefined ? { amountCents: patch.valorCentavos } : {}),
+    ...(patch.categoria !== undefined ? { category: patch.categoria } : {}),
+    ...(patch.data !== undefined ? { dueDate: patch.data } : {}),
+    ...(patch.lembreteHora !== undefined ? { reminderTime: patch.lembreteHora } : {}),
   };
 }
 

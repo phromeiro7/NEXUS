@@ -12,6 +12,7 @@ import {
   formatBRL,
   formatBRLShort,
   hasMonthEntries,
+  paidOfMonth,
   monthOf,
   monthTitle,
   monthTotals,
@@ -20,7 +21,7 @@ import {
   type Lancamento,
   type YearMonth,
 } from "@/lib/finance";
-import { BillItem } from "./bill-item";
+import { BillItem, PaidItem } from "./bill-item";
 import { BackIcon, ChevronIcon, PlusIcon } from "./icons";
 import { useToast } from "./toast";
 
@@ -61,6 +62,7 @@ function FinanceContent({ today }: { today: IsoDate }) {
   const spent = categories.reduce((n, c) => n + c.total, 0);
   const bills = billsOfMonth(list, ym);
   const receivables = receivablesOfMonth(list, ym);
+  const paid = paidOfMonth(list, ym);
   const year = Number(today.slice(0, 4));
 
   function settle(item: Lancamento) {
@@ -69,6 +71,11 @@ function FinanceContent({ today }: { today: IsoDate }) {
       message: `${item.tipo === "entrada" ? "Recebido" : "Paga"}: ${item.descricao}.`,
       undo: () => finance.desmarcarPaga(item.id),
     });
+  }
+
+  function drop(item: Lancamento) {
+    finance.remove(item.id);
+    toast({ message: `Lançamento excluído: ${item.descricao}.`, undo: () => finance.restore(item) });
   }
 
   return (
@@ -156,7 +163,7 @@ function FinanceContent({ today }: { today: IsoDate }) {
           ) : (
             <ul className="mini-list grouped">
               {bills.map((b, i) => (
-                <BillItem key={b.id} bill={b} today={today} onPay={settle} index={i} />
+                <BillItem key={b.id} bill={b} today={today} onPay={settle} onDelete={drop} index={i} />
               ))}
             </ul>
           )}
@@ -170,7 +177,20 @@ function FinanceContent({ today }: { today: IsoDate }) {
           </h2>
           <ul className="mini-list grouped">
             {receivables.map((b, i) => (
-              <BillItem key={b.id} bill={b} today={today} onPay={settle} index={i} />
+              <BillItem key={b.id} bill={b} today={today} onPay={settle} onDelete={drop} index={i} />
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {paid.length > 0 && (
+        <section className="mini-section" aria-labelledby="h-lancados">
+          <h2 id="h-lancados">
+            Já lançados <span className="mini-count">{paid.length}</span>
+          </h2>
+          <ul className="mini-list grouped">
+            {paid.map((p, i) => (
+              <PaidItem key={p.id} entry={p} onDelete={drop} index={i} />
             ))}
           </ul>
         </section>

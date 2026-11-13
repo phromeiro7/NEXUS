@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ToastProvider } from "@/components/mini/toast";
@@ -184,6 +184,67 @@ describe("FinancePanel", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect([...fake.rows.values()].find((r) => r.description === "Internet")).toMatchObject({ kind: "gasto", amountCents: 11990, status: "paga" });
     expect(await screen.findByText("Internet", { selector: "td" })).toBeInTheDocument();
+  });
+
+  it("Editar abre o diálogo com os dados, salva a mudança e a tabela atualiza", async () => {
+    renderPanel();
+    const row = (await screen.findByText("Almoço", { selector: "td" })).closest("tr")!;
+    await userEvent.click(within(row).getByRole("button", { name: "Editar: Almoço" }));
+    const dialog = screen.getByRole("dialog", { name: "Editar lançamento" });
+    expect(within(dialog).getByLabelText(/Valor/)).toHaveValue("42,00");
+    expect(within(dialog).getByLabelText("O que foi")).toHaveValue("Almoço");
+    const desc = within(dialog).getByLabelText("O que foi");
+    await userEvent.clear(desc);
+    await userEvent.type(desc, "Almoço com a equipe");
+    const valor = within(dialog).getByLabelText(/Valor/);
+    await userEvent.clear(valor);
+    await userEvent.type(valor, "58,90");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Salvar alterações" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(await screen.findByText("Almoço com a equipe", { selector: "td" })).toBeInTheDocument();
+    const saved = [...fake.rows.values()].find((r) => r.description === "Almoço com a equipe");
+    expect(saved).toMatchObject({ amountCents: 5890, kind: "gasto", status: "paga", category: "Lazer" });
+    expect(screen.getAllByRole("status").some((n) => n.textContent?.includes("Lançamento atualizado: Almoço com a equipe, R$ 58,90."))).toBe(true);
+  });
+
+  it("Editar uma conta mantém a situação; Desfazer volta o vencimento", async () => {
+    renderPanel();
+    const row = (await screen.findByText("Aluguel", { selector: "td" })).closest("tr")!;
+    await userEvent.click(within(row).getByRole("button", { name: "Editar: Aluguel" }));
+    const dialog = screen.getByRole("dialog", { name: "Editar lançamento" });
+    fireEvent.change(within(dialog).getByLabelText("Vence em"), { target: { value: "2026-11-20" } });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Salvar alterações" }));
+    const aluguel = () => [...fake.rows.values()].find((r) => r.description === "Aluguel")!;
+    await waitFor(() => expect(aluguel()).toMatchObject({ dueDate: "2026-11-20", status: "a_pagar", reminderTime: "09:00" }));
+    await userEvent.click(screen.getByRole("button", { name: "Desfazer" }));
+    await waitFor(() => expect(aluguel().dueDate).toBe("2026-11-05"));
+  });
+
+  it("Editar não salva com valor inválido e Esc fecha sem gravar", async () => {
+    renderPanel();
+    const row = (await screen.findByText("Almoço", { selector: "td" })).closest("tr")!;
+    await userEvent.click(within(row).getByRole("button", { name: "Editar: Almoço" }));
+    const valor = screen.getByLabelText(/Valor/);
+    await userEvent.clear(valor);
+    await userEvent.click(screen.getByRole("button", { name: "Salvar alterações" }));
+    expect(screen.getByText(/Digite um valor maior que zero/)).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(fake.api.updateFinanceEntry).not.toHaveBeenCalled();
+  });
+
+  it("se a API recusar a edição, a tabela volta ao valor guardado e avisa", async () => {
+    fake.api.updateFinanceEntry.mockRejectedValueOnce(new ApiError(500, "erro_interno", null));
+    renderPanel();
+    const row = (await screen.findByText("Almoço", { selector: "td" })).closest("tr")!;
+    await userEvent.click(within(row).getByRole("button", { name: "Editar: Almoço" }));
+    const desc = screen.getByLabelText("O que foi");
+    await userEvent.clear(desc);
+    await userEvent.type(desc, "Jantar");
+    await userEvent.click(screen.getByRole("button", { name: "Salvar alterações" }));
+    expect(await screen.findByText(/Não foi possível salvar a última alteração/)).toBeInTheDocument();
+    expect(await screen.findByText("Almoço", { selector: "td" })).toBeInTheDocument();
+    expect(screen.queryByText("Jantar", { selector: "td" })).not.toBeInTheDocument();
   });
 
   it("o diálogo não salva sem valor e Esc fecha sem gravar", async () => {

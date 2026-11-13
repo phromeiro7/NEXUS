@@ -35,6 +35,11 @@ export function createFakeFinanceApi() {
       if (!row) throw new ApiError(404, "nao_encontrado", null);
       const next: FinanceEntryDto = {
         ...row,
+        ...(input.description !== undefined ? { description: input.description } : {}),
+        ...(input.amountCents !== undefined ? { amountCents: input.amountCents } : {}),
+        ...(input.category !== undefined ? { category: input.category } : {}),
+        ...(input.dueDate !== undefined ? { dueDate: input.dueDate } : {}),
+        ...(input.reminderTime !== undefined ? { reminderTime: input.reminderTime } : {}),
         ...(input.status !== undefined ? { status: input.status, paidAt: input.status === "paga" ? stamp() : null } : {}),
         updatedAt: stamp(),
       };

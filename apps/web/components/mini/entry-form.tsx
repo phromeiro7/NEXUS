@@ -12,7 +12,9 @@ import {
   CATEGORIAS_GASTO,
   formatBRL,
   parseValor,
+  type Lancamento,
   type LancamentoInput,
+  type LancamentoPatch,
 } from "@/lib/finance";
 import { spokenTime } from "@/lib/mini-tasks";
 import { BackIcon } from "./icons";
@@ -20,6 +22,11 @@ import { useToast } from "./toast";
 
 type Kind = "gasto" | "entrada";
 type Errors = Partial<Record<"valor" | "descricao" | "data", string>>;
+
+/** 11990 → "119,90": o valor como a pessoa digita. */
+function centsToField(cents: number): string {
+  return `${Math.floor(cents / 100)},${String(cents % 100).padStart(2, "0")}`;
+}
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -41,6 +48,45 @@ export function EntryForm() {
   return <EntryFormContent today={today} />;
 }
 
+/** Página de edição do Mini App: abre o lançamento pelo id e reaproveita o formulário de "Novo lançamento". */
+export function EntryEdit({ id }: { id: string }) {
+  const today = useToday();
+  const finance = useFinance();
+  const router = useRouter();
+  const entry = finance.lancamentos.find((l) => l.id === id);
+  const back = (
+    <Link href="/mini/financas" className="mini-back">
+      <BackIcon /> Finanças
+    </Link>
+  );
+  if (today === null || (finance.loading && !entry)) {
+    return (
+      <main role="status" aria-label="Carregando">
+        {back}
+        <div className="mini-skeleton" style={{ marginTop: 16, height: 160 }} />
+      </main>
+    );
+  }
+  if (!entry) {
+    return (
+      <main>
+        {back}
+        <div className="mini-empty">
+          <strong>Não encontramos esse lançamento.</strong>
+          Ele pode ter sido excluído. Volte às Finanças para ver a lista.
+        </div>
+      </main>
+    );
+  }
+  return (
+    <main>
+      {back}
+      <h1 style={{ margin: "8px 0 0", fontSize: "1.75rem", letterSpacing: "-0.02em" }}>Editar lançamento</h1>
+      <EntryFormFields key={entry.id} today={today} entry={entry} onSaved={() => router.push("/mini/financas")} />
+    </main>
+  );
+}
+
 function EntryFormContent({ today }: { today: IsoDate }) {
   const router = useRouter();
   return (
@@ -54,22 +100,28 @@ function EntryFormContent({ today }: { today: IsoDate }) {
   );
 }
 
-/** O formulário de lançamento sem moldura, para o Mini App (página) e o painel (diálogo). `onSaved` roda após salvar. */
-export function EntryFormFields({ today, onSaved }: { today: IsoDate; onSaved: () => void }) {
+/**
+ * O formulário de lançamento sem moldura, para o Mini App (página) e o painel (diálogo). `onSaved` roda após salvar.
+ * Com `entry`, edita esse lançamento: tipo e situação ficam como estão (pagar é outra ação) e só o que mudou é enviado.
+ */
+export function EntryFormFields({ today, onSaved, entry }: { today: IsoDate; onSaved: () => void; entry?: Lancamento }) {
   const toast = useToast();
   const finance = useFinance();
   const ids = useId();
-  const [kind, setKind] = useState<Kind>("gasto");
-  const [valor, setValor] = useState("");
-  const [descricao, setDescricao] = useState("");
-  const [categoria, setCategoria] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
-  const [date, setDate] = useState<string>(today);
-  const [time, setTime] = useState("09:00");
+  const editing = entry !== undefined;
+  const [kind, setKind] = useState<Kind>(entry?.tipo === "entrada" ? "entrada" : "gasto");
+  const [valor, setValor] = useState(entry ? centsToField(entry.valorCentavos) : "");
+  const [descricao, setDescricao] = useState(entry?.descricao ?? "");
+  const [categoria, setCategoria] = useState<string | null>(entry?.categoria ?? null);
+  const [pending, setPending] = useState(entry ? entry.situacao === "a_pagar" : false);
+  const [date, setDate] = useState<string>(entry?.data ?? today);
+  const [time, setTime] = useState(entry?.lembreteHora ?? (editing ? "" : "09:00"));
   const [errors, setErrors] = useState<Errors>({});
 
   const incoming = kind === "entrada";
-  const categories = incoming ? CATEGORIAS_ENTRADA : CATEGORIAS_GASTO;
+  const base: readonly string[] = incoming ? CATEGORIAS_ENTRADA : CATEGORIAS_GASTO;
+  // Categoria fora da lista (veio da captura, por exemplo) continua visível e pode ser trocada.
+  const categories = entry?.categoria && !base.includes(entry.categoria) ? [...base, entry.categoria] : base;
 
   function chooseKind(next: Kind) {
     if (next === kind) return;
@@ -89,6 +141,30 @@ export function EntryFormFields({ today, onSaved }: { today: IsoDate; onSaved: (
     if (Object.keys(next).length > 0 || cents === null) {
       const first = next.valor ? "valor" : next.descricao ? "descricao" : "data";
       document.getElementById(`${ids}-${first}`)?.focus();
+      return;
+    }
+    if (entry) {
+      const title80 = title.slice(0, 80);
+      const patch: LancamentoPatch = {
+        ...(title80 !== entry.descricao ? { descricao: title80 } : {}),
+        ...(cents !== entry.valorCentavos ? { valorCentavos: cents } : {}),
+        ...(categoria !== entry.categoria ? { categoria } : {}),
+        ...(date !== entry.data ? { data: date as IsoDate } : {}),
+        ...(entry.situacao === "a_pagar" && (time === "" ? null : time) !== entry.lembreteHora ? { lembreteHora: time === "" ? null : time } : {}),
+      };
+      if (Object.keys(patch).length > 0) {
+        const previous: LancamentoPatch = {
+          descricao: entry.descricao,
+          valorCentavos: entry.valorCentavos,
+          categoria: entry.categoria,
+          data: entry.data,
+          lembreteHora: entry.lembreteHora,
+        };
+        const undo: LancamentoPatch = Object.fromEntries(Object.keys(patch).map((k) => [k, previous[k as keyof LancamentoPatch]]));
+        finance.edit(entry.id, patch);
+        toast({ message: `Lançamento atualizado: ${title80}, ${formatBRL(cents)}.`, undo: () => finance.edit(entry.id, undo) });
+      }
+      onSaved();
       return;
     }
     const input: LancamentoInput = {
@@ -127,14 +203,16 @@ export function EntryFormFields({ today, onSaved }: { today: IsoDate; onSaved: (
   );
 
   return (
-      <form className="mini-form" onSubmit={submit} noValidate aria-label="Novo lançamento">
-        <fieldset className="mini-step">
-          <legend>Tipo</legend>
-          <div className="mini-chips">
-            {chip("Gasto", kind === "gasto", () => chooseKind("gasto"))}
-            {chip("Entrada", kind === "entrada", () => chooseKind("entrada"))}
-          </div>
-        </fieldset>
+      <form className="mini-form" onSubmit={submit} noValidate aria-label={editing ? "Editar lançamento" : "Novo lançamento"}>
+        {!editing && (
+          <fieldset className="mini-step">
+            <legend>Tipo</legend>
+            <div className="mini-chips">
+              {chip("Gasto", kind === "gasto", () => chooseKind("gasto"))}
+              {chip("Entrada", kind === "entrada", () => chooseKind("entrada"))}
+            </div>
+          </fieldset>
+        )}
 
         <div className="mini-stack">
           <label htmlFor={`${ids}-valor`} className="mini-label">
@@ -188,13 +266,15 @@ export function EntryFormFields({ today, onSaved }: { today: IsoDate; onSaved: (
           <div className="mini-chips">{categories.map((c) => chip(c, categoria === c, () => setCategoria(categoria === c ? null : c)))}</div>
         </fieldset>
 
-        <fieldset className="mini-step">
-          <legend>Situação</legend>
-          <div className="mini-chips">
-            {chip(incoming ? "Já recebi" : "Já paguei", !pending, () => setPending(false))}
-            {chip(incoming ? "Vou receber" : "Vou pagar", pending, () => setPending(true))}
-          </div>
-        </fieldset>
+        {!editing && (
+          <fieldset className="mini-step">
+            <legend>Situação</legend>
+            <div className="mini-chips">
+              {chip(incoming ? "Já recebi" : "Já paguei", !pending, () => setPending(false))}
+              {chip(incoming ? "Vou receber" : "Vou pagar", pending, () => setPending(true))}
+            </div>
+          </fieldset>
+        )}
 
         <div className="mini-form-row">
           <div className="mini-stack">
@@ -229,12 +309,12 @@ export function EntryFormFields({ today, onSaved }: { today: IsoDate; onSaved: (
         {hint && <p className="mini-summary">{hint}</p>}
         {preview !== null && descricao.trim() !== "" && (
           <p className="mini-hint" style={{ marginTop: -8 }}>
-            Será anotado: {descricao.trim()}, {formatBRL(preview)}.
+            {editing ? "Vai ficar assim" : "Será anotado"}: {descricao.trim()}, {formatBRL(preview)}.
           </p>
         )}
 
         <button type="submit" className="mini-btn primary">
-          Salvar lançamento
+          {editing ? "Salvar alterações" : "Salvar lançamento"}
         </button>
       </form>
   );
