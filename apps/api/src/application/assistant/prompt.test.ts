@@ -42,7 +42,9 @@ describe('buildSystemBlocks', () => {
   });
 
   it('states the behavioural rules', () => {
-    expect(text).toContain('assistente jurídico pessoal');
+    expect(text).toContain('assistente pessoal de tarefas e lembretes');
+    expect(text).not.toContain('advogado ou advogada');
+    expect(text).toMatch(/sem julgamento/i);
     expect(text).toContain('português do Brasil');
     expect(text).toContain('calcular_prazo');
     expect(text).toContain('listar_tarefas');

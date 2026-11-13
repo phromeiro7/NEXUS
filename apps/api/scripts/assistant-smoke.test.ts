@@ -4,6 +4,7 @@ import {
   buildProcessMessage,
   buildSmokeCases,
   estimateCost,
+  evaluate,
   formatReport,
   main,
   maxCalls,
@@ -199,5 +200,41 @@ describe('main: portões de segurança', () => {
     expect(code).toBe(0);
     expect(t.all()).not.toContain(FAKE_KEY);
     expect(t.out.join('\n')).toContain('Error');
+  });
+});
+
+describe('evaluate', () => {
+  const base: SmokeResult = {
+    phrase: 'x',
+    tools: ['criar_tarefa'],
+    tasks: [{ title: 'T', dueDate: '2026-10-27', dueTime: '09:00' }],
+    reply: 'ok',
+    usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0 },
+    calls: 1,
+    ms: 1,
+  };
+  it('passa quando tudo bate', () => {
+    expect(evaluate(base, { tools: ['criar_tarefa'], tasks: 1, date: '2026-10-27', time: '09:00' })).toEqual([]);
+  });
+  it('aponta ferramenta que faltou ou que não devia ser chamada', () => {
+    expect(evaluate(base, { tools: ['calcular_prazo'] })).toEqual(['faltou chamar calcular_prazo']);
+    expect(evaluate(base, { forbidTools: ['criar_tarefa'] })).toEqual(['não devia chamar criar_tarefa']);
+  });
+  it('aponta contagem, data e hora diferentes', () => {
+    const f = evaluate(base, { tasks: 0, date: '2026-10-28', time: null });
+    expect(f).toHaveLength(3);
+    expect(f.join(' ')).toMatch(/tarefa/);
+    expect(f.join(' ')).toContain('2026-10-28');
+    expect(f.join(' ')).toContain('sem hora');
+  });
+  it('trata erro do modelo como falha', () => {
+    expect(evaluate({ ...base, error: 'AssistantUnavailableError' }, {})).toEqual(['erro: AssistantUnavailableError']);
+  });
+  it('todas as frases do roteiro têm expectativa, e o relatório resume o resultado', () => {
+    for (const c of buildSmokeCases()) expect(Object.keys(c.expect).length).toBeGreaterThan(0);
+    const report = formatReport([{ ...base, failures: [] }, { ...base, failures: ['faltou chamar x'] }], 'm');
+    expect(report).toContain('Verificação: OK');
+    expect(report).toContain('Verificação: FALHOU (faltou chamar x)');
+    expect(report).toContain('RESULTADO: 1 de 2');
   });
 });
