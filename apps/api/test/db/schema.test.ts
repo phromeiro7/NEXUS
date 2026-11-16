@@ -42,10 +42,8 @@ describe('schema', () => {
     const names = rows.map((r) => r.table_name);
     for (const t of [
       'profiles',
-      'cases',
       'tasks',
       'reminders',
-      'holidays',
       'inbound_events',
       'chat_messages',
       'link_codes',
@@ -83,18 +81,10 @@ describe('schema', () => {
     });
   });
 
-  async function insertCase(userId: string): Promise<string> {
+  async function insertTask(userId: string): Promise<string> {
     const { rows } = await client.query<{ id: string }>(
-      `insert into public.cases (user_id, number) values ($1, $2) returning id`,
-      [userId, randomUUID()],
-    );
-    return rows[0]!.id;
-  }
-
-  async function insertTask(userId: string, caseId: string | null = null): Promise<string> {
-    const { rows } = await client.query<{ id: string }>(
-      `insert into public.tasks (user_id, case_id, title) values ($1, $2, 't') returning id`,
-      [userId, caseId],
+      `insert into public.tasks (user_id, title) values ($1, 't') returning id`,
+      [userId],
     );
     return rows[0]!.id;
   }
@@ -105,15 +95,6 @@ describe('schema', () => {
       [userId, taskId],
     );
   }
-
-  it('rejects a task pointing at another user\'s case', async () => {
-    await inRollback(async () => {
-      const a = await insertUser();
-      const b = await insertUser();
-      const caseB = await insertCase(b);
-      await expect(insertTask(a, caseB)).rejects.toMatchObject({ code: '23503' });
-    });
-  });
 
   it('rejects a reminder whose user differs from its task owner', async () => {
     await inRollback(async () => {
@@ -127,24 +108,16 @@ describe('schema', () => {
   it('accepts same-owner links', async () => {
     await inRollback(async () => {
       const a = await insertUser();
-      const caseA = await insertCase(a);
-      const taskA = await insertTask(a, caseA);
+      const taskA = await insertTask(a);
       await insertReminder(a, taskA);
     });
   });
 
-  it('deleting a case nulls only case_id; deleting a task removes its reminders', async () => {
+  it('deleting a task removes its reminders', async () => {
     await inRollback(async () => {
       const a = await insertUser();
-      const caseA = await insertCase(a);
-      const taskA = await insertTask(a, caseA);
+      const taskA = await insertTask(a);
       await insertReminder(a, taskA);
-      await client.query(`delete from public.cases where id = $1`, [caseA]);
-      const t = await client.query<{ case_id: string | null; user_id: string }>(
-        `select case_id, user_id from public.tasks where id = $1`,
-        [taskA],
-      );
-      expect(t.rows[0]).toEqual({ case_id: null, user_id: a });
       await client.query(`delete from public.tasks where id = $1`, [taskA]);
       const r = await client.query(`select 1 from public.reminders where task_id = $1`, [taskA]);
       expect(r.rows).toHaveLength(0);
@@ -251,20 +224,6 @@ describe('schema', () => {
       });
     });
 
-    it('rejects a uf that is not two characters', async () => {
-      await inRollback(async () => {
-        const a = await insertUser();
-        await client.query(`update public.profiles set uf = 'SP' where id = $1`, [a]);
-        await client.query(`update public.profiles set uf = null where id = $1`, [a]);
-        await expectViolation(
-          `update public.profiles set uf = 'SAO' where id = $1`,
-          [a],
-          '23514',
-          'profiles_uf_check',
-        );
-      });
-    });
-
     it('rejects a negative early_reminder_minutes', async () => {
       await inRollback(async () => {
         const a = await insertUser();
@@ -274,19 +233,6 @@ describe('schema', () => {
           [a],
           '23514',
           'profiles_early_reminder_minutes_check',
-        );
-      });
-    });
-
-    it('rejects period_days 0', async () => {
-      await inRollback(async () => {
-        const a = await insertUser();
-        await client.query(`insert into public.tasks (user_id, title, period_days) values ($1, 'ok', 1)`, [a]);
-        await expectViolation(
-          `insert into public.tasks (user_id, title, period_days) values ($1, 'x', 0)`,
-          [a],
-          '23514',
-          'tasks_period_days_check',
         );
       });
     });

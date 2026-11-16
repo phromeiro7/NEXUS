@@ -5,16 +5,12 @@ import { TELEGRAM_MAX_CHARS, formatAssistantReply, formatTaskLine } from './repl
 function task(p: Partial<TaskDto>): TaskDto {
   return {
     id: 'id',
-    caseId: null,
     title: 'Reunião',
     type: 'tarefa',
     status: 'pendente',
     dueDate: '2026-10-28',
     dueTime: '14:00',
     fatal: false,
-    baseDate: null,
-    periodDays: null,
-    countType: null,
     completedAt: null,
     createdAt: '2026-10-26T12:00:00.000Z',
     updatedAt: '2026-10-26T12:00:00.000Z',

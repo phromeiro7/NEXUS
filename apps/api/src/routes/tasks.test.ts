@@ -50,16 +50,12 @@ describe('task routes', () => {
     const body = (await res.json()) as { id: string };
     expect(body).toEqual({
       id: expect.any(String),
-      caseId: null,
       title: 'Ligar ao cliente',
       type: 'tarefa',
       status: 'pendente',
       dueDate: '2026-10-30',
       dueTime: null,
       fatal: false,
-      baseDate: null,
-      periodDays: null,
-      countType: null,
       completedAt: null,
       createdAt: '2026-10-26T12:00:00.000Z',
       updatedAt: '2026-10-26T12:00:00.000Z',
@@ -92,8 +88,8 @@ describe('task routes', () => {
     const mk = (userId: string, title: string, dueDate: string, status?: 'em_andamento' | 'concluida') =>
       fakes.tasks
         .create(userId, {
-          caseId: null, title, type: 'tarefa', status: status ?? 'pendente', dueDate, dueTime: null, fatal: false,
-          baseDate: null, periodDays: null, countType: null, completedAt: null, source: 'painel', sourceText: null,
+          title, type: 'tarefa', status: status ?? 'pendente', dueDate, dueTime: null, fatal: false,
+          completedAt: null, source: 'painel', sourceText: null,
         })
         .then((t) => t.id);
     const a = await mk('u1', 'a', '2026-10-26');
@@ -217,8 +213,8 @@ describe('task routes', () => {
   it('query userId cannot override the token user', async () => {
     const { app, fakes } = build();
     await fakes.tasks.create('u2', {
-      caseId: null, title: 'do outro', type: 'tarefa', status: 'pendente', dueDate: null, dueTime: null, fatal: false,
-      baseDate: null, periodDays: null, countType: null, completedAt: null, source: 'painel', sourceText: null,
+      title: 'do outro', type: 'tarefa', status: 'pendente', dueDate: null, dueTime: null, fatal: false,
+      completedAt: null, source: 'painel', sourceText: null,
     });
     const res = await req(app, 'GET', '/tasks?userId=u2&user_id=u2');
     expect(await res.json()).toEqual([]);

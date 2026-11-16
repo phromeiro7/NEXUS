@@ -4,10 +4,6 @@ Manual técnico do Nexus: API, Telegram, lembretes, login e publicação. Para a
 [README](../README.md). O estado do projeto em outubro de 2026 está em
 [archive/STATUS-2026-10.md](archive/STATUS-2026-10.md).
 
-> O projeto nasceu como assistente de prazos para advogados. Por isso a API ainda tem processos
-> (`/cases`), feriados (`/holidays`) e o cálculo de prazos em dias úteis (`/deadlines/calculate`), que o
-> assistente de IA também usa. O foco atual é o assistente pessoal.
-
 ## Estrutura
 
 - `apps/api`: API em Hono (`domain/` e `application/` sem dependência de framework; `infra/` fala com o Supabase).
@@ -37,10 +33,7 @@ autenticação. Veja `.env.example` para as variáveis.
 | --- | --- |
 | `GET /health` | Verificação de saúde (pública) |
 | `GET /me` | Usuário autenticado |
-| `POST /deadlines/calculate` | Calcula um prazo |
 | `GET/POST /tasks`, `GET/PATCH/DELETE /tasks/:id` | Tarefas |
-| `GET/POST /cases`, `GET/PATCH /cases/:id` | Processos (`GET /cases?status=ativo\|arquivado`) |
-| `GET/POST /holidays`, `DELETE /holidays/:id` | Feriados do usuário |
 | `GET/PATCH /settings` | Configurações (o `PATCH` reconstrói lembretes quando preciso) |
 | `GET /briefing` | Briefing diário |
 | `POST /capture/interpret` | Lê uma frase ("gastei 100 em roupa") com as regras do bot e devolve a proposta, sem gravar |
@@ -57,7 +50,7 @@ Erros respondem JSON `{ error: <código>, ... }`:
 | `entrada_invalida` | 400 | Corpo, query ou parâmetro inválido (inclui mensagem vazia ou acima de 1.000 caracteres) |
 | `nao_autenticado` | 401 | Token ausente ou inválido |
 | `nao_encontrado` | 404 | Recurso inexistente ou de outro usuário |
-| `numero_ja_cadastrado`, `feriado_ja_cadastrado`, `tarefa_encerrada`, `transicao_invalida` | 409 | Conflito |
+| `tarefa_encerrada`, `transicao_invalida` | 409 | Conflito |
 | `em_processamento` | 409 | O mesmo `clientMessageId` ainda está sendo processado; tente de novo em instantes |
 | `conflito_de_evento` | 409 | O `clientMessageId` já foi usado em outra conta (não revela de quem) |
 | `corpo_muito_grande` | 413 | Corpo da requisição acima de 64 KB (verificado antes da autenticação) |
@@ -535,9 +528,9 @@ lê a frase com as mesmas regras do bot (`POST /capture/interpret`), mostra a pr
 **O que não está:** e-mail e senha opcionais e "sair de todos os aparelhos" nas Configurações (o
 cliente de autenticação do app ainda não troca e-mail nem encerra as outras sessões); a IA no
 painel (a barra de comando do plano 4 saiu da interface; a rota `POST /assistant/message` segue na
-API). O painel antigo do projeto jurídico (calculadora de prazos, histórico, feriados locais,
-processos) saiu da interface: `/calculadora` e `/historico` levam a Hoje. Os endpoints
-`/deadlines/calculate`, `/cases`, `/holidays` e `/briefing` continuam na API, sem tela.
+API). O painel da fase anterior (calculadora de prazos e histórico) saiu da interface e, junto com
+ele, os processos, os feriados e o cálculo de prazos saíram da API e do banco (migration `0014`):
+`/calculadora` e `/historico` levam a Hoje. O endpoint `/briefing` continua na API, sem tela.
 
 ## Banco local (testes de banco)
 

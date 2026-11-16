@@ -46,7 +46,7 @@ describe('errorResponse', () => {
     });
   });
 
-  it.each(['tarefa', 'processo', 'feriado'] as const)('NotFoundError(%s) -> 404 without revealing the resource', (r) => {
+  it.each(['tarefa', 'lancamento'] as const)('NotFoundError(%s) -> 404 without revealing the resource', (r) => {
     expect(errorResponse(new NotFoundError(r))).toEqual({ status: 404, body: { error: 'nao_encontrado' } });
   });
 
@@ -55,9 +55,9 @@ describe('errorResponse', () => {
       status: 409,
       body: { error: 'tarefa_encerrada' },
     });
-    expect(errorResponse(new ConflictError('numero_ja_cadastrado'))).toEqual({
+    expect(errorResponse(new ConflictError('lancamento_ja_cadastrado'))).toEqual({
       status: 409,
-      body: { error: 'numero_ja_cadastrado' },
+      body: { error: 'lancamento_ja_cadastrado' },
     });
   });
 

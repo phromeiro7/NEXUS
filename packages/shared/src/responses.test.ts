@@ -1,13 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { CalculateDeadlineResultDto, MeDto, UpdateSettingsResultDto } from './index';
+import type { MeDto, UpdateSettingsResultDto } from './index';
 
 describe('response DTOs', () => {
   it('UpdateSettingsResultDto carries the skipped tasks with their reason', () => {
     const result: UpdateSettingsResultDto = {
       settings: {
         timezone: 'America/New_York',
-        uf: null,
-        city: null,
         earlyReminderMinutes: 15,
         briefingTime: '08:00',
         telegramLinked: false,
@@ -23,14 +21,8 @@ describe('response DTOs', () => {
     expect(bad).toBeDefined();
   });
 
-  it('CalculateDeadlineResultDto and MeDto have the API shapes', () => {
-    const calc: CalculateDeadlineResultDto = {
-      dueDate: '2026-11-17',
-      prorrogado: false,
-      feriadosDescontados: [{ date: '2026-11-02', name: 'Finados' }],
-    };
+  it('MeDto has the API shape', () => {
     const me: MeDto = { userId: 'u1' };
-    expect(calc.feriadosDescontados).toHaveLength(1);
     expect(me.userId).toBe('u1');
   });
 });

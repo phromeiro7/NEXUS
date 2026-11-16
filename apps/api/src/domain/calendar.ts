@@ -19,19 +19,3 @@ export function weekday(date: IsoDate): number {
   const [y, m, d] = parts(date);
   return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
 }
-
-export function isWeekend(date: IsoDate): boolean {
-  const w = weekday(date);
-  return w === 0 || w === 6;
-}
-
-export function isBusinessDay(date: IsoDate, holidays: ReadonlySet<IsoDate>): boolean {
-  return !isWeekend(date) && !holidays.has(date);
-}
-
-/** O próprio dia, se for útil; senão o próximo dia útil. */
-export function nextBusinessDay(date: IsoDate, holidays: ReadonlySet<IsoDate>): IsoDate {
-  let cursor = date;
-  while (!isBusinessDay(cursor, holidays)) cursor = addDays(cursor, 1);
-  return cursor;
-}

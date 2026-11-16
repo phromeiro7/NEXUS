@@ -6,8 +6,7 @@ Assistente pessoal de tarefas, lembretes e finanças. Você registra por mensage
 roupa", "me lembra de ligar para o João amanhã às 10h") e organiza o dia no painel web ou no Mini App do
 Telegram. Multiusuário, com dados privados por usuário.
 
-Projeto pessoal de portfólio, em uso real por convite. Nasceu como assistente de prazos para advogados e
-evoluiu para um assistente pessoal.
+Projeto pessoal de portfólio, em uso real por convite.
 
 ## O que ele faz
 
@@ -58,8 +57,8 @@ Monorepo com pnpm:
   usuário, contado em chamadas ao modelo, e nota de custos em `docs/archive/planejamento/notes/`.
 - **Segurança do Telegram:** validação da assinatura do `initData`, proteção contra repetição, segredo no
   webhook e no endpoint interno do agendador, corpo limitado a 64 KB antes da autenticação.
-- **Domínio puro e testável:** cálculo de prazos, lembretes, janelas do resumo diário e fuso horário são
-  funções sem I/O, com testes de borda (virada de dia em São Paulo, fim de semana, feriados).
+- **Domínio puro e testável:** lembretes, janelas do resumo diário, fuso horário e interpretação de frases
+  são funções sem I/O, com testes de borda (virada de dia em São Paulo, mudança de horário de verão).
 
 ## Testes
 

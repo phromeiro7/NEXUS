@@ -95,7 +95,7 @@ describe("toCreation", () => {
   it("tarefa vira CreateTaskInput sem assumir data nem hora", () => {
     expect(toCreation(tarefa, today)).toEqual({
       kind: "tarefa",
-      input: { title: "Reunião com a equipe", type: "tarefa", caseId: null, dueDate: today, dueTime: "14:00", fatal: false },
+      input: { title: "Reunião com a equipe", type: "tarefa", dueDate: today, dueTime: "14:00", fatal: false },
     });
     expect(toCreation(tarefaSemData, today)).toMatchObject({ kind: "tarefa", input: { dueDate: null, dueTime: null } });
   });

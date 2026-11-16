@@ -2,17 +2,12 @@ import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { cors } from 'hono/cors';
 import {
-  calculateDeadlineInputSchema,
   type BriefingDto,
-  type CalculateDeadlineResultDto,
   type MeDto,
 } from '@nexus/shared';
 import { authMiddleware, type AuthVerifier } from './auth.js';
-import type { makeCalculateDeadline } from './application/calculate-deadline.js';
-import type { makeCaseUseCases } from './application/cases.js';
 import type { makeCaptureInterpretUseCases } from './application/capture-interpret.js';
 import type { makeFinanceUseCases } from './application/finance.js';
-import type { makeHolidayUseCases } from './application/holidays.js';
 import type { makeSettingsUseCases } from './application/settings.js';
 import type { makeTaskUseCases } from './application/tasks.js';
 import type { SchedulerResult } from './application/scheduler.js';
@@ -25,19 +20,14 @@ import { assistantRoutes, type ProcessMessage } from './routes/assistant.js';
 import { authRoutes, type AuthRoutesDeps } from './routes/auth.js';
 import { briefingRoutes } from './routes/briefing.js';
 import { captureRoutes } from './routes/capture.js';
-import { casesRoutes } from './routes/cases.js';
 import { financeRoutes } from './routes/finance.js';
-import { holidaysRoutes } from './routes/holidays.js';
 import { inviteRoutes, type InviteRoutesDeps } from './routes/invites.js';
 import { settingsRoutes } from './routes/settings.js';
 import { tasksRoutes } from './routes/tasks.js';
 
 export type AppDeps = {
   verifyToken: AuthVerifier;
-  calculateDeadline: ReturnType<typeof makeCalculateDeadline>;
   tasks: ReturnType<typeof makeTaskUseCases>;
-  cases: ReturnType<typeof makeCaseUseCases>;
-  holidays: ReturnType<typeof makeHolidayUseCases>;
   finance: ReturnType<typeof makeFinanceUseCases>;
   /** Barra de captura do painel: lê a frase com as regras do bot, sem gravar. */
   capture: ReturnType<typeof makeCaptureInterpretUseCases>;
@@ -120,25 +110,7 @@ export function createApp(deps: AppDeps) {
     return c.json(me);
   });
 
-  app.post('/deadlines/calculate', auth, async (c) => {
-    let body: unknown;
-    try {
-      body = await c.req.json();
-    } catch {
-      return c.json({ error: 'entrada_invalida' }, 400);
-    }
-    const parsed = calculateDeadlineInputSchema.safeParse(body);
-    if (!parsed.success) {
-      return c.json({ error: 'entrada_invalida', issues: parsed.error.issues }, 400);
-    }
-    // userId vem só do token verificado, nunca do corpo.
-    const result: CalculateDeadlineResultDto = await deps.calculateDeadline(c.get('userId'), parsed.data);
-    return c.json(result);
-  });
-
   app.route('/tasks', tasksRoutes({ tasks: deps.tasks }, auth));
-  app.route('/cases', casesRoutes({ cases: deps.cases }, auth));
-  app.route('/holidays', holidaysRoutes({ holidays: deps.holidays }, auth));
   app.route('/finance-entries', financeRoutes({ finance: deps.finance }, auth));
   app.route('/capture', captureRoutes({ capture: deps.capture }, auth));
   app.route(

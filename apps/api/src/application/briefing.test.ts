@@ -7,16 +7,12 @@ const U1 = 'user-1';
 const U2 = 'user-2';
 
 const task = (title: string, p: Partial<NewTask> = {}): NewTask => ({
-  caseId: null,
   title,
   type: 'tarefa',
   status: 'pendente',
   dueDate: null,
   dueTime: null,
   fatal: false,
-  baseDate: null,
-  periodDays: null,
-  countType: null,
   completedAt: null,
   source: 'painel',
   sourceText: null,

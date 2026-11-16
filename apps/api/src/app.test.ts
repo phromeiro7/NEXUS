@@ -1,25 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from 'vitest';
-import type { Holiday, IsoDate } from '@nexus/shared';
-import type { HolidayRepository } from './application/ports.js';
 import { buildApp, WEB_ORIGIN } from '../test/harness.js';
 
-function build(opts: { rows?: Holiday[]; explode?: boolean; verifierThrows?: boolean } = {}) {
-  const seen: string[] = [];
-  const calcHolidays: HolidayRepository = {
-    async listByUser(userId, from, to) {
-      seen.push(userId);
-      if (opts.explode) throw new Error('segredo interno: db password');
-      return (opts.rows ?? []).filter((h) => h.date >= from && h.date <= to);
-    },
-  };
-  const { app } = buildApp({ calcHolidays, verifierThrows: opts.verifierThrows });
-  return { app, seen };
+function build(opts: { explode?: boolean; verifierThrows?: boolean } = {}) {
+  const { app } = buildApp({
+    verifierThrows: opts.verifierThrows,
+    ...(opts.explode
+      ? {
+          tasksOverride: {
+            list: async () => {
+              throw new Error('segredo interno: db password');
+            },
+          },
+        }
+      : {}),
+  });
+  return { app };
 }
 
 const auth = { Authorization: 'Bearer token-ok', 'Content-Type': 'application/json' };
-const post = (app: ReturnType<typeof build>['app'], body: string, headers: Record<string, string> = auth) =>
-  app.request('/deadlines/calculate', { method: 'POST', headers, body });
-const valid = { baseDate: '2026-10-26', days: 15, countType: 'uteis' };
+const listTasks = (app: ReturnType<typeof build>['app']) => app.request('/tasks', { headers: auth });
 
 describe('app', () => {
   it('GET /health is public', async () => {
@@ -51,47 +50,8 @@ describe('app', () => {
     expect(await res.json()).toEqual({ error: 'nao_autenticado' });
   });
 
-  it('POST /deadlines/calculate requires auth', async () => {
-    const res = await post(build().app, JSON.stringify(valid), { 'Content-Type': 'application/json' });
-    expect(res.status).toBe(401);
-  });
-
-  it('calculates a deadline', async () => {
-    const res = await post(build().app, JSON.stringify(valid));
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { dueDate: IsoDate; feriadosDescontados: Holiday[] };
-    expect(body.dueDate).toBe('2026-11-17');
-    expect(body.feriadosDescontados).toContainEqual({ date: '2026-11-02', name: 'Finados' });
-  });
-
-  it('rejects days=0', async () => {
-    const res = await post(build().app, JSON.stringify({ ...valid, days: 0 }));
-    expect(res.status).toBe(400);
-    const body = (await res.json()) as { error: string; issues: unknown };
-    expect(body.error).toBe('entrada_invalida');
-    expect(body.issues).toBeDefined();
-  });
-
-  it('rejects a calendar-invalid date', async () => {
-    const res = await post(build().app, JSON.stringify({ ...valid, baseDate: '2026-02-31' }));
-    expect(res.status).toBe(400);
-  });
-
-  it('rejects malformed JSON', async () => {
-    const res = await post(build().app, '{nope');
-    expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ error: 'entrada_invalida' });
-  });
-
-  it('takes userId only from the verified token', async () => {
-    const { app, seen } = build();
-    const res = await post(app, JSON.stringify({ ...valid, userId: 'atacante' }));
-    expect(res.status).toBe(200);
-    expect(seen).toEqual(['u1']);
-  });
-
   it('hides internals on unexpected errors', async () => {
-    const res = await post(build({ explode: true }).app, JSON.stringify(valid));
+    const res = await listTasks(build({ explode: true }).app);
     expect(res.status).toBe(500);
     const text = await res.text();
     expect(JSON.parse(text)).toEqual({ error: 'erro_interno' });
@@ -108,7 +68,7 @@ describe('app', () => {
     });
 
     it('logs the error once server-side, without the token, and returns a generic 500', async () => {
-      const res = await post(build({ explode: true }).app, JSON.stringify(valid));
+      const res = await listTasks(build({ explode: true }).app);
       expect(res.status).toBe(500);
       const text = await res.text();
       expect(JSON.parse(text)).toEqual({ error: 'erro_interno' });

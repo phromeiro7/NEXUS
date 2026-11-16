@@ -16,16 +16,12 @@ type Log = { level: 'info' | 'error'; event: string; fields: Record<string, unkn
 const dto = (today = '2026-10-26', title = SECRET): BriefingDto => {
   const t = {
     id: 't1',
-    caseId: null,
     title,
     type: 'tarefa',
     status: 'pendente',
     dueDate: today,
     dueTime: '10:00',
     fatal: true,
-    baseDate: null,
-    periodDays: null,
-    countType: null,
     completedAt: null,
     createdAt: '2026-10-01T00:00:00Z',
     updatedAt: '2026-10-01T00:00:00Z',

@@ -41,13 +41,12 @@ describe('createApiClient requests', () => {
 
   it('sends Content-Type and a JSON body when there is a body', async () => {
     const { client, calls } = setup(() => Response.json({ id: 't1' }, { status: 201 }));
-    await client.createTask({ title: 'Contestar', caseId: null, fatal: false });
+    await client.createTask({ title: 'Ligar', fatal: false });
     expect(calls[0]!.url).toBe('http://api.test/tasks');
     expect(calls[0]!.init.method).toBe('POST');
     expect(headersOf(calls[0]!).get('Content-Type')).toBe('application/json');
     expect(JSON.parse(calls[0]!.init.body as string)).toEqual({
-      title: 'Contestar',
-      caseId: null,
+      title: 'Ligar',
       fatal: false,
     });
   });
@@ -64,13 +63,12 @@ describe('createApiClient requests', () => {
     const { client, calls } = setup(() => Response.json([]));
     await client.listTasks({
       withoutDate: false,
-      caseId: '7b0e1c52-0000-4000-8000-000000000000',
       status: ['pendente'],
       to: '2026-11-30',
       from: '2026-11-01',
     });
     expect(calls[0]!.url).toBe(
-      'http://api.test/tasks?from=2026-11-01&to=2026-11-30&status=pendente&caseId=7b0e1c52-0000-4000-8000-000000000000&withoutDate=false',
+      'http://api.test/tasks?from=2026-11-01&to=2026-11-30&status=pendente&withoutDate=false',
     );
   });
 
@@ -82,32 +80,18 @@ describe('createApiClient requests', () => {
     expect(calls[1]!.url).toBe('http://api.test/tasks');
   });
 
-  it('listCases passes the optional status', async () => {
-    const { client, calls } = setup(() => Response.json([]));
-    await client.listCases();
-    await client.listCases('ativo');
-    expect(calls[0]!.url).toBe('http://api.test/cases');
-    expect(calls[1]!.url).toBe('http://api.test/cases?status=ativo');
-  });
-
   it('uses the right method and path for each endpoint', async () => {
     const { client, calls } = setup(() => Response.json({}));
     await client.getTask('a b');
     await client.updateTask('t1', { fatal: true });
-    await client.calculateDeadline({ baseDate: '2026-10-27', days: 15, countType: 'uteis' });
     await client.getSettings();
     await client.updateSettings({ timezone: 'America/Sao_Paulo' });
-    await client.listHolidays();
-    await client.createHoliday({ date: '2026-12-08', scope: 'municipal', name: 'Padroeira' });
     await client.getBriefing();
     expect(calls.map((c) => `${c.init.method} ${c.url.replace('http://api.test', '')}`)).toEqual([
       'GET /tasks/a%20b',
       'PATCH /tasks/t1',
-      'POST /deadlines/calculate',
       'GET /settings',
       'PATCH /settings',
-      'GET /holidays',
-      'POST /holidays',
       'GET /briefing',
     ]);
   });
@@ -153,16 +137,14 @@ describe('createApiClient requests', () => {
     await expect(client.createLinkCode()).rejects.toMatchObject({ status: 503, code: 'telegram_nao_configurado' });
   });
 
-  it('deleteTask and deleteHoliday handle 204 without reading JSON', async () => {
+  it('deleteTask handles 204 without reading JSON', async () => {
     const json = vi.fn(() => Promise.reject(new Error('no json')));
     const res = { ok: true, status: 204, json } as unknown as Response;
     const { client, calls } = setup(() => res);
     await expect(client.deleteTask('t1')).resolves.toBeUndefined();
-    await expect(client.deleteHoliday('h1')).resolves.toBeUndefined();
     expect(json).not.toHaveBeenCalled();
     expect(calls[0]!.init.method).toBe('DELETE');
     expect(calls[0]!.url).toBe('http://api.test/tasks/t1');
-    expect(calls[1]!.url).toBe('http://api.test/holidays/h1');
     expect(headersOf(calls[0]!).get('Content-Type')).toBeNull();
   });
 });

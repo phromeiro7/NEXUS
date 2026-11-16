@@ -1,17 +1,11 @@
 import type {
-  CaseDto,
-  CreateCaseInput,
-  CreateHolidayInput,
   FinanceEntryDto,
   ListFinanceEntriesQuery,
-  Holiday,
-  HolidayDto,
   IsoDate,
   ListTasksQuery,
   SettingsDto,
   TaskDto,
   TaskType,
-  UpdateCaseInput,
   UpdateSettingsInput,
 } from '@nexus/shared';
 import type { TelegramErrorClass } from '../domain/reminder-message.js';
@@ -21,19 +15,6 @@ import type { ReminderDraft, ReminderKind } from '../domain/reminders.js';
  * Contrato comum a todas as portas: todo método recebe `userId` primeiro e NUNCA
  * devolve nem altera linhas de outro usuário.
  */
-
-export type HolidayRepository = {
-  /** Feriados cadastrados pelo usuário com data entre `from` e `to` (inclusive). */
-  listByUser(userId: string, from: IsoDate, to: IsoDate): Promise<Holiday[]>;
-};
-
-export interface HolidayAdminRepository {
-  list(userId: string): Promise<HolidayDto[]>;
-  /** Lança `ConflictError('feriado_ja_cadastrado')` se o usuário já tem feriado nessa data. */
-  create(userId: string, input: CreateHolidayInput): Promise<HolidayDto>;
-  /** `true` somente se um feriado desse usuário foi removido. */
-  remove(userId: string, id: string): Promise<boolean>;
-}
 
 export type NewTask = Omit<TaskDto, 'id' | 'createdAt' | 'updatedAt'> & {
   source: 'painel' | 'telegram';
@@ -48,7 +29,7 @@ export interface TaskRepository {
   /**
    * Nunca devolve tarefas apagadas. Filtros: `from`/`to` (inclusivos, sobre `dueDate`;
    * tarefa sem data nunca casa com intervalo), `status` (indefinido ou vazio = sem filtro),
-   * `caseId`, `withoutDate` (só `dueDate === null`). Ordem: `dueDate` asc (nulos por último),
+   * `withoutDate` (só `dueDate === null`). Ordem: `dueDate` asc (nulos por último),
    * `dueTime` (nulo por último), `createdAt`.
    */
   list(userId: string, query: ListTasksQuery): Promise<TaskDto[]>;
@@ -56,15 +37,6 @@ export interface TaskRepository {
   update(userId: string, id: string, patch: TaskPatch): Promise<TaskDto | null>;
   /** `true` somente se uma tarefa viva do usuário foi apagada. */
   softDelete(userId: string, id: string, now: Date): Promise<boolean>;
-}
-
-export interface CaseRepository {
-  /** Lança `ConflictError('numero_ja_cadastrado')` se o usuário repete `number`. */
-  create(userId: string, input: CreateCaseInput): Promise<CaseDto>;
-  get(userId: string, id: string): Promise<CaseDto | null>;
-  list(userId: string, filter: { status?: 'ativo' | 'arquivado' }): Promise<CaseDto[]>;
-  /** `null` se não existe para o usuário; `ConflictError('numero_ja_cadastrado')` se `number` colide. */
-  update(userId: string, id: string, patch: UpdateCaseInput): Promise<CaseDto | null>;
 }
 
 export type ProfileRecord = SettingsDto;

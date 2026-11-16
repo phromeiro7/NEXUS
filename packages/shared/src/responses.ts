@@ -1,5 +1,3 @@
-import type { Holiday } from './deadline.js';
-import type { IsoDate } from './primitives.js';
 import type { SettingsDto } from './settings-api.js';
 
 /** Tarefa cujos lembretes não puderam ser refeitos: a hora local não existe ou é ambígua no novo fuso. */
@@ -18,13 +16,6 @@ export type UpdateSettingsResultDto = {
   remindersRebuilt: number;
   remindersSkipped: number;
   skipped: SkippedReminderTaskDto[];
-};
-
-/** Resposta de `POST /deadlines/calculate`. */
-export type CalculateDeadlineResultDto = {
-  dueDate: IsoDate;
-  prorrogado: boolean;
-  feriadosDescontados: Holiday[];
 };
 
 /** Resposta de `POST /telegram/link-codes`: código de uso único, válido por 10 minutos. */

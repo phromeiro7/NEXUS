@@ -3,13 +3,11 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ProfileRepository } from '../application/ports.js';
 import { definedOnly, toHourMinute } from './mappers.js';
 
-const COLUMNS = 'timezone, uf, city, early_reminder_minutes, briefing_time, telegram_chat_id, channel_paused';
+const COLUMNS = 'timezone, early_reminder_minutes, briefing_time, telegram_chat_id, channel_paused';
 
 function settingsFromRow(row: Record<string, unknown>): SettingsDto {
   return {
     timezone: row.timezone as string,
-    uf: row.uf as string | null,
-    city: row.city as string | null,
     earlyReminderMinutes: row.early_reminder_minutes as number,
     briefingTime: toHourMinute(row.briefing_time)!,
     telegramLinked: row.telegram_chat_id !== null && row.telegram_chat_id !== undefined,
@@ -31,8 +29,6 @@ export function createSupabaseProfileRepository(client: SupabaseClient): Profile
     async update(userId, patch) {
       const values = definedOnly({
         timezone: patch.timezone,
-        uf: patch.uf,
-        city: patch.city,
         early_reminder_minutes: patch.earlyReminderMinutes,
         briefing_time: patch.briefingTime,
       });

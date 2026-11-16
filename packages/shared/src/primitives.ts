@@ -23,5 +23,3 @@ export const isoDateSchema: z.ZodType<IsoDate> = z
   })
   .meta({ format: 'date' });
 
-export const countTypeSchema = z.enum(['uteis', 'corridos']);
-export type CountType = z.infer<typeof countTypeSchema>;

@@ -2,7 +2,6 @@ import type { TaskDto, UpdateTaskInput } from '@nexus/shared';
 import { describe, expect, it } from 'vitest';
 import { createFakes } from '../../../test/fakes.js';
 import { newTask } from '../../../test/harness.js';
-import { makeCalculateDeadline } from '../calculate-deadline.js';
 import { makeTaskUseCases } from '../tasks.js';
 import { ASSISTANT_TOOLS, makeToolExecutor } from './tools.js';
 
@@ -13,13 +12,10 @@ const NOW = new Date('2026-10-26T13:00:00Z');
 
 function setup(opts: { now?: Date } = {}) {
   const fakes = createFakes({ now: opts.now ?? NOW });
-  const calculateDeadline = makeCalculateDeadline({ holidays: fakes.holidays });
   const base = makeTaskUseCases({
     tasks: fakes.tasks,
-    cases: fakes.cases,
     profiles: fakes.profiles,
     reminders: fakes.reminders,
-    calculateDeadline,
     clock: fakes.clock,
   });
   const calls = {
@@ -49,7 +45,7 @@ function setup(opts: { now?: Date } = {}) {
       return base.list(userId, query);
     },
   };
-  const exec = makeToolExecutor({ tasks, calculateDeadline, profiles: fakes.profiles, clock: fakes.clock });
+  const exec = makeToolExecutor({ tasks, profiles: fakes.profiles, clock: fakes.clock });
   const newCtx = (source: 'painel' | 'telegram' = 'painel') => ({
     source,
     affected: new Map<string, TaskDto>(),
@@ -61,13 +57,12 @@ function setup(opts: { now?: Date } = {}) {
 const parse = (content: string) => JSON.parse(content) as Record<string, unknown>;
 
 describe('ASSISTANT_TOOLS', () => {
-  it('declares the five tools', () => {
+  it('declares the four tools', () => {
     expect(ASSISTANT_TOOLS.map((t) => t.name)).toEqual([
       'criar_tarefa',
       'listar_tarefas',
       'alterar_tarefa',
       'concluir_tarefa',
-      'calcular_prazo',
     ]);
   });
 
@@ -85,7 +80,6 @@ describe('ASSISTANT_TOOLS', () => {
     expect(props('criar_tarefa').dueDate).toMatchObject({ type: 'string', format: 'date' });
     expect(props('listar_tarefas').from).toMatchObject({ format: 'date' });
     expect(props('listar_tarefas').to).toMatchObject({ format: 'date' });
-    expect(props('calcular_prazo').baseDate).toMatchObject({ format: 'date' });
     expect(JSON.stringify(props('alterar_tarefa').dueDate)).toContain('"format":"date"');
   });
 });
@@ -364,21 +358,6 @@ describe('executor: listar_tarefas', () => {
     await fakes.tasks.create(U1, newTask('Feita', { status: 'concluida' }));
     const r = await exec(U1, 'listar_tarefas', { withoutDate: true, status: ['pendente'] }, newCtx());
     expect((parse(r.content) as { items: Array<{ title: string }> }).items.map((i) => i.title)).toEqual(['Sem data']);
-  });
-});
-
-describe('executor: calcular_prazo', () => {
-  it('returns the deterministic result and rejects extra keys', async () => {
-    const { exec, newCtx } = setup();
-    const r = await exec(U1, 'calcular_prazo', { baseDate: '2026-10-26', days: 5, countType: 'corridos' }, newCtx());
-    expect(r.isError).toBe(false);
-    expect(parse(r.content)).toEqual({
-      dueDate: '2026-11-03',
-      prorrogado: true,
-      feriadosDescontados: [{ date: '2026-11-02', name: 'Finados' }],
-    });
-    const bad = await exec(U1, 'calcular_prazo', { baseDate: '2026-10-26', days: 5, countType: 'corridos', userId: U2 }, newCtx());
-    expect(bad).toEqual({ content: 'argumento inválido: userId', isError: true });
   });
 });
 

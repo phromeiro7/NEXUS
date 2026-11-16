@@ -24,11 +24,6 @@ describe('updateSettingsInputSchema', () => {
   it('requires at least one field', () => {
     expect(updateSettingsInputSchema.safeParse({}).success).toBe(false);
   });
-  it('requires uppercase two-letter uf or null', () => {
-    expect(updateSettingsInputSchema.safeParse({ uf: 'sp' }).success).toBe(false);
-    expect(updateSettingsInputSchema.safeParse({ uf: 'SP' }).success).toBe(true);
-    expect(updateSettingsInputSchema.safeParse({ uf: null }).success).toBe(true);
-  });
   it('bounds earlyReminderMinutes', () => {
     expect(updateSettingsInputSchema.safeParse({ earlyReminderMinutes: -1 }).success).toBe(false);
     expect(updateSettingsInputSchema.safeParse({ earlyReminderMinutes: 1441 }).success).toBe(false);

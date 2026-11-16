@@ -85,7 +85,7 @@ describe("CaptureBar", () => {
     expect(await screen.findByText(/Reunião com a equipe, hoje às 14h/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Confirmar" }));
     await waitFor(() => expect(createTask).toHaveBeenCalledTimes(1));
-    expect(createTask.mock.calls[0]![0]).toEqual({ title: "Reunião com a equipe", type: "tarefa", caseId: null, dueDate: TODAY, dueTime: "14:00", fatal: false });
+    expect(createTask.mock.calls[0]![0]).toEqual({ title: "Reunião com a equipe", type: "tarefa", dueDate: TODAY, dueTime: "14:00", fatal: false });
     const toast = screen.getAllByRole("status").find((n) => n.textContent?.includes("Anotado"))!;
     await userEvent.click(within(toast).getByRole("button", { name: "Desfazer" }));
     await waitFor(() => expect(deleteTask).toHaveBeenCalledWith("novo"));

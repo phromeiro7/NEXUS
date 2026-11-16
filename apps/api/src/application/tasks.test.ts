@@ -2,7 +2,6 @@ import type { CreateTaskInput } from '@nexus/shared';
 import { describe, expect, it } from 'vitest';
 import { createFakes } from '../../test/fakes.js';
 import { HoraInvalidaError } from '../domain/reminders.js';
-import { makeCalculateDeadline } from './calculate-deadline.js';
 import { InvalidTransitionError } from '../domain/task-status.js';
 import { ConflictError, InvalidInputError, NotFoundError } from './errors.js';
 import type { NewTask, TaskPatch } from './ports.js';
@@ -28,17 +27,14 @@ function setup() {
   };
   const uc = makeTaskUseCases({
     tasks,
-    cases: fakes.cases,
     profiles: fakes.profiles,
     reminders: fakes.reminders,
-    calculateDeadline: makeCalculateDeadline({ holidays: fakes.holidays }),
     clock: fakes.clock,
   });
   return { fakes, uc, created, updates };
 }
 
 const input = (p: Partial<CreateTaskInput> & { title: string }): CreateTaskInput => ({
-  caseId: null,
   fatal: false,
   ...p,
 });
@@ -69,40 +65,6 @@ describe('tasks.create', () => {
     expect(iso(r)).toEqual(['2026-10-27T11:45:00.000Z', '2026-10-27T12:00:00.000Z']);
   });
 
-  it('deadline: computes dueDate, stores rule, defaults type prazo', async () => {
-    const { uc } = setup();
-    const t = await uc.create(
-      U1,
-      input({ title: 'Contestação', deadline: { baseDate: '2026-10-26', days: 15, countType: 'uteis' } }),
-    );
-    expect(t).toMatchObject({
-      dueDate: '2026-11-17',
-      baseDate: '2026-10-26',
-      periodDays: 15,
-      countType: 'uteis',
-      type: 'prazo',
-    });
-  });
-
-  it('deadline respects the user holiday', async () => {
-    const { fakes, uc } = setup();
-    await fakes.holidays.create(U1, { date: '2026-11-05', scope: 'municipal', name: 'Local' } as never);
-    const t = await uc.create(
-      U1,
-      input({ title: 'X', deadline: { baseDate: '2026-10-26', days: 15, countType: 'uteis' } }),
-    );
-    expect(t.dueDate).toBe('2026-11-18');
-  });
-
-  it('explicit type is kept with a deadline', async () => {
-    const { uc } = setup();
-    const t = await uc.create(
-      U1,
-      input({ title: 'X', type: 'audiencia', deadline: { baseDate: '2026-10-26', days: 15, countType: 'uteis' } }),
-    );
-    expect(t.type).toBe('audiencia');
-  });
-
   it('passes source to the repository', async () => {
     const { uc, created } = setup();
     await uc.create(U1, input({ title: 'A' }));
@@ -111,24 +73,6 @@ describe('tasks.create', () => {
       ['painel', null],
       ['telegram', null],
     ]);
-  });
-
-  it("another user's case: NotFoundError('processo'), nothing stored", async () => {
-    const { fakes, uc, created } = setup();
-    const other = await fakes.cases.create(U2, { number: '0001' } as never);
-    await expect(uc.create(U1, input({ title: 'X', caseId: other.id }))).rejects.toEqual(
-      new NotFoundError('processo'),
-    );
-    expect(created).toEqual([]);
-    expect(await uc.list(U1, {})).toEqual([]);
-    expect(fakes.reminders.calls).toEqual([]);
-  });
-
-  it('own case is accepted', async () => {
-    const { fakes, uc } = setup();
-    const mine = await fakes.cases.create(U1, { number: '0001' } as never);
-    const t = await uc.create(U1, input({ title: 'X', caseId: mine.id }));
-    expect(t.caseId).toBe(mine.id);
   });
 
   it('nonexistent local time: HoraInvalidaError, nothing stored, no replace call', async () => {
@@ -238,16 +182,16 @@ describe('tasks.update', () => {
     await expect(uc.get(U1, t.id)).rejects.toEqual(new NotFoundError('tarefa'));
   });
 
-  it('dueDate: null clears dueTime and the rule', async () => {
+  it('dueDate: null clears dueTime', async () => {
     const { fakes, uc } = setup();
     const t = await uc.create(
       U1,
-      input({ title: 'X', dueTime: '09:00', deadline: { baseDate: '2026-10-26', days: 15, countType: 'uteis' } }),
+      input({ title: 'X', dueTime: '09:00', dueDate: '2026-11-17' }),
     );
     expect(fakes.reminders.remindersFor(t.id, U1).length).toBeGreaterThan(0);
     const u = await uc.update(U1, t.id, { dueDate: null });
     expect(fakes.reminders.remindersFor(t.id, U1)).toEqual([]);
-    expect(u).toMatchObject({ dueDate: null, dueTime: null, baseDate: null, periodDays: null, countType: null });
+    expect(u).toMatchObject({ dueDate: null, dueTime: null });
   });
 
   it('fatal false->true on a date-only task adds tres_dias', async () => {
@@ -305,25 +249,6 @@ describe('tasks.update', () => {
     expect(await uc.get(U1, t.id)).toEqual(t);
   });
 
-  it("another user's caseId: NotFoundError(processo), nothing written", async () => {
-    const { fakes, uc, updates } = setup();
-    const t = await uc.create(U1, input({ title: 'X' }));
-    const other = await fakes.cases.create(U2, { number: '0001' } as never);
-    await expect(uc.update(U1, t.id, { caseId: other.id })).rejects.toEqual(new NotFoundError('processo'));
-    expect(updates).toEqual([]);
-    expect((await uc.get(U1, t.id)).caseId).toBeNull();
-  });
-
-  it('own caseId links, null unlinks, with no reminder replace', async () => {
-    const { fakes, uc } = setup();
-    const mine = await fakes.cases.create(U1, { number: '0001' } as never);
-    const t = await uc.create(U1, input({ title: 'X', dueDate: '2026-10-30' }));
-    const calls = fakes.reminders.calls.length;
-    expect((await uc.update(U1, t.id, { caseId: mine.id })).caseId).toBe(mine.id);
-    expect((await uc.update(U1, t.id, { caseId: null })).caseId).toBeNull();
-    expect(fakes.reminders.calls.length).toBe(calls);
-  });
-
   it('title-only update makes no replacePending call', async () => {
     const { fakes, uc } = setup();
     const t = await uc.create(U1, input({ title: 'X', dueDate: '2026-10-30' }));
@@ -343,30 +268,14 @@ describe('tasks.update', () => {
     expect(await uc.get(U1, t.id)).toEqual(t);
   });
 
-  it('explicit new dueDate clears the stored rule and keeps the time', async () => {
+  it('explicit new dueDate keeps the time', async () => {
     const { uc } = setup();
     const t = await uc.create(
       U1,
-      input({ title: 'X', dueTime: '09:00', deadline: { baseDate: '2026-10-26', days: 15, countType: 'uteis' } }),
+      input({ title: 'X', dueTime: '09:00', dueDate: '2026-11-17' }),
     );
     const u = await uc.update(U1, t.id, { dueDate: '2026-12-01' });
-    expect(u).toMatchObject({ dueDate: '2026-12-01', dueTime: '09:00', baseDate: null, periodDays: null, countType: null });
-  });
-
-  it('deadline recalculates dueDate and stores the rule', async () => {
-    const { fakes, uc } = setup();
-    const t = await uc.create(U1, input({ title: 'X', dueDate: '2026-10-30' }));
-    const u = await uc.update(U1, t.id, { deadline: { baseDate: '2026-10-26', days: 15, countType: 'uteis' } });
-    expect(u).toMatchObject({
-      dueDate: '2026-11-17',
-      baseDate: '2026-10-26',
-      periodDays: 15,
-      countType: 'uteis',
-    });
-    expect(iso(fakes.reminders.remindersFor(t.id, U1))).toEqual([
-      '2026-11-16T11:00:00.000Z',
-      '2026-11-17T11:00:00.000Z',
-    ]);
+    expect(u).toMatchObject({ dueDate: '2026-12-01', dueTime: '09:00' });
   });
 
   it('dueTime alone on a dated task keeps the date and moves the reminders', async () => {

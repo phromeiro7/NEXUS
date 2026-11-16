@@ -8,16 +8,12 @@ const UUID = '3f2b8c1e-5d4a-4b7e-9a10-2c6d8e4f1a77';
 function task(over: Partial<TaskDto>): TaskDto {
   return {
     id: 'id-1',
-    caseId: null,
     title: 'Título',
     type: 'tarefa',
     status: 'pendente',
     dueDate: '2026-10-27',
     dueTime: null,
     fatal: false,
-    baseDate: null,
-    periodDays: null,
-    countType: null,
     completedAt: null,
     createdAt: '2026-10-01T00:00:00.000Z',
     updatedAt: '2026-10-01T00:00:00.000Z',

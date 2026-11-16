@@ -2,16 +2,10 @@ import type {
   AssistantMessageInput,
   AssistantReplyDto,
   BriefingDto,
-  CalculateDeadlineResultDto,
-  CaseDto,
-  CaseStatus,
   CreateFinanceEntryInput,
-  CreateHolidayInput,
   CreateTaskInput,
-  DeadlineRule,
   FinanceEntryDto,
   FinanceStatus,
-  HolidayDto,
   InviteDto,
   InviteListDto,
   InterpretCaptureInput,
@@ -60,7 +54,6 @@ function tasksQueryString(q: ListTasksQuery): string {
   if (q.from !== undefined) params.set('from', q.from);
   if (q.to !== undefined) params.set('to', q.to);
   if (q.status !== undefined && q.status.length > 0) params.set('status', q.status.join(','));
-  if (q.caseId !== undefined) params.set('caseId', q.caseId);
   if (q.withoutDate !== undefined) params.set('withoutDate', String(q.withoutDate));
   const s = params.toString();
   return s === '' ? '' : `?${s}`;
@@ -124,16 +117,9 @@ export function createApiClient(opts: ApiClientOptions) {
     updateTask: (id: string, input: UpdateTaskInput) =>
       request<TaskDto>('PATCH', `/tasks/${encodeURIComponent(id)}`, input),
     deleteTask: (id: string) => request<void>('DELETE', `/tasks/${encodeURIComponent(id)}`),
-    listCases: (status?: CaseStatus) =>
-      request<CaseDto[]>('GET', status === undefined ? '/cases' : `/cases?status=${status}`),
-    calculateDeadline: (input: DeadlineRule) =>
-      request<CalculateDeadlineResultDto>('POST', '/deadlines/calculate', input),
     getSettings: () => request<SettingsDto>('GET', '/settings'),
     updateSettings: (input: UpdateSettingsInput) =>
       request<UpdateSettingsResultDto>('PATCH', '/settings', input),
-    listHolidays: () => request<HolidayDto[]>('GET', '/holidays'),
-    createHoliday: (input: CreateHolidayInput) => request<HolidayDto>('POST', '/holidays', input),
-    deleteHoliday: (id: string) => request<void>('DELETE', `/holidays/${encodeURIComponent(id)}`),
     createLinkCode: () => request<LinkCodeDto>('POST', '/telegram/link-codes'),
     unlinkTelegram: () => request<void>('DELETE', '/telegram/link'),
     listInvites: () => request<InviteListDto>('GET', '/invites'),

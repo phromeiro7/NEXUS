@@ -4,16 +4,12 @@ import { INVALID_TEXT_REPRESENTATION, TASK_COLUMNS, definedOnly, isUuid, taskFro
 
 function columnsOf(p: TaskPatch) {
   return definedOnly({
-    case_id: p.caseId,
     title: p.title,
     type: p.type,
     status: p.status,
     due_date: p.dueDate,
     due_time: p.dueTime,
     fatal: p.fatal,
-    base_date: p.baseDate,
-    period_days: p.periodDays,
-    count_type: p.countType,
     completed_at: p.completedAt,
   });
 }
@@ -52,12 +48,10 @@ export function createSupabaseTaskRepository(client: SupabaseClient): TaskReposi
     get,
 
     async list(userId, query) {
-      if (query.caseId !== undefined && !isUuid(query.caseId)) return [];
       let q = client.from('tasks').select(TASK_COLUMNS).eq('user_id', userId).is('deleted_at', null);
       if (query.from !== undefined) q = q.gte('due_date', query.from);
       if (query.to !== undefined) q = q.lte('due_date', query.to);
       if (query.status && query.status.length > 0) q = q.in('status', query.status);
-      if (query.caseId !== undefined) q = q.eq('case_id', query.caseId);
       if (query.withoutDate === true) q = q.is('due_date', null);
       const { data, error } = await q
         .order('due_date', { ascending: true, nullsFirst: false })

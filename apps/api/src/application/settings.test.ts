@@ -9,16 +9,12 @@ const U1 = 'user-1';
 const U2 = 'user-2';
 
 const task = (title: string, p: Partial<NewTask> = {}): NewTask => ({
-  caseId: null,
   title,
   type: 'tarefa',
   status: 'pendente',
   dueDate: null,
   dueTime: null,
   fatal: false,
-  baseDate: null,
-  periodDays: null,
-  countType: null,
   completedAt: null,
   source: 'painel',
   sourceText: null,
@@ -43,10 +39,10 @@ function setup(now = '2026-10-26T12:00:00Z') {
 describe('settings.get', () => {
   it("returns the token user's settings", async () => {
     const { fakes, uc } = setup();
-    fakes.setProfile(U1, { city: 'Recife' });
-    fakes.setProfile(U2, { city: 'Natal' });
-    expect((await uc.get(U1)).city).toBe('Recife');
-    expect((await uc.get(U2)).city).toBe('Natal');
+    fakes.setProfile(U1, { briefingTime: '07:30' });
+    fakes.setProfile(U2, { briefingTime: '09:00' });
+    expect((await uc.get(U1)).briefingTime).toBe('07:30');
+    expect((await uc.get(U2)).briefingTime).toBe('09:00');
   });
 });
 
@@ -139,12 +135,12 @@ describe('settings.update', () => {
     ]);
   });
 
-  it('changing only city, uf or briefingTime makes no replacePending call', async () => {
+  it('changing only briefingTime makes no replacePending call', async () => {
     const { fakes, uc, seed } = setup();
     await seed(U1, task('t', { dueDate: '2026-10-27', dueTime: '09:00' }));
     const before = fakes.reminders.calls.length;
-    const result = await uc.update(U1, { city: 'Recife', uf: 'PE', briefingTime: '07:30' });
-    expect(result.settings).toMatchObject({ city: 'Recife', uf: 'PE', briefingTime: '07:30' });
+    const result = await uc.update(U1, { briefingTime: '07:30' });
+    expect(result.settings).toMatchObject({ briefingTime: '07:30' });
     expect(result).toMatchObject({ remindersRebuilt: 0, remindersSkipped: 0, skipped: [] });
     expect(fakes.reminders.calls.length).toBe(before);
   });
@@ -202,10 +198,10 @@ describe('settings.update', () => {
 
   it('settings always belong to the token user', async () => {
     const { fakes, uc } = setup();
-    fakes.setProfile(U2, { city: 'Natal', earlyReminderMinutes: 20 });
-    await uc.update(U1, { city: 'Recife', earlyReminderMinutes: 40 });
-    expect(await uc.get(U1)).toMatchObject({ city: 'Recife', earlyReminderMinutes: 40 });
-    expect(await uc.get(U2)).toMatchObject({ city: 'Natal', earlyReminderMinutes: 20 });
+    fakes.setProfile(U2, { briefingTime: '09:00', earlyReminderMinutes: 20 });
+    await uc.update(U1, { briefingTime: '07:30', earlyReminderMinutes: 40 });
+    expect(await uc.get(U1)).toMatchObject({ briefingTime: '07:30', earlyReminderMinutes: 40 });
+    expect(await uc.get(U2)).toMatchObject({ briefingTime: '09:00', earlyReminderMinutes: 20 });
   });
 
   it('an unexpected error while rebuilding propagates', async () => {

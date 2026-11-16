@@ -108,7 +108,7 @@ export type Creation =
 export function toCreation(p: CaptureProposalDto, today: IsoDate): Creation | null {
   if (!canConfirm(p)) return null;
   if (p.kind === "tarefa") {
-    return { kind: "tarefa", input: { title: p.title, type: "tarefa", caseId: null, dueDate: p.date, dueTime: p.time, fatal: false } };
+    return { kind: "tarefa", input: { title: p.title, type: "tarefa", dueDate: p.date, dueTime: p.time, fatal: false } };
   }
   return {
     kind: "lancamento",
