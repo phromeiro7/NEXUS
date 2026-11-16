@@ -3,6 +3,7 @@ import type { ListTasksQuery, TaskDto } from "@nexus/shared";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "@/lib/api";
 import { ToastProvider } from "@/components/mini/toast";
 import { createFakeFinanceApi } from "@/test/fake-finance-api";
 import { makeTask } from "@/test/factories";
@@ -210,5 +211,73 @@ describe("TodayPanel", () => {
     renderPanel();
     expect(await screen.findByText(/Não foi possível carregar suas tarefas/)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Contas a pagar" })).toBeInTheDocument();
+  });
+});
+
+describe("TodayPanel: adiar com um gesto", () => {
+  const toastOf = async (text: string) => (await screen.findAllByRole("status")).find((n) => n.textContent?.includes(text))!;
+
+  it("Amanhã adia, mantém o horário, avisa com a data e Desfazer restaura data e hora", async () => {
+    renderPanel();
+    await userEvent.click(await screen.findByRole("button", { name: "Adiar para amanhã: Ligar para o contador" }));
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith("t2", { dueDate: "2026-11-05" }));
+    const toast = await toastOf("Adiada");
+    expect(toast).toHaveTextContent("Adiada para amanhã, 14h: Ligar para o contador.");
+    await userEvent.click(within(toast).getByRole("button", { name: "Desfazer" }));
+    await waitFor(() => expect(updateTask).toHaveBeenLastCalledWith("t2", { dueDate: "2026-11-04", dueTime: "14:00" }));
+    expect(tasks.find((t) => t.id === "t2")).toMatchObject({ dueDate: "2026-11-04", dueTime: "14:00" });
+  });
+
+  it("tarefa atrasada vai para a próxima segunda a partir de hoje", async () => {
+    renderPanel();
+    await userEvent.click(await screen.findByRole("button", { name: "Adiar para segunda-feira, 09/11: Enviar proposta ao Marcos" }));
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith("t1", { dueDate: "2026-11-09" }));
+    expect(await toastOf("Adiada")).toHaveTextContent("Adiada para segunda-feira, 09/11: Enviar proposta ao Marcos.");
+  });
+
+  it("tarefa sem data ganha a data; tarefa futura parte da própria data", async () => {
+    renderPanel();
+    await userEvent.click(await screen.findByRole("button", { name: "Adiar para amanhã: Pensar na viagem" }));
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith("t4", { dueDate: "2026-11-05" }));
+    // t5 vence 06/11 (sexta): "Dia 07/11" em vez de "Amanhã"
+    await userEvent.click(await screen.findByRole("button", { name: "Adiar para sábado, 07/11: Renovar o seguro" }));
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith("t5", { dueDate: "2026-11-07" }));
+  });
+
+  it("prazo fatal diz com clareza a nova data", async () => {
+    tasks.push(makeTask({ id: "t8", title: "Contestação", type: "prazo", fatal: true, dueDate: "2026-11-04" }));
+    renderPanel();
+    await userEvent.click(await screen.findByRole("button", { name: "Adiar para segunda-feira, 09/11: Contestação" }));
+    expect(await toastOf("Prazo fatal")).toHaveTextContent("Prazo fatal movido para segunda-feira, 09/11: Contestação.");
+  });
+
+  it("se a API recusa, volta como estava, avisa e não mostra o aviso de sucesso", async () => {
+    updateTask.mockRejectedValueOnce(new ApiError(500, "erro_interno", null));
+    renderPanel();
+    await userEvent.click(await screen.findByRole("button", { name: "Adiar para amanhã: Ligar para o contador" }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.queryByText(/Adiada para/)).not.toBeInTheDocument();
+    expect(tasks.find((t) => t.id === "t2")).toMatchObject({ dueDate: "2026-11-04", dueTime: "14:00" });
+    expect(screen.getByRole("button", { name: "Adiar para amanhã: Ligar para o contador" })).toBeInTheDocument();
+  });
+
+  it("concluídas não têm atalho de adiar", async () => {
+    renderPanel();
+    await userEvent.click(await screen.findByRole("button", { name: /Ver concluídas/ }));
+    expect(await screen.findByText("Pagar IPTU")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Adiar para .*Pagar IPTU/ })).not.toBeInTheDocument();
+  });
+
+  it("o diálogo também avisa com Desfazer ao adiar", async () => {
+    renderPanel();
+    await userEvent.click(await screen.findByRole("button", { name: "Abrir: Buscar encomenda" }));
+    const dialog = screen.getByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Adiar" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Próxima segunda" }));
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith("t3", { dueDate: "2026-11-09", dueTime: "16:30" }));
+    const toast = await toastOf("Adiada");
+    expect(toast).toHaveTextContent("Adiada para segunda-feira, 09/11, 16h30: Buscar encomenda.");
+    await userEvent.click(within(toast).getByRole("button", { name: "Desfazer" }));
+    await waitFor(() => expect(updateTask).toHaveBeenLastCalledWith("t3", { dueDate: "2026-11-04", dueTime: "16:30" }));
   });
 });

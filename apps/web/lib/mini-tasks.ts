@@ -1,5 +1,5 @@
-import type { IsoDate, TaskDto, UpdateTaskInput } from "@nexus/shared";
-import { addDays, daysBetween, formatShort } from "./dates";
+import type { IsoDate, TaskDto } from "@nexus/shared";
+import { daysBetween, formatShort } from "./dates";
 
 /** "14:00" → "14h", "14:30" → "14h30" (voz do produto: horário explícito e curto). */
 export function spokenTime(time: string): string {
@@ -36,37 +36,6 @@ export function reminderState(task: TaskDto): string {
   if (task.dueDate === null) return "Sem lembrete: defina data e horário";
   if (task.dueTime === null) return "Sem lembrete: defina um horário";
   return `Agendado para ${spokenTime(task.dueTime)}`;
-}
-
-export type PostponeOption = { key: string; label: string; input: UpdateTaskInput };
-
-function plusOneHour(date: IsoDate, time: string): { dueDate: IsoDate; dueTime: string } {
-  const [h = 0, m = 0] = time.split(":").map(Number);
-  const next = h + 1;
-  const dueTime = `${String(next % 24).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-  return { dueDate: next >= 24 ? addDays(date, 1) : date, dueTime };
-}
-
-/** Opções de adiar que fazem sentido para a tarefa; sempre com data e hora explícitas. */
-export function postponeOptions(task: TaskDto, today: IsoDate): PostponeOption[] {
-  const out: PostponeOption[] = [];
-  if (task.dueDate !== null && task.dueTime !== null && task.dueDate === today) {
-    out.push({ key: "hora", label: "Daqui a 1 hora", input: plusOneHour(task.dueDate, task.dueTime) });
-  }
-  if (task.dueDate === null || task.dueDate < today) {
-    out.push({ key: "hoje", label: "Mover para hoje", input: { dueDate: today } });
-  }
-  out.push({
-    key: "amanha",
-    label: "Amanhã",
-    input: { dueDate: addDays(today, 1), ...(task.dueTime !== null ? { dueTime: task.dueTime } : {}) },
-  });
-  out.push({
-    key: "semana",
-    label: "Daqui a 1 semana",
-    input: { dueDate: addDays(today, 7), ...(task.dueTime !== null ? { dueTime: task.dueTime } : {}) },
-  });
-  return out;
 }
 
 export function pluralTasks(n: number): string {

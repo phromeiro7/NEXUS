@@ -5,8 +5,10 @@ import { updateTaskInputSchema, type IsoDate, type TaskDto, type UpdateTaskInput
 import { CheckIcon } from "@/components/mini/icons";
 import { useToast } from "@/components/mini/toast";
 import { useDeleteTask, useUpdateTask } from "@/hooks/queries";
+import { usePostpone } from "@/hooks/use-postpone";
 import { messageFor } from "@/lib/messages";
-import { postponeOptions, reminderState, whenLabel } from "@/lib/mini-tasks";
+import { reminderState, whenLabel } from "@/lib/mini-tasks";
+import { postponeOptions, type PostponeOption } from "@/lib/postpone";
 import { Dialog } from "./dialog";
 
 type Mode = "view" | "postpone" | "edit" | "cancel";
@@ -16,12 +18,14 @@ export function TaskDialog({ task, today, onClose }: { task: TaskDto; today: Iso
   const toast = useToast();
   const update = useUpdateTask();
   const del = useDeleteTask();
+  const postponer = usePostpone();
   const [mode, setMode] = useState<Mode>("view");
   const [error, setError] = useState<string | null>(null);
   const [title, setTitle] = useState(task.title);
   const [date, setDate] = useState<string>(task.dueDate ?? "");
   const [time, setTime] = useState<string>(task.dueTime ?? "");
-  const pending = update.isPending || del.isPending;
+  const pending = update.isPending || del.isPending || postponer.pending;
+  const shownError = error ?? postponer.error;
 
   async function apply(input: UpdateTaskInput, after?: () => void) {
     setError(null);
@@ -38,6 +42,11 @@ export function TaskDialog({ task, today, onClose }: { task: TaskDto; today: Iso
     apply({ status: "concluida" }, () =>
       toast({ message: `Tarefa concluída: ${task.title}.`, undo: () => void update.mutateAsync({ id: task.id, input: { status: "pendente" } }) }),
     );
+
+  async function postponeTo(input: PostponeOption["input"]) {
+    setError(null);
+    if (await postponer.postpone(task, input, today)) onClose();
+  }
 
   async function saveEdit(e: FormEvent) {
     e.preventDefault();
@@ -76,9 +85,9 @@ export function TaskDialog({ task, today, onClose }: { task: TaskDto; today: Iso
         </div>
       </dl>
 
-      {error !== null && (
+      {shownError !== null && (
         <p role="alert" className="mini-fielderr">
-          {error}
+          {shownError}
         </p>
       )}
 
@@ -104,7 +113,7 @@ export function TaskDialog({ task, today, onClose }: { task: TaskDto; today: Iso
           <strong>Adiar para quando?</strong>
           <div className="pn-dialog-actions">
             {postponeOptions(task, today).map((o) => (
-              <button key={o.key} type="button" className="mini-btn" disabled={pending} onClick={() => void apply(o.input)}>
+              <button key={o.key} type="button" className="mini-btn" disabled={pending} onClick={() => void postponeTo(o.input)}>
                 {o.label}
               </button>
             ))}
