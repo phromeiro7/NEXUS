@@ -203,7 +203,7 @@ export function makeCaptureFlow(deps: CaptureFlowDeps) {
     if (p.kind === 'tarefa') {
       const task = await deps.tasks.create(
         userId,
-        { title: p.title, type: 'tarefa', caseId: null, dueDate: p.date as IsoDate | null, dueTime: p.time, fatal: false },
+        { title: p.title, type: 'tarefa', dueDate: p.date as IsoDate | null, dueTime: p.time, fatal: false },
         'telegram',
       );
       return { kind: 'tarefa', id: task.id };

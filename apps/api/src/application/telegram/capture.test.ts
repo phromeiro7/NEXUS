@@ -1,7 +1,6 @@
 import type { AssistantReplyDto } from '@nexus/shared';
 import { describe, expect, it, vi } from 'vitest';
 import { createFakes } from '../../../test/fakes.js';
-import { makeCalculateDeadline } from '../calculate-deadline.js';
 import { makeFinanceUseCases } from '../finance.js';
 import type { ProcessMessageInput } from '../assistant/process-message.js';
 import { makeTaskUseCases } from '../tasks.js';
@@ -20,13 +19,10 @@ type Logs = Array<{ level: string; event: string; fields: Record<string, unknown
 
 function setup(opts: { assistantEnabled?: boolean; miniAppUrl?: string | null } = {}) {
   const fakes = createFakes({ now: NOW });
-  const calculateDeadline = makeCalculateDeadline({ holidays: fakes.holidays });
   const tasks = makeTaskUseCases({
     tasks: fakes.tasks,
-    cases: fakes.cases,
     profiles: fakes.profiles,
     reminders: fakes.reminders,
-    calculateDeadline,
     clock: fakes.clock,
   });
   const realFinance = makeFinanceUseCases({ finance: fakes.finance, clock: fakes.clock });

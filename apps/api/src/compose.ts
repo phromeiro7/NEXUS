@@ -24,11 +24,8 @@ import { createJsonLogger } from './infra/json-logger.js';
 import { createSupabaseChatRepository } from './infra/supabase-chat-repository.js';
 import { createSupabaseInboundEventRepository } from './infra/supabase-inbound-event-repository.js';
 import { makeGetBriefing } from './application/briefing.js';
-import { makeCalculateDeadline } from './application/calculate-deadline.js';
-import { makeCaseUseCases } from './application/cases.js';
 import { makeCaptureInterpretUseCases } from './application/capture-interpret.js';
 import { makeFinanceUseCases } from './application/finance.js';
-import { makeHolidayUseCases } from './application/holidays.js';
 import type { Clock, TelegramClient } from './application/ports.js';
 import { makeRunReminders } from './application/run-reminders.js';
 import { makeRunScheduler, SCHEDULER_BUDGETS_MS } from './application/scheduler.js';
@@ -42,9 +39,7 @@ import { makeSyncReminders } from './application/sync-reminders.js';
 import { makeTaskUseCases } from './application/tasks.js';
 import type { Config } from './config.js';
 import { createSupabaseAuthVerifier } from './infra/supabase-auth.js';
-import { createSupabaseCaseRepository } from './infra/supabase-case-repository.js';
 import { createSupabaseFinanceRepository } from './infra/supabase-finance-repository.js';
-import { createSupabaseHolidayRepository } from './infra/supabase-holiday-repository.js';
 import { createSupabaseProfileRepository } from './infra/supabase-profile-repository.js';
 import { createSupabaseReminderRepository } from './infra/supabase-reminder-repository.js';
 import { createSupabaseTaskRepository } from './infra/supabase-task-repository.js';
@@ -62,15 +57,12 @@ export function buildApp(
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const holidays = createSupabaseHolidayRepository(client);
   const finance = createSupabaseFinanceRepository(client);
-  const cases = createSupabaseCaseRepository(client);
   const profiles = createSupabaseProfileRepository(client);
   const reminders = createSupabaseReminderRepository(client);
   const tasks = createSupabaseTaskRepository(client);
   const clock: Clock = overrides?.clock ?? { now: () => new Date() };
-  const calculateDeadline = makeCalculateDeadline({ holidays });
-  const taskUseCases = makeTaskUseCases({ tasks, cases, profiles, reminders, calculateDeadline, clock });
+  const taskUseCases = makeTaskUseCases({ tasks, profiles, reminders, clock });
 
   const events = createSupabaseInboundEventRepository(client);
   const model: AssistantModel | undefined =
@@ -83,7 +75,7 @@ export function buildApp(
       ? undefined
       : makeProcessMessage({
           model,
-          executor: makeToolExecutor({ tasks: taskUseCases, calculateDeadline, profiles, clock }),
+          executor: makeToolExecutor({ tasks: taskUseCases, profiles, clock }),
           chat: createSupabaseChatRepository(client),
           events,
           profiles,
@@ -240,10 +232,7 @@ export function buildApp(
     scheduler,
     ...(config.internalSecret !== undefined ? { internalSecret: config.internalSecret } : {}),
     verifyToken: createSupabaseAuthVerifier(client),
-    calculateDeadline,
     tasks: taskUseCases,
-    cases: makeCaseUseCases({ cases }),
-    holidays: makeHolidayUseCases({ holidays }),
     finance: financeUseCases,
     capture: makeCaptureInterpretUseCases({ profiles, clock }),
     settings: makeSettingsUseCases({

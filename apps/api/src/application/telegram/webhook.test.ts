@@ -4,7 +4,6 @@ import { createFakes } from '../../../test/fakes.js';
 import { newTask } from '../../../test/harness.js';
 import { makeProcessMessage, type ProcessMessageInput } from '../assistant/process-message.js';
 import { makeToolExecutor } from '../assistant/tools.js';
-import { makeCalculateDeadline } from '../calculate-deadline.js';
 import {
   AssistantUnavailableError,
   EventInProgressError,
@@ -39,13 +38,10 @@ type Logs = Array<{ level: string; event: string; fields: Record<string, string 
 
 function setup(opts: { script?: Array<ModelStep | Error>; limiter?: boolean } = {}) {
   const fakes = createFakes({ now: NOW });
-  const calculateDeadline = makeCalculateDeadline({ holidays: fakes.holidays });
   const tasks = makeTaskUseCases({
     tasks: fakes.tasks,
-    cases: fakes.cases,
     profiles: fakes.profiles,
     reminders: fakes.reminders,
-    calculateDeadline,
     clock: fakes.clock,
   });
   const script = [...(opts.script ?? [])];
@@ -61,7 +57,7 @@ function setup(opts: { script?: Array<ModelStep | Error>; limiter?: boolean } = 
   };
   const real = makeProcessMessage({
     model,
-    executor: makeToolExecutor({ tasks, calculateDeadline, profiles: fakes.profiles, clock: fakes.clock }),
+    executor: makeToolExecutor({ tasks, profiles: fakes.profiles, clock: fakes.clock }),
     chat: fakes.chat,
     events: fakes.inboundEvents,
     profiles: fakes.profiles,

@@ -3,8 +3,6 @@ import { anon, buildApp, newTask, req } from '../../test/harness.js';
 
 const defaults = {
   timezone: 'America/Sao_Paulo',
-  uf: null,
-  city: null,
   earlyReminderMinutes: 15,
   briefingTime: '08:00',
   telegramLinked: false,
@@ -71,7 +69,7 @@ describe('settings routes', () => {
     expect(await theirs.json()).toEqual({ ...defaults, earlyReminderMinutes: 45 });
   });
 
-  it.each([{ timezone: 'Nao/Existe' }, { uf: 'sp' }, {}, '{nope'])('PATCH with invalid body %j is 400', async (body) => {
+  it.each([{ timezone: 'Nao/Existe' }, { earlyReminderMinutes: -1 }, {}, '{nope'])('PATCH with invalid body %j is 400', async (body) => {
     const res = await req(buildApp().app, 'PATCH', '/settings', body);
     expect(res.status).toBe(400);
     expect(((await res.json()) as { error: string }).error).toBe('entrada_invalida');

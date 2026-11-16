@@ -179,30 +179,6 @@ describe('tasks with a time and settings changes (user A)', () => {
   });
 });
 
-describe('deadline calculation with the user holidays (user A)', () => {
-  const rule = { baseDate: '2026-10-26', days: 15, countType: 'uteis' };
-
-  it('creating a task from a deadline rule stores the computed date and the rule', async () => {
-    const res = await call(a, 'POST', '/tasks', { title: 'Prazo', deadline: rule });
-    expect(res.status).toBe(201);
-    expect(res.json).toMatchObject({
-      dueDate: '2026-11-17',
-      type: 'prazo',
-      baseDate: '2026-10-26',
-      periodDays: 15,
-      countType: 'uteis',
-    });
-  });
-
-  it('after registering a municipal holiday inside the period the same request yields one day later', async () => {
-    const h = await call(a, 'POST', '/holidays', { date: '2026-11-05', scope: 'municipal', name: 'Feriado local' });
-    expect(h.status).toBe(201);
-    const res = await call(a, 'POST', '/tasks', { title: 'Prazo', deadline: rule });
-    expect(res.status).toBe(201);
-    expect(res.json.dueDate).toBe('2026-11-18');
-  });
-});
-
 describe('impossible local time (user C)', () => {
   it('rejects a nonexistent local time with 422 and creates nothing', async () => {
     const s = await call(c, 'PATCH', '/settings', { timezone: 'America/New_York' });
@@ -252,20 +228,12 @@ describe('briefing uses the fixed clock and the user day (user A)', () => {
 
 describe('isolation between users end to end', () => {
   let taskId: string;
-  let caseId: string;
-  let holidayId: string;
   let taskBefore: Json;
 
   beforeAll(async () => {
     const t = await call(a, 'POST', '/tasks', { title: 'Sigilo de A', dueDate: '2026-12-01' });
     taskId = t.json.id;
     taskBefore = t.json;
-    const cs = await call(a, 'POST', '/cases', { number: '0001-A', clientName: 'Cliente de A' });
-    expect(cs.status).toBe(201);
-    caseId = cs.json.id;
-    const h = await call(a, 'POST', '/holidays', { date: '2026-12-08', scope: 'municipal', name: 'Feriado de A' });
-    expect(h.status).toBe(201);
-    holidayId = h.json.id;
   });
 
   const notFound = { error: 'nao_encontrado' };
@@ -285,41 +253,10 @@ describe('isolation between users end to end', () => {
     expect(after.json).toEqual(taskBefore);
   });
 
-  it('B cannot read or change the case of A', async () => {
-    const patch = await call(b, 'PATCH', `/cases/${caseId}`, { number: 'x' });
-    expect(patch.status).toBe(404);
-    expect(patch.json).toEqual(notFound);
-    const get = await call(b, 'GET', `/cases/${caseId}`);
-    expect(get.status).toBe(404);
-    expect(get.json).toEqual(notFound);
-    const own = await call(a, 'GET', `/cases/${caseId}`);
-    expect(own.json.number).toBe('0001-A');
-  });
-
-  it('B cannot delete the holiday of A, which stays listed', async () => {
-    const del = await call(b, 'DELETE', `/holidays/${holidayId}`);
-    expect(del.status).toBe(404);
-    expect(del.json).toEqual(notFound);
-    const list = await call(a, 'GET', '/holidays');
-    expect(list.json.map((h: Json) => h.id)).toContain(holidayId);
-  });
-
-  it('B cannot attach a task to the case of A and nothing is created', async () => {
-    const res = await call(b, 'POST', '/tasks', { title: 'Intrusa', caseId });
-    expect(res.status).toBe(404);
-    expect(res.json).toEqual(notFound);
-    const { data } = await admin.from('tasks').select('id').eq('user_id', b.id).eq('title', 'Intrusa');
-    expect(data).toEqual([]);
-    const { data: leaked } = await admin.from('tasks').select('id').eq('case_id', caseId).eq('title', 'Intrusa');
-    expect(leaked).toEqual([]);
-  });
-
   it('lists and briefing of B contain nothing of A', async () => {
     const tasks = await call(b, 'GET', '/tasks');
     expect(tasks.json.map((t: Json) => t.id)).not.toContain(taskId);
     expect(tasks.json.every((t: Json) => t.title !== 'Sigilo de A')).toBe(true);
-    expect(await call(b, 'GET', '/cases').then((r) => r.json)).toEqual([]);
-    expect(await call(b, 'GET', '/holidays').then((r) => r.json)).toEqual([]);
     const briefing = await call(b, 'GET', '/briefing');
     expect(JSON.stringify(briefing.json)).not.toContain(taskId);
   });
@@ -327,8 +264,6 @@ describe('isolation between users end to end', () => {
   it('malformed ids are not found', async () => {
     for (const [method, path] of [
       ['GET', '/tasks/abc'],
-      ['GET', '/cases/abc'],
-      ['DELETE', '/holidays/abc'],
     ] as const) {
       const res = await call(a, method, path);
       expect(res.status).toBe(404);

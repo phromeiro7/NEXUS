@@ -2,7 +2,6 @@ import type { TaskDto } from '@nexus/shared';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createFakes } from '../../../test/fakes.js';
 import { newTask } from '../../../test/harness.js';
-import { makeCalculateDeadline } from '../calculate-deadline.js';
 import {
   AssistantUnavailableError,
   EventInProgressError,
@@ -56,16 +55,13 @@ function scriptedModel(steps: Scripted[], onCall?: (call: number) => void) {
 
 function setup(steps: Scripted[], opts: { onCall?: (call: number) => void; limits?: Parameters<typeof makeProcessMessage>[0]['limits'] } = {}) {
   const fakes = createFakes({ now: NOW });
-  const calculateDeadline = makeCalculateDeadline({ holidays: fakes.holidays });
   const tasks = makeTaskUseCases({
     tasks: fakes.tasks,
-    cases: fakes.cases,
     profiles: fakes.profiles,
     reminders: fakes.reminders,
-    calculateDeadline,
     clock: fakes.clock,
   });
-  const realExecutor = makeToolExecutor({ tasks, calculateDeadline, profiles: fakes.profiles, clock: fakes.clock });
+  const realExecutor = makeToolExecutor({ tasks, profiles: fakes.profiles, clock: fakes.clock });
   const executor = vi.fn(realExecutor);
   const { model, calls } = scriptedModel(steps, opts.onCall);
   const logs: Array<{ level: string; event: string; fields: unknown }> = [];

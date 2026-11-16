@@ -7,8 +7,6 @@ const BY_CODE: Record<string, string> = {
   nao_encontrado: 'Não encontramos este item. Atualize a página.',
   transicao_invalida: 'Esta mudança de status não é permitida.',
   tarefa_encerrada: 'A tarefa já está encerrada.',
-  numero_ja_cadastrado: 'Já existe um processo com este número.',
-  feriado_ja_cadastrado: 'Este feriado já está cadastrado.',
   corpo_muito_grande: 'Os dados enviados são grandes demais.',
   rede: 'Sem conexão com o servidor.',
   telegram_nao_configurado: 'O Telegram ainda não está configurado neste servidor.',

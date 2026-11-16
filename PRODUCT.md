@@ -12,7 +12,7 @@ O responsável pelo projeto e pessoas com rotina semelhante (piloto). Registram 
 
 ## Product Purpose
 
-Nexus é um assistente pessoal de tarefas e lembretes: a conversa registra rápido, o painel web consulta, ajusta e conclui. Sucesso é a pessoa registrar com pouco esforço e receber o aviso no momento certo, com dados confiáveis. O código existente (prazos jurídicos, processos, feriados) vem da fase anterior, de assistente jurídico, e continua válido.
+Nexus é um assistente pessoal de tarefas e lembretes: a conversa registra rápido, o painel web consulta, ajusta e conclui. Sucesso é a pessoa registrar com pouco esforço e receber o aviso no momento certo, com dados confiáveis.
 
 ## Positioning
 
@@ -24,8 +24,8 @@ Registro por mensagem no Telegram (canal prioritário, ainda não implementado);
 
 ## Capabilities and Constraints
 
-- Implementado no painel: entrar, cadastro e recuperação de senha; visões Dia, Semana e Mês; adição rápida; criação, edição, exclusão e troca de status de tarefas (prazo, audiência, vínculo a processo); calculadora de prazos; histórico; configurações (fuso, UF, cidade, antecedência do lembrete, horário do resumo); feriados locais.
-- Não implementado: barra de comando e IA, Telegram (espaço reservado no cabeçalho), tela de Processos (fora da v1; o processo só aparece como referência na tarefa).
+- Implementado no painel: entrar, cadastro e recuperação de senha; visões Dia, Semana e Mês; adição rápida; criação, edição, exclusão e troca de status de tarefas (tipos tarefa, prazo e audiência); configurações (fuso, antecedência do lembrete, horário do resumo).
+- Não implementado: barra de comando e IA, Telegram (espaço reservado no cabeçalho).
 - Painel não acessa o banco; usa só `supabase.auth` e a API.
 - Tela inicial é "Meu dia". Ordem de atenção: atrasadas, prazos fatais de hoje, compromissos com horário, demais tarefas.
 - Tarefa, prazo e audiência têm rótulos claros; horário se distingue de tarefa só com data.

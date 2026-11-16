@@ -1,5 +1,4 @@
 import {
-  calculateDeadlineInputSchema,
   isoDateSchema,
   taskStatusSchema,
   taskTypeSchema,
@@ -13,7 +12,6 @@ import { z } from 'zod';
 import { HoraInvalidaError } from '../../domain/reminders.js';
 import { InvalidTransitionError } from '../../domain/task-status.js';
 import { ValidationError } from '../../http-errors.js';
-import type { makeCalculateDeadline } from '../calculate-deadline.js';
 import { ConflictError, InvalidInputError, NotFoundError } from '../errors.js';
 import type { Clock, ProfileRepository, ToolDefinition } from '../ports.js';
 import type { makeTaskUseCases } from '../tasks.js';
@@ -68,14 +66,11 @@ const alterarTarefaSchema = z
 
 const concluirTarefaSchema = z.object({ id: z.uuid() }).strict();
 
-const calcularPrazoSchema = calculateDeadlineInputSchema.strict();
-
 const SCHEMAS = {
   criar_tarefa: criarTarefaSchema,
   listar_tarefas: listarTarefasSchema,
   alterar_tarefa: alterarTarefaSchema,
   concluir_tarefa: concluirTarefaSchema,
-  calcular_prazo: calcularPrazoSchema,
 } as const;
 type ToolName = keyof typeof SCHEMAS;
 
@@ -91,9 +86,8 @@ export const ASSISTANT_TOOLS: ToolDefinition[] = [
   {
     name: 'criar_tarefa',
     description:
-      'Use quando o usuário pedir para registrar uma nova tarefa, prazo ou audiência. ' +
-      `${FORMATS} Só informe dueTime junto com dueDate. Se o usuário der um prazo em dias úteis, ` +
-      'primeiro chame calcular_prazo e use a data devolvida: dias úteis só saem de calcular_prazo. ' +
+      'Use quando o usuário pedir para registrar uma nova tarefa. ' +
+      `${FORMATS} Só informe dueTime junto com dueDate. ` +
       'Se a ferramenta devolver erro de data ou horário no passado, pergunte ao usuário em vez de escolher outra data.',
     inputSchema: jsonSchemaOf(criarTarefaSchema),
   },
@@ -117,14 +111,6 @@ export const ASSISTANT_TOOLS: ToolDefinition[] = [
     description:
       'Use quando o usuário disser que uma tarefa foi feita ou cumprida. ' + IDS,
     inputSchema: jsonSchemaOf(concluirTarefaSchema),
-  },
-  {
-    name: 'calcular_prazo',
-    description:
-      'Use para calcular a data final de um prazo em dias úteis ou corridos a partir de uma data-base, ' +
-      'considerando feriados e prorrogação. Dias úteis só podem ser calculados por esta ferramenta; ' +
-      `nunca faça essa conta por conta própria. ${FORMATS}`,
-    inputSchema: jsonSchemaOf(calcularPrazoSchema),
   },
 ];
 
@@ -164,7 +150,6 @@ function localTime(timeZone: string, now: Date): string {
 
 export function makeToolExecutor(deps: {
   tasks: ReturnType<typeof makeTaskUseCases>;
-  calculateDeadline: ReturnType<typeof makeCalculateDeadline>;
   profiles: ProfileRepository;
   clock: Clock;
 }) {
@@ -193,7 +178,6 @@ export function makeToolExecutor(deps: {
         if (past) return past;
         const create: CreateTaskInput = {
           title: v.title,
-          caseId: null,
           fatal: v.fatal ?? false,
           ...(v.type !== undefined ? { type: v.type } : {}),
           ...(v.dueDate !== undefined ? { dueDate: v.dueDate } : {}),
@@ -235,8 +219,6 @@ export function makeToolExecutor(deps: {
         if (!ctx.knownIds.has(id)) return fail('id_desconhecido: liste as tarefas primeiro');
         return remember(ctx, await deps.tasks.update(userId, id, { status: 'concluida' }));
       }
-      case 'calcular_prazo':
-        return ok(await deps.calculateDeadline(userId, input as z.infer<typeof calcularPrazoSchema>));
     }
   }
 

@@ -2,11 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { IsoDate } from '@nexus/shared';
-import { ConflictError } from '../application/errors.js';
 import type { NewTask } from '../application/ports.js';
 import { getSupabaseEnv } from '../../test/db/supabase-env.js';
-import { createSupabaseCaseRepository } from './supabase-case-repository.js';
-import { createSupabaseHolidayRepository } from './supabase-holiday-repository.js';
 import { createSupabaseProfileRepository } from './supabase-profile-repository.js';
 import { createSupabaseReminderRepository } from './supabase-reminder-repository.js';
 import { createSupabaseTaskRepository } from './supabase-task-repository.js';
@@ -16,10 +13,8 @@ const opts = { auth: { persistSession: false, autoRefreshToken: false } };
 const admin: SupabaseClient = createClient(env.url, env.serviceRoleKey, opts);
 
 const tasks = createSupabaseTaskRepository(admin);
-const cases = createSupabaseCaseRepository(admin);
 const profiles = createSupabaseProfileRepository(admin);
 const reminders = createSupabaseReminderRepository(admin);
-const holidays = createSupabaseHolidayRepository(admin);
 
 const createdIds: string[] = [];
 let A = '';
@@ -48,16 +43,12 @@ const d = (s: string) => s as IsoDate;
 
 function newTask(over: Partial<NewTask> = {}): NewTask {
   return {
-    caseId: null,
     title: 'Tarefa',
     type: 'tarefa',
     status: 'pendente',
     dueDate: null,
     dueTime: null,
     fatal: false,
-    baseDate: null,
-    periodDays: null,
-    countType: null,
     completedAt: null,
     source: 'painel',
     sourceText: null,
@@ -86,18 +77,12 @@ describe('task repository', () => {
         dueDate: d('2026-11-10'),
         dueTime: '09:00',
         fatal: true,
-        baseDate: d('2026-10-26'),
-        periodDays: 15,
-        countType: 'uteis',
         source: 'telegram',
         sourceText: 'texto original',
       }),
     );
     expect(created.dueTime).toBe('09:00');
     expect(created.dueDate).toBe('2026-11-10');
-    expect(created.baseDate).toBe('2026-10-26');
-    expect(created.periodDays).toBe(15);
-    expect(created.countType).toBe('uteis');
     expect(created.completedAt).toBeNull();
     expect(created.createdAt).toBe(new Date(created.createdAt).toISOString());
     expect(created.updatedAt).toBe(new Date(created.updatedAt).toISOString());
@@ -147,14 +132,13 @@ describe('task repository', () => {
     expect(await tasks.get(B, bTask.id)).not.toBeNull();
   });
 
-  it('list: ordering, range, status, withoutDate, caseId', async () => {
+  it('list: ordering, range, status, withoutDate', async () => {
     const L = await makeUser('list');
-    const c = await cases.create(L, { number: 'C-1' });
     const mk = (title: string, over: Partial<NewTask>) => tasks.create(L, newTask({ title, ...over }));
     const t1 = await mk('undated-1', {});
     const t2 = await mk('d11-untimed', { dueDate: d('2026-11-11') });
     const t3 = await mk('d11-10h', { dueDate: d('2026-11-11'), dueTime: '10:00' });
-    const t4 = await mk('d10-case', { dueDate: d('2026-11-10'), caseId: c.id, status: 'concluida' });
+    const t4 = await mk('d10-done', { dueDate: d('2026-11-10'), status: 'concluida' });
     const t5 = await mk('d11-08h', { dueDate: d('2026-11-11'), dueTime: '08:00' });
     const t6 = await mk('d12', { dueDate: d('2026-11-12'), status: 'em_andamento' });
     const t7 = await mk('undated-2', {});
@@ -170,65 +154,6 @@ describe('task repository', () => {
     expect(ids(await tasks.list(L, { status: ['concluida', 'em_andamento'] }))).toEqual([t4.id, t6.id]);
     expect((await tasks.list(L, { status: [] })).length).toBe(7);
     expect(ids(await tasks.list(L, { withoutDate: true }))).toEqual([t1.id, t7.id]);
-    expect(ids(await tasks.list(L, { caseId: c.id }))).toEqual([t4.id]);
-  });
-});
-
-describe('case repository', () => {
-  it('lifecycle, conflicts and isolation', async () => {
-    const a1 = await cases.create(A, { number: `P-${randomUUID()}`, clientName: 'Cli', description: null });
-    const a2 = await cases.create(A, { number: `P-${randomUUID()}` });
-    const sameNumberOtherUser = await cases.create(B, { number: a1.number });
-    expect(a1).toMatchObject({ clientName: 'Cli', description: null, status: 'ativo' });
-    expect(a2.clientName).toBeNull();
-    expect(a1.createdAt).toBe(new Date(a1.createdAt).toISOString());
-
-    await expect(cases.create(A, { number: a1.number })).rejects.toEqual(new ConflictError('numero_ja_cadastrado'));
-    await expect(cases.update(A, a2.id, { number: a1.number })).rejects.toBeInstanceOf(ConflictError);
-    await expect(cases.update(A, a2.id, { number: a1.number })).rejects.toMatchObject({ code: 'numero_ja_cadastrado' });
-
-    expect(await cases.get(A, a1.id)).toEqual(a1);
-    expect(await cases.get(B, a1.id)).toBeNull();
-    expect(await cases.update(B, a1.id, { clientName: 'invadido' })).toBeNull();
-    expect((await cases.get(A, a1.id))!.clientName).toBe('Cli');
-
-    const u = await cases.update(A, a1.id, { status: 'arquivado', description: 'desc', clientName: undefined });
-    expect(u).toMatchObject({ status: 'arquivado', description: 'desc', clientName: 'Cli' });
-    const cleared = await cases.update(A, a1.id, { clientName: null });
-    expect(cleared!.clientName).toBeNull();
-
-    const listA = await cases.list(A, {});
-    expect(listA.map((c) => c.id)).toEqual(expect.arrayContaining([a1.id, a2.id]));
-    expect(listA.map((c) => c.id)).not.toContain(sameNumberOtherUser.id);
-    expect(listA.findIndex((c) => c.id === a1.id)).toBeLessThan(listA.findIndex((c) => c.id === a2.id));
-    expect((await cases.list(A, { status: 'arquivado' })).map((c) => c.id)).toEqual([a1.id]);
-    expect((await cases.list(A, { status: 'ativo' })).map((c) => c.id)).toEqual([a2.id]);
-  });
-});
-
-describe('holiday repository', () => {
-  it('admin methods, conflicts, isolation and listByUser unchanged', async () => {
-    const h1 = await holidays.create(A, { date: d('2026-12-08'), scope: 'municipal', name: 'Tarde' });
-    const h0 = await holidays.create(A, { date: d('2026-11-05'), scope: 'estadual', name: 'Cedo' });
-    const hb = await holidays.create(B, { date: d('2026-12-08'), scope: 'municipal', name: 'De B' });
-    expect(h1).toMatchObject({ date: '2026-12-08', scope: 'municipal', name: 'Tarde' });
-
-    await expect(holidays.create(A, { date: d('2026-12-08'), scope: 'estadual', name: 'dup' })).rejects.toEqual(
-      new ConflictError('feriado_ja_cadastrado'),
-    );
-
-    expect((await holidays.list(A)).map((h) => h.id)).toEqual([h0.id, h1.id]);
-    expect((await holidays.list(B)).map((h) => h.id)).toEqual([hb.id]);
-    expect(await holidays.listByUser(A, d('2026-01-01'), d('2026-12-31'))).toEqual([
-      { date: '2026-11-05', name: 'Cedo' },
-      { date: '2026-12-08', name: 'Tarde' },
-    ]);
-
-    expect(await holidays.remove(B, h1.id)).toBe(false);
-    expect((await holidays.list(A)).length).toBe(2);
-    expect(await holidays.remove(A, h1.id)).toBe(true);
-    expect(await holidays.remove(A, h1.id)).toBe(false);
-    expect((await holidays.list(A)).map((h) => h.id)).toEqual([h0.id]);
   });
 });
 
@@ -236,8 +161,6 @@ describe('profile repository', () => {
   it('defaults, update and isolation', async () => {
     expect(await profiles.get(A)).toEqual({
       timezone: 'America/Sao_Paulo',
-      uf: null,
-      city: null,
       earlyReminderMinutes: 15,
       briefingTime: '08:00',
       telegramLinked: false,
@@ -245,15 +168,11 @@ describe('profile repository', () => {
     });
     const updated = await profiles.update(A, {
       timezone: 'America/Manaus',
-      uf: 'SP',
-      city: 'Campinas',
       earlyReminderMinutes: 30,
       briefingTime: '07:30',
     });
     expect(updated).toEqual({
       timezone: 'America/Manaus',
-      uf: 'SP',
-      city: 'Campinas',
       earlyReminderMinutes: 30,
       briefingTime: '07:30',
       telegramLinked: false,
@@ -262,8 +181,8 @@ describe('profile repository', () => {
     expect(await profiles.get(A)).toEqual(updated);
     expect((await profiles.get(B)).timezone).toBe('America/Sao_Paulo');
 
-    const partial = await profiles.update(A, { city: null, uf: undefined });
-    expect(partial).toMatchObject({ city: null, uf: 'SP', briefingTime: '07:30' });
+    const partial = await profiles.update(A, { earlyReminderMinutes: 45, briefingTime: undefined });
+    expect(partial).toMatchObject({ earlyReminderMinutes: 45, briefingTime: '07:30' });
 
     await admin.from('profiles').update({ telegram_chat_id: Math.floor(Math.random() * 1e9) + 1 }).eq('id', A);
     expect((await profiles.get(A)).telegramLinked).toBe(true);
@@ -322,16 +241,11 @@ describe('malformed and unknown ids are "not found"', () => {
     async (_label, bad) => {
       await tasks.create(A, newTask({ title: 'presente' }));
       await tasks.create(B, newTask({ title: 'presente B' }));
-      await cases.create(B, { number: `X-${randomUUID()}` });
       const now = new Date();
 
       expect(await tasks.get(A, bad)).toBeNull();
       expect(await tasks.update(A, bad, { title: 'x' })).toBeNull();
       expect(await tasks.softDelete(A, bad, now)).toBe(false);
-      expect(await cases.get(A, bad)).toBeNull();
-      expect(await cases.update(A, bad, { clientName: 'x' })).toBeNull();
-      expect(await holidays.remove(A, bad)).toBe(false);
-      expect(await tasks.list(A, { caseId: bad })).toEqual([]);
     },
   );
 });

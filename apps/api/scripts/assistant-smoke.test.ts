@@ -53,7 +53,7 @@ describe('buildSmokeCases / maxCalls', () => {
     expect(cases.length).toBe(10);
     expect(new Set(cases.map((c) => c.externalId)).size).toBe(cases.length);
     const all = cases.map((c) => c.phrase).join('\n');
-    for (const needle of ['amanhã de manhã', 'sexta', 'semana que vem', '30/02', '15 dias úteis', '16h', 'vence essa semana', 'ignore as regras']) {
+    for (const needle of ['amanhã de manhã', 'sexta', 'semana que vem', '30/02', 'daqui a 15 dias', '16h', 'vence essa semana', 'ignore as regras']) {
       expect(all).toContain(needle);
     }
   });

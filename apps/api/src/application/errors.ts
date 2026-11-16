@@ -1,14 +1,14 @@
 import type { TaskDto } from '@nexus/shared';
 
 export class NotFoundError extends Error {
-  constructor(readonly resource: 'tarefa' | 'processo' | 'feriado' | 'lancamento' | 'convite' | 'login') {
+  constructor(readonly resource: 'tarefa' | 'lancamento' | 'convite' | 'login') {
     super(`Não encontrado: ${resource}`);
     this.name = 'NotFoundError';
   }
 }
 
 export class ConflictError extends Error {
-  constructor(readonly code: 'tarefa_encerrada' | 'numero_ja_cadastrado' | 'feriado_ja_cadastrado' | 'lancamento_ja_cadastrado' | 'convite_de_administrador') {
+  constructor(readonly code: 'tarefa_encerrada' | 'lancamento_ja_cadastrado' | 'convite_de_administrador') {
     super(`Conflito: ${code}`);
     this.name = 'ConflictError';
   }

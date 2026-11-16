@@ -143,8 +143,6 @@ describe('tools sent to the model', () => {
     expect(byName.criar_tarefa.input_schema.properties.type.enum).toEqual(['prazo', 'tarefa', 'audiencia']);
     expect(byName.concluir_tarefa.input_schema.properties.id).toEqual({ type: 'string', format: 'uuid' });
     expect(byName.alterar_tarefa.input_schema.properties.id).toEqual({ type: 'string', format: 'uuid' });
-    expect(byName.calcular_prazo.input_schema.required).toEqual(['baseDate', 'days', 'countType']);
-    expect(byName.calcular_prazo.input_schema.properties.days).toEqual({ type: 'integer' });
   });
 
   it('keeps format date on the date fields', async () => {
@@ -154,7 +152,6 @@ describe('tools sent to the model', () => {
     expect(byName.criar_tarefa.input_schema.properties.dueDate.format).toBe('date');
     expect(byName.listar_tarefas.input_schema.properties.from.format).toBe('date');
     expect(byName.listar_tarefas.input_schema.properties.to.format).toBe('date');
-    expect(byName.calcular_prazo.input_schema.properties.baseDate.format).toBe('date');
     expect(JSON.stringify(byName.alterar_tarefa.input_schema.properties.dueDate)).toContain('"format":"date"');
   });
 

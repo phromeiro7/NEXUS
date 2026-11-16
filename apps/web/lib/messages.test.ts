@@ -11,8 +11,6 @@ describe('messageFor', () => {
     [404, 'nao_encontrado', 'Não encontramos este item. Atualize a página.'],
     [409, 'transicao_invalida', 'Esta mudança de status não é permitida.'],
     [409, 'tarefa_encerrada', 'A tarefa já está encerrada.'],
-    [409, 'numero_ja_cadastrado', 'Já existe um processo com este número.'],
-    [409, 'feriado_ja_cadastrado', 'Este feriado já está cadastrado.'],
     [413, 'corpo_muito_grande', 'Os dados enviados são grandes demais.'],
     [503, 'telegram_nao_configurado', 'O Telegram ainda não está configurado neste servidor.'],
     [0, 'rede', 'Sem conexão com o servidor.'],

@@ -1,4 +1,4 @@
-import type { CaseDto, FinanceEntryDto, HolidayDto, IsoDate, SettingsDto, TaskDto } from '@nexus/shared';
+import type { FinanceEntryDto, IsoDate, SettingsDto, TaskDto } from '@nexus/shared';
 import {
   ChatAlreadyLinkedError,
   ConflictError,
@@ -17,7 +17,6 @@ import type {
   InviteRepository,
   QrLoginRecord,
   QrLoginRepository,
-  CaseRepository,
   ChatChannel,
   ChatRepository,
   ChatRole,
@@ -36,8 +35,6 @@ import type {
   TelegramClient,
   InboundEventRepository,
   InboundEventStatus,
-  HolidayAdminRepository,
-  HolidayRepository,
   NewFinanceEntry,
   NewTask,
   ProfileRepository,
@@ -53,8 +50,6 @@ type TaskRow = { userId: string; dto: TaskDto; deletedAt: Date | null };
 
 const DEFAULT_PROFILE: SettingsDto = {
   timezone: 'America/Sao_Paulo',
-  uf: null,
-  city: null,
   earlyReminderMinutes: 15,
   briefingTime: '08:00',
   telegramLinked: false,
@@ -79,8 +74,6 @@ export function createFakes(seed: { now?: Date } = {}) {
   const stamp = () => now.toISOString();
 
   const taskRows: TaskRow[] = [];
-  const caseRows: { userId: string; dto: CaseDto }[] = [];
-  const holidayRows: { userId: string; dto: HolidayDto }[] = [];
   const profileRows = new Map<string, SettingsDto>();
   const financeRows: { userId: string; dto: FinanceEntryDto }[] = [];
 
@@ -102,7 +95,6 @@ export function createFakes(seed: { now?: Date } = {}) {
         .map((r) => r.dto)
         .filter((t) => {
           if (statuses && !statuses.includes(t.status)) return false;
-          if (query.caseId !== undefined && t.caseId !== query.caseId) return false;
           if (query.withoutDate === true && t.dueDate !== null) return false;
           if (query.from !== undefined && (t.dueDate === null || t.dueDate < query.from)) return false;
           if (query.to !== undefined && (t.dueDate === null || t.dueDate > query.to)) return false;
@@ -121,72 +113,6 @@ export function createFakes(seed: { now?: Date } = {}) {
       const row = taskRows.find((r) => r.userId === userId && r.dto.id === id && r.deletedAt === null);
       if (!row) return false;
       row.deletedAt = at;
-      return true;
-    },
-  };
-
-  const numberTaken = (userId: string, number: string, exceptId?: string) =>
-    caseRows.some((r) => r.userId === userId && r.dto.number === number && r.dto.id !== exceptId);
-
-  const cases: CaseRepository = {
-    async create(userId, input) {
-      if (numberTaken(userId, input.number)) throw new ConflictError('numero_ja_cadastrado');
-      const dto: CaseDto = {
-        id: crypto.randomUUID(),
-        number: input.number,
-        clientName: input.clientName ?? null,
-        description: input.description ?? null,
-        status: 'ativo',
-        createdAt: stamp(),
-        updatedAt: stamp(),
-      };
-      caseRows.push({ userId, dto });
-      return { ...dto };
-    },
-    async get(userId, id) {
-      const row = caseRows.find((r) => r.userId === userId && r.dto.id === id);
-      return row ? { ...row.dto } : null;
-    },
-    async list(userId, filter) {
-      return caseRows
-        .filter((r) => r.userId === userId && (filter.status === undefined || r.dto.status === filter.status))
-        .map((r) => ({ ...r.dto }));
-    },
-    async update(userId, id, patch) {
-      const row = caseRows.find((r) => r.userId === userId && r.dto.id === id);
-      if (!row) return null;
-      if (patch.number !== undefined && numberTaken(userId, patch.number, id)) {
-        throw new ConflictError('numero_ja_cadastrado');
-      }
-      row.dto = { ...row.dto, ...defined(patch), updatedAt: stamp() };
-      return { ...row.dto };
-    },
-  };
-
-  const holidays: HolidayRepository & HolidayAdminRepository = {
-    async listByUser(userId, from: IsoDate, to: IsoDate) {
-      return holidayRows
-        .filter((r) => r.userId === userId && r.dto.date >= from && r.dto.date <= to)
-        .map((r) => ({ date: r.dto.date, name: r.dto.name }));
-    },
-    async list(userId) {
-      return holidayRows
-        .filter((r) => r.userId === userId)
-        .map((r) => ({ ...r.dto }))
-        .sort((a, b) => cmp(a.date, b.date));
-    },
-    async create(userId, input) {
-      if (holidayRows.some((r) => r.userId === userId && r.dto.date === input.date)) {
-        throw new ConflictError('feriado_ja_cadastrado');
-      }
-      const dto: HolidayDto = { id: crypto.randomUUID(), date: input.date, scope: input.scope, name: input.name };
-      holidayRows.push({ userId, dto });
-      return { ...dto };
-    },
-    async remove(userId, id) {
-      const i = holidayRows.findIndex((r) => r.userId === userId && r.dto.id === id);
-      if (i < 0) return false;
-      holidayRows.splice(i, 1);
       return true;
     },
   };
@@ -964,9 +890,7 @@ export function createFakes(seed: { now?: Date } = {}) {
     captures,
     maintenance,
     tasks,
-    cases,
     profiles,
-    holidays,
     finance,
     reminders,
     chat,

@@ -16,16 +16,12 @@ function task(over: Partial<TaskDto> = {}): TaskDto {
   seq += 1;
   return {
     id: `t${seq}`,
-    caseId: null,
     title: `Tarefa ${seq}`,
     type: 'tarefa',
     status: 'pendente',
     dueDate: TODAY,
     dueTime: null,
     fatal: false,
-    baseDate: null,
-    periodDays: null,
-    countType: null,
     completedAt: null,
     createdAt: '2026-10-01T12:00:00Z',
     updatedAt: '2026-10-01T12:00:00Z',

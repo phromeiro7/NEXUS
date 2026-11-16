@@ -13,7 +13,7 @@ vi.mock("next/navigation", () => ({
 const A = { access_token: "ta", user: { id: "user-A" } };
 const B = { access_token: "tb", user: { id: "user-B" } };
 const KEY = ["tasks"];
-const ROWS_A = [{ id: "a1", title: "Processo sigiloso de A" }];
+const ROWS_A = [{ id: "a1", title: "Tarefa sigilosa de A" }];
 
 let auth: AuthContextValue;
 function Grab() {
