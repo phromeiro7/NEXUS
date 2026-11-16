@@ -83,7 +83,7 @@ O passo a passo (variáveis, Supabase local, Telegram sem túnel, publicação n
 - [x] Bot do Telegram, Mini App e login automático
 - [x] Convites, login por QR code e finanças
 - [x] Assistente de IA com ferramentas
-- [ ] Adiar tarefa pelo painel e pelo Mini App (em andamento)
+- [x] Adiar tarefa pelo painel e pelo Mini App
 - [ ] Capturas de tela e demonstração no README
 - [ ] Avaliação do assistente com o modelo real
 

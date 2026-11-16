@@ -12,3 +12,7 @@ apps/api/.vitest/
 .DS_Store
 graphify-out/
 apps/api/.vercel/
+
+# Ferramentas locais do editor e de agentes
+.claude/
+.vscode/
