@@ -13,7 +13,7 @@ import type {
   TaskType,
   UpdateCaseInput,
   UpdateSettingsInput,
-} from '@aj/shared';
+} from '@nexus/shared';
 import type { TelegramErrorClass } from '../domain/reminder-message.js';
 import type { ReminderDraft, ReminderKind } from '../domain/reminders.js';
 

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import type { IsoDate, TaskDto, TaskStatus } from "@aj/shared";
+import type { IsoDate, TaskDto, TaskStatus } from "@nexus/shared";
 import { FinanceNotice } from "@/components/mini/finance-notice";
 import { useToast } from "@/components/mini/toast";
 import { useFinance } from "@/hooks/finance";

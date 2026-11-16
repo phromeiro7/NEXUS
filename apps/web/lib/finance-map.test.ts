@@ -1,4 +1,4 @@
-import type { FinanceEntryDto } from "@aj/shared";
+import type { FinanceEntryDto } from "@nexus/shared";
 import { describe, expect, it } from "vitest";
 import { byCreation, toCreateInput, toLancamento } from "./finance-map";
 

@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Holiday, HolidayDto, IsoDate } from '@aj/shared';
+import type { Holiday, HolidayDto, IsoDate } from '@nexus/shared';
 import { ConflictError } from '../application/errors.js';
 import type { HolidayAdminRepository, HolidayRepository } from '../application/ports.js';
 import { INVALID_TEXT_REPRESENTATION, isUuid } from './mappers.js';

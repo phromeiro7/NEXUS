@@ -8,7 +8,6 @@ Este diretório reúne a direção de marca e o conceito visual do Mini App para
 - [Visão do Mini App](mini-app.md): estrutura, funções, fluxos, estados e critérios de acessibilidade.
 - [Posicionamento no Instagram](posicionamento-instagram.md): perfil, bio, público, conteúdo e comunicação de pré-lançamento.
 - [Primeiro post completo](instagram/primeiro-post/post-completo.md): carrossel, legenda, hashtags, texto alternativo e Story.
-- [Prompt de continuidade para outra IA](handoff-para-outra-ia.md): contexto e instruções para continuar o projeto.
 - `assets/nexus-logo.svg`: estudo vetorial de logo horizontal.
 - `assets/nexus-avatar.svg`: estudo vetorial de avatar do bot.
 - `assets/nexus-instagram.png`: imagem de perfil quadrada em PNG, 1080 × 1080.

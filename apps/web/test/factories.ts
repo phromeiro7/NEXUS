@@ -1,4 +1,4 @@
-import type { TaskDto } from "@aj/shared";
+import type { TaskDto } from "@nexus/shared";
 
 export function makeTask(over: Partial<TaskDto> = {}): TaskDto {
   return {

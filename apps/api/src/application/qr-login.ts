@@ -1,5 +1,5 @@
 import { createHash, randomBytes as nodeRandomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
-import { QR_LOGIN_START_PREFIX, type QrLoginCreateResultDto, type QrLoginStatusDto } from '@aj/shared';
+import { QR_LOGIN_START_PREFIX, type QrLoginCreateResultDto, type QrLoginStatusDto } from '@nexus/shared';
 import { browserLabel } from '../domain/browser-label.js';
 import { NotFoundError, TelegramAuthError } from './errors.js';
 import type { Clock, ProfileRepository, QrLoginRepository, SessionIssuer } from './ports.js';

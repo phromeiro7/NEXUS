@@ -1,4 +1,4 @@
-import { canTransition, type TaskStatus } from '@aj/shared';
+import { canTransition, type TaskStatus } from '@nexus/shared';
 
 export class InvalidTransitionError extends Error {
   constructor(

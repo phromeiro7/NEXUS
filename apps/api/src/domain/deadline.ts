@@ -1,4 +1,4 @@
-import type { CountType, IsoDate } from '@aj/shared';
+import type { CountType, IsoDate } from '@nexus/shared';
 import { addDays, isBusinessDay, isWeekend, nextBusinessDay } from './calendar.js';
 
 export interface DeadlineInput {

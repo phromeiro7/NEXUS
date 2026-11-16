@@ -54,13 +54,13 @@ O roteiro usa repositórios em memória e dados fictícios; só precisa da chave
 máximo de chamadas e o teto de custo e sai sem chamar nada:
 
 ```
-ANTHROPIC_API_KEY=<sua-chave> pnpm --filter @aj/api smoke:assistant
+ANTHROPIC_API_KEY=<sua-chave> pnpm --filter @nexus/api smoke:assistant
 ```
 
 Para executar de verdade (40 chamadas no máximo):
 
 ```
-ANTHROPIC_API_KEY=<sua-chave> pnpm --filter @aj/api smoke:assistant --yes
+ANTHROPIC_API_KEY=<sua-chave> pnpm --filter @nexus/api smoke:assistant --yes
 ```
 
 Opcional: `--out relatorio.txt` grava o relatório (nunca contém a chave). Nada mais é gravado em disco.

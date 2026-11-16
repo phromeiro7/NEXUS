@@ -1,4 +1,4 @@
-import type { IsoDate, TaskDto } from '@aj/shared';
+import type { IsoDate, TaskDto } from '@nexus/shared';
 import { addDays, daysBetween, todayIn } from './dates';
 
 export type DayGroups = {

@@ -22,7 +22,7 @@ vi.mock("@/components/auth-provider", () => ({ useApi: () => holder.api }));
 const invite = (over: Record<string, unknown> = {}) => ({
   label: null,
   code: "ABCDEFGHJKMN",
-  link: "https://t.me/NexusAssitant_bot?start=ABCDEFGHJKMN",
+  link: "https://t.me/nexus_bot?start=ABCDEFGHJKMN",
   status: "ativo",
   createdAt: "2026-11-04T12:00:00.000Z",
   expiresAt: "2026-11-11T12:00:00.000Z",
@@ -71,7 +71,7 @@ describe("InvitesCard", () => {
     wrap();
     await userEvent.click(await screen.findByRole("button", { name: "Gerar convite" }));
     expect(await screen.findByRole("status")).toHaveTextContent("Convite criado. Vale por 7 dias e abre uma conta só.");
-    expect(screen.getByLabelText("Link do convite")).toHaveValue("https://t.me/NexusAssitant_bot?start=ABCDEFGHJKMN");
+    expect(screen.getByLabelText("Link do convite")).toHaveValue("https://t.me/nexus_bot?start=ABCDEFGHJKMN");
   });
 
   it("envia o nome digitado e mostra o nome na lista", async () => {
@@ -100,7 +100,7 @@ describe("InvitesCard", () => {
     wrap();
     await userEvent.click(await screen.findByRole("button", { name: "Gerar convite" }));
     await userEvent.click(await screen.findByRole("button", { name: "Copiar link" }));
-    expect(writeText).toHaveBeenCalledWith("https://t.me/NexusAssitant_bot?start=ABCDEFGHJKMN");
+    expect(writeText).toHaveBeenCalledWith("https://t.me/nexus_bot?start=ABCDEFGHJKMN");
     expect(await screen.findByText("Link copiado.")).toBeInTheDocument();
   });
 
@@ -125,7 +125,7 @@ describe("InvitesCard", () => {
     expect(openTelegramLink).toHaveBeenCalledTimes(1);
     const url = new URL(openTelegramLink.mock.calls[0]![0] as string);
     expect(url.origin + url.pathname).toBe("https://t.me/share/url");
-    expect(url.searchParams.get("url")).toBe("https://t.me/NexusAssitant_bot?start=ABCDEFGHJKMN");
+    expect(url.searchParams.get("url")).toBe("https://t.me/nexus_bot?start=ABCDEFGHJKMN");
   });
 
   it("lista os convites com o estado em palavras e todos têm Apagar e só os ativos compartilham", async () => {

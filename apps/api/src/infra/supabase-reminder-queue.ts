@@ -1,4 +1,4 @@
-import type { IsoDate, TaskType } from '@aj/shared';
+import type { IsoDate, TaskType } from '@nexus/shared';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { ReminderLeaseError } from '../application/errors.js';
 import type { ClaimedReminder, ReminderQueue } from '../application/ports.js';

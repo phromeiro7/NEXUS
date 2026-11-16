@@ -1,5 +1,5 @@
 import { Hono, type MiddlewareHandler } from 'hono';
-import { caseStatusSchema, createCaseInputSchema, updateCaseInputSchema } from '@aj/shared';
+import { caseStatusSchema, createCaseInputSchema, updateCaseInputSchema } from '@nexus/shared';
 import type { makeCaseUseCases } from '../application/cases.js';
 import { ValidationError } from '../http-errors.js';
 import { idParam, readJson } from './request.js';

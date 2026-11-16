@@ -1,4 +1,4 @@
-import type { CreateHolidayInput, HolidayDto } from '@aj/shared';
+import type { CreateHolidayInput, HolidayDto } from '@nexus/shared';
 import { NotFoundError } from './errors.js';
 import type { HolidayAdminRepository } from './ports.js';
 

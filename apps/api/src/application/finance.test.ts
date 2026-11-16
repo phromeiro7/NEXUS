@@ -1,4 +1,4 @@
-import type { CreateFinanceEntryInput } from '@aj/shared';
+import type { CreateFinanceEntryInput } from '@nexus/shared';
 import { describe, expect, it } from 'vitest';
 import { createFakes } from '../../test/fakes.js';
 import { ConflictError, InvalidInputError, NotFoundError } from './errors.js';

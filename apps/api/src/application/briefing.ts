@@ -1,4 +1,4 @@
-import { todayIn, type BriefingDto } from '@aj/shared';
+import { todayIn, type BriefingDto } from '@nexus/shared';
 import { buildBriefing } from '../domain/briefing.js';
 import type { Clock, ProfileRepository, TaskRepository } from './ports.js';
 

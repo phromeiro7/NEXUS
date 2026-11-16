@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { IsoDate } from '@aj/shared';
+import type { IsoDate } from '@nexus/shared';
 import { ConflictError } from '../application/errors.js';
 import type { NewTask } from '../application/ports.js';
 import { getSupabaseEnv } from '../../test/db/supabase-env.js';

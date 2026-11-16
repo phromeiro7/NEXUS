@@ -1,4 +1,4 @@
-import type { IsoDate } from '@aj/shared';
+import type { IsoDate } from '@nexus/shared';
 import { describe, expect, it } from 'vitest';
 import { buildReminders, HoraInvalidaError, resolveDefaultReminderTime } from './reminders.js';
 import type { LocalToUtcResult } from './timezone.js';

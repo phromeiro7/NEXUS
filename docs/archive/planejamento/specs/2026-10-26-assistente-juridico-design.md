@@ -183,7 +183,7 @@ Painel gera código de uso único (10 min) e link; `/start CODIGO` chega ao webh
 
 ## 8. Painel web
 
-**Telas:** login/cadastro/recuperação; Painel (briefing + barra de comando + seletor Dia/Semana/Mês); Histórico (concluídas agrupadas pelo dia da conclusão, filtro para incluir canceladas); Configurações (fuso, UF e cidade, feriados locais, lembretes, briefing, Telegram). **Decisão para a primeira versão do painel:** não exibir uma aba/tela de Processos; referências a processo podem aparecer no contexto de uma tarefa, mas o cadastro e a navegação própria de processos ficam adiados. Ver `docs/superpowers/specs/2026-10-26-painel-web-direcao-visual.md` para a direção do protótipo e decisões visuais pendentes.
+**Telas:** login/cadastro/recuperação; Painel (briefing + barra de comando + seletor Dia/Semana/Mês); Histórico (concluídas agrupadas pelo dia da conclusão, filtro para incluir canceladas); Configurações (fuso, UF e cidade, feriados locais, lembretes, briefing, Telegram). **Decisão para a primeira versão do painel:** não exibir uma aba/tela de Processos; referências a processo podem aparecer no contexto de uma tarefa, mas o cadastro e a navegação própria de processos ficam adiados. Ver `docs/archive/planejamento/specs/2026-10-26-painel-web-direcao-visual.md` para a direção do protótipo e decisões visuais pendentes.
 
 - **Dia:** atrasadas em destaque, depois hoje por horário e sem data.
 - **Semana:** colunas por dia, fatais marcados.
@@ -258,7 +258,7 @@ Nenhum item abaixo deve ser tratado como confirmado sem consultar a documentaç�
 7. Detalhes atuais da Telegram Bot API.
 8. Custo estimado por volume de mensagens.
 
-Resultados dos itens 1, 2, 3, 4 e 7 (consulta de 2026-10-30): ver `docs/superpowers/notes/2026-verificacoes-infra.md`.
+Resultados dos itens 1, 2, 3, 4 e 7 (consulta de 2026-10-30): ver `docs/archive/planejamento/notes/2026-verificacoes-infra.md`.
 
 ---
 

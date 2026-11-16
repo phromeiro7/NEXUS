@@ -1,4 +1,4 @@
-import type { IsoDate } from '@aj/shared';
+import type { IsoDate } from '@nexus/shared';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { BriefingRepository } from '../application/ports.js';
 import type { RemindersLogger } from '../application/run-reminders.js';

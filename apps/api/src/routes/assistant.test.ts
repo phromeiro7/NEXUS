@@ -1,4 +1,4 @@
-import type { AssistantReplyDto } from '@aj/shared';
+import type { AssistantReplyDto } from '@nexus/shared';
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from 'vitest';
 import {
   AssistantUnavailableError,

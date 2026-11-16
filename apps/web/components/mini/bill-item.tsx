@@ -1,6 +1,6 @@
 "use client";
 
-import type { IsoDate } from "@aj/shared";
+import type { IsoDate } from "@nexus/shared";
 import { dueLabel, formatBRL, isOverdue, type Lancamento } from "@/lib/finance";
 import { CheckIcon, ClockIcon } from "./icons";
 

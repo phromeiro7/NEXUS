@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from 'vitest';
-import type { Holiday, IsoDate } from '@aj/shared';
+import type { Holiday, IsoDate } from '@nexus/shared';
 import type { HolidayRepository } from './application/ports.js';
 import { buildApp, WEB_ORIGIN } from '../test/harness.js';
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { InviteDto, InviteSummaryDto } from "@aj/shared";
+import type { InviteDto, InviteSummaryDto } from "@nexus/shared";
 import { isForbidden, useCreateInvite, useInvites, useDeleteInvite } from "@/hooks/use-invites";
 import { messageFor } from "@/lib/messages";
 

@@ -1,4 +1,4 @@
-import type { CaptureProposalDto, IsoDate } from "@aj/shared";
+import type { CaptureProposalDto, IsoDate } from "@nexus/shared";
 import { describe, expect, it } from "vitest";
 import {
   canConfirm,

@@ -1,4 +1,4 @@
-import { todayIn, type IsoDate } from '@aj/shared';
+import { todayIn, type IsoDate } from '@nexus/shared';
 
 /** Largura da janela de envio do briefing depois de `briefingTime` (Ruling 19). */
 export const BRIEFING_WINDOW_MINUTES = 4 * 60;

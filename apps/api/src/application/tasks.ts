@@ -1,4 +1,4 @@
-import type { CreateTaskInput, ListTasksQuery, TaskDto, UpdateTaskInput } from '@aj/shared';
+import type { CreateTaskInput, ListTasksQuery, TaskDto, UpdateTaskInput } from '@nexus/shared';
 import { applyStatusChange } from '../domain/task-status.js';
 import type { makeCalculateDeadline } from './calculate-deadline.js';
 import { ConflictError, InvalidInputError, NotFoundError } from './errors.js';

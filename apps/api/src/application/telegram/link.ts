@@ -1,5 +1,5 @@
 import { randomBytes as nodeRandomBytes } from 'node:crypto';
-import type { LinkCodeDto } from '@aj/shared';
+import type { LinkCodeDto } from '@nexus/shared';
 import { LinkCodeCollisionError, TelegramNotConfiguredError } from '../errors.js';
 import type { Clock, LinkCodeRepository } from '../ports.js';
 

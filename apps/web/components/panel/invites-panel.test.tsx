@@ -20,7 +20,7 @@ vi.mock("@/components/auth-provider", () => ({ useApi: () => holder.api }));
 const invite = (over: Record<string, unknown> = {}) => ({
   label: null,
   code: "ABCDEFGHJKMN",
-  link: "https://t.me/NexusAssitant_bot?start=ABCDEFGHJKMN",
+  link: "https://t.me/nexus_bot?start=ABCDEFGHJKMN",
   status: "ativo",
   createdAt: "2026-11-04T12:00:00.000Z",
   expiresAt: "2026-11-11T12:00:00.000Z",
@@ -67,9 +67,9 @@ describe("InvitesPanel", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Gerar convite" }));
     expect(await screen.findByText("Convite criado.", { selector: "strong" })).toBeInTheDocument();
     expect(screen.getAllByText(/Vale por 7 dias e abre uma conta só/).length).toBeGreaterThan(0);
-    expect(screen.getByLabelText("Link para enviar")).toHaveValue("https://t.me/NexusAssitant_bot?start=ABCDEFGHJKMN");
+    expect(screen.getByLabelText("Link para enviar")).toHaveValue("https://t.me/nexus_bot?start=ABCDEFGHJKMN");
     await userEvent.click(screen.getByRole("button", { name: "Copiar link" }));
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith("https://t.me/NexusAssitant_bot?start=ABCDEFGHJKMN"));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("https://t.me/nexus_bot?start=ABCDEFGHJKMN"));
     expect(await screen.findByText("Link copiado.")).toBeInTheDocument();
   });
 

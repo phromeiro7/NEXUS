@@ -1,4 +1,4 @@
-import type { CreateTaskInput } from '@aj/shared';
+import type { CreateTaskInput } from '@nexus/shared';
 import { describe, expect, it } from 'vitest';
 import { createFakes } from '../../test/fakes.js';
 import { HoraInvalidaError } from '../domain/reminders.js';

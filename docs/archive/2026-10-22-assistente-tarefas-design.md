@@ -1,4 +1,4 @@
-> **Substituída por** `docs/superpowers/specs/2026-10-26-assistente-juridico-design.md`. Mantida só como histórico.
+> **Substituída por** `docs/archive/planejamento/specs/2026-10-26-assistente-juridico-design.md`. Mantida só como histórico.
 
 # Assistente pessoal de tarefas (Telegram + painel web) — Design
 

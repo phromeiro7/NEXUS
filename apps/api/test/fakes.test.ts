@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { IsoDate } from '@aj/shared';
+import type { IsoDate } from '@nexus/shared';
 import { ConflictError, EventStateError, ForeignEventError } from '../src/application/errors.js';
 import type { NewTask } from '../src/application/ports.js';
 import { createFakes } from './fakes.js';

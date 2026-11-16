@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { updateTaskInputSchema, type IsoDate, type TaskDto, type UpdateTaskInput } from "@aj/shared";
+import { updateTaskInputSchema, type IsoDate, type TaskDto, type UpdateTaskInput } from "@nexus/shared";
 import { CheckIcon } from "@/components/mini/icons";
 import { useToast } from "@/components/mini/toast";
 import { useDeleteTask, useUpdateTask } from "@/hooks/queries";

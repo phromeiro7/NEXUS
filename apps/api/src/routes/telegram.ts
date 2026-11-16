@@ -1,5 +1,5 @@
 import { Hono, type MiddlewareHandler } from 'hono';
-import type { LinkCodeDto } from '@aj/shared';
+import type { LinkCodeDto } from '@nexus/shared';
 import { UpdateNotRegisteredError } from '../application/errors.js';
 import type { AssistantLogger } from '../application/assistant/process-message.js';
 import { secretsMatch } from './secret.js';

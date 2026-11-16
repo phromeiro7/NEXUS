@@ -1,4 +1,4 @@
-import type { Holiday, IsoDate } from '@aj/shared';
+import type { Holiday, IsoDate } from '@nexus/shared';
 
 const pad = (n: number): string => String(n).padStart(2, '0');
 

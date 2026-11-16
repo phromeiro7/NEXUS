@@ -1,4 +1,4 @@
-import type { AssistantReplyDto } from '@aj/shared';
+import type { AssistantReplyDto } from '@nexus/shared';
 import { describe, expect, it, vi } from 'vitest';
 import { createFakes } from '../../../test/fakes.js';
 import { makeCalculateDeadline } from '../calculate-deadline.js';

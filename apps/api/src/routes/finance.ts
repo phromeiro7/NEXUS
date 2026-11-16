@@ -3,7 +3,7 @@ import {
   createFinanceEntryInputSchema,
   listFinanceEntriesQuerySchema,
   updateFinanceEntryInputSchema,
-} from '@aj/shared';
+} from '@nexus/shared';
 import type { makeFinanceUseCases } from '../application/finance.js';
 import { ValidationError } from '../http-errors.js';
 import { idParam, readJson } from './request.js';

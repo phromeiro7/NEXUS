@@ -1,4 +1,4 @@
-import type { CaseDto, FinanceEntryDto, IsoDate, TaskDto } from '@aj/shared';
+import type { CaseDto, FinanceEntryDto, IsoDate, TaskDto } from '@nexus/shared';
 
 type Row = Record<string, unknown>;
 

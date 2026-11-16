@@ -1,4 +1,4 @@
-import type { IsoDate } from "@aj/shared";
+import type { IsoDate } from "@nexus/shared";
 import { daysBetween, formatShort } from "./dates";
 import { spokenTime } from "./mini-tasks";
 

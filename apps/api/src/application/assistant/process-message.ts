@@ -1,4 +1,4 @@
-import type { AssistantReplyDto, TaskDto } from '@aj/shared';
+import type { AssistantReplyDto, TaskDto } from '@nexus/shared';
 import {
   AssistantUnavailableError,
   type AssistantUnavailableReason,

@@ -1,7 +1,7 @@
 # Roteiro do Nexus: onde estamos, o que falta e o que vai mudar
 
-Data: 2026-11-03. Documento de decisão. Complementa `docs/STATUS.md` (estado técnico) e o desenho do Mini App
-(`docs/superpowers/specs/2026-11-03-mini-app-telegram-design.md`). O pacote de marca recebido está em
+Data: 2026-11-03. Documento de decisão. Complementa `docs/archive/STATUS-2026-10.md` (estado técnico) e o desenho do Mini App
+(`docs/archive/planejamento/specs/2026-11-03-mini-app-telegram-design.md`). O pacote de marca recebido está em
 `docs/nexus/` na pasta principal do projeto (ainda sem commit; ver §6).
 
 ## 1. A mudança de rumo que precisa ser decidida
@@ -41,7 +41,7 @@ Nada disso foi aplicado ao código. Até a rodada Nexus (§3, item 5), o produto
 - Supabase: projeto **NEXUS** (`jowqlwoiwiiboxykixss`, região São Paulo, plano gratuito). As 6 migrações foram
   aplicadas e conferidas: 10 tabelas com RLS ligada, `anon` sem acesso, `authenticated` só nas tabelas do
   painel, `service_role` com acesso. Banco vazio.
-- Telegram: bot **@NexusAssistant_bot** criado no BotFather, com descrição, texto de perfil e comandos
+- Telegram: bot **@<seu_bot>** criado no BotFather, com descrição, texto de perfil e comandos
   `/start` e `/desvincular`. Token guardado só pelo usuário. Webhook **não** registrado.
 - Vercel: conta Hobby criada e GitHub conectado. Nenhum projeto importado.
 - Ainda não ativados: `pg_cron` e `pg_net` (disponíveis no plano gratuito; só falta ativar).
@@ -53,7 +53,7 @@ Nada disso foi aplicado ao código. Até a rodada Nexus (§3, item 5), o produto
    ponto de entrada de função. Trabalho novo, pequeno.
 3. **Integrar os PRs #1 a #5 na `main`**, na ordem, com commit de merge (não squash).
 4. **Publicar:** dois projetos na Vercel (painel em `apps/web`, API em `apps/api`), variáveis de ambiente
-   (Supabase, token do bot, segredo do webhook, `TELEGRAM_BOT_USERNAME=NexusAssistant_bot`), ativar
+   (Supabase, token do bot, segredo do webhook, `TELEGRAM_BOT_USERNAME=<seu_bot>`), ativar
    `pg_cron`/`pg_net`, registrar o webhook com `secret_token`, testar `/start` ponta a ponta.
 5. **Rodada Nexus (generalização e marca):** decisões D1 a D6 aplicadas (ver §4).
 6. **Plano 6:** acabamento (avaliação da IA, revisão de segurança, testes em navegador, dados de demonstração,
@@ -69,7 +69,7 @@ e o vocabulário novos.
 
 **Vocabulário e textos**
 - Briefing do Telegram: seções "Atrasadas / Fatais de hoje / Audiências de hoje / Próximas 48 horas" viram
-  "Atrasadas / Hoje / Próximas" (`renderBriefing` em `@aj/shared` e `briefing-sender`).
+  "Atrasadas / Hoje / Próximas" (`renderBriefing` em `@nexus/shared` e `briefing-sender`).
 - Lembretes (`reminder-message.ts`): sem "Prazo fatal" e "Audiência"; frases curtas com ação e horário.
 - Estados com palavras, como pede o pacote: "Agendado", "Enviado pelo Telegram", "Falhou", "Concluído".
   "Enviado" não significa "lido". Hoje existem estados internos de lembrete (pendente, enviado, falhou...) que
@@ -139,7 +139,7 @@ porta de reserva do administrador.
   Nexus). Esta conversa não mexeu nesses arquivos.
 - Os documentos `README.md` de `docs/nexus/` e o `handoff-para-outra-ia.md` citam um "documento de escopo
   anterior" com despesas; ele não está neste repositório. Confirmar onde está antes de usá-lo.
-- `docs/STATUS.md` precisa receber o estado da seção 2 quando o Plano 5 fechar.
+- `docs/archive/STATUS-2026-10.md` precisa receber o estado da seção 2 quando o Plano 5 fechar.
 - O pacote lista "decisões em aberto" próprias (hierarquia do produto, sem data/hora, busca inicial, marca
   final, reaproveitamento do painel). As quatro primeiras estão tratadas em D1 a D4.
 
@@ -149,5 +149,5 @@ porta de reserva do administrador.
   rodada Nexus vem antes de novas telas.
 - **Marca:** nome e identidade ainda não foram checados quanto a uso público ou registro.
 - **Custos:** hospedagem grátis (Vercel Hobby é uso não comercial) e IA paga por uso; ver
-  `docs/superpowers/notes/2026-verificacoes-infra.md` e `2026-assistente-custos.md`.
+  `docs/archive/planejamento/notes/2026-verificacoes-infra.md` e `2026-assistente-custos.md`.
 - **Dados de terceiros:** convidados são dados pessoais; retenção e aviso de privacidade seguem em aberto.

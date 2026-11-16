@@ -1,4 +1,4 @@
-import type { IsoDate, TaskStatus, TaskType } from '@aj/shared';
+import type { IsoDate, TaskStatus, TaskType } from '@nexus/shared';
 import { addDays } from './calendar.js';
 
 type BriefingTask = {

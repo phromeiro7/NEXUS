@@ -21,4 +21,4 @@ aberto ou errado.
 | 24 | Rodada única de correções finais: timeout do `pg_net` de 60000 ms, erro 500 do webhook antes de registrar o evento, segredos com no mínimo 16 caracteres, ajustes do roteiro | Baixo |
 | 25 | A ressincronização de lembretes depois do envio continua só quando a tarefa mudou; "sempre ressincronizar" apagaria lembretes irmãos atrasados e quebraria "pelo menos uma vez" | Janela de poucos segundos após mudar a configuração durante um envio |
 
-Pendências menores que ficaram para o Plano 6 estão em `docs/STATUS.md` (seção do Plano 5).
+Pendências menores que ficaram para o Plano 6 estão em `docs/archive/STATUS-2026-10.md` (seção do Plano 5).

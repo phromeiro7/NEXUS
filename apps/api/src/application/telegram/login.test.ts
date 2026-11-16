@@ -13,7 +13,7 @@ function sign(userId: number, authDate = SECONDS - 10): string {
   const fields: Record<string, string> = {
     auth_date: String(authDate),
     query_id: 'AAH',
-    user: JSON.stringify({ id: userId, first_name: 'Paulo' }),
+    user: JSON.stringify({ id: userId, first_name: 'Ana' }),
   };
   const check = Object.entries(fields)
     .sort(([a], [b]) => (a < b ? -1 : 1))

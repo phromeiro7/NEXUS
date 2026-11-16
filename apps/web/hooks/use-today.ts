@@ -1,6 +1,6 @@
 "use client";
 
-import type { IsoDate } from "@aj/shared";
+import type { IsoDate } from "@nexus/shared";
 import { useEffect, useState } from "react";
 import { todayIn } from "@/lib/dates";
 import { useSettings } from "./queries";

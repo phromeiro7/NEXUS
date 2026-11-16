@@ -1,5 +1,5 @@
 import { Hono, type MiddlewareHandler } from 'hono';
-import { assistantMessageInputSchema, type AssistantReplyDto } from '@aj/shared';
+import { assistantMessageInputSchema, type AssistantReplyDto } from '@nexus/shared';
 import type { ProcessMessageInput } from '../application/assistant/process-message.js';
 import { ValidationError } from '../http-errors.js';
 import { readJson } from './request.js';

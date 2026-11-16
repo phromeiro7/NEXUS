@@ -1,4 +1,4 @@
-import type { IsoDate, TaskDto, UpdateTaskInput } from "@aj/shared";
+import type { IsoDate, TaskDto, UpdateTaskInput } from "@nexus/shared";
 import { addDays, daysBetween, formatShort } from "./dates";
 
 /** "14:00" → "14h", "14:30" → "14h30" (voz do produto: horário explícito e curto). */

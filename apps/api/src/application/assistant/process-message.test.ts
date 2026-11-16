@@ -1,4 +1,4 @@
-import type { TaskDto } from '@aj/shared';
+import type { TaskDto } from '@nexus/shared';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createFakes } from '../../../test/fakes.js';
 import { newTask } from '../../../test/harness.js';

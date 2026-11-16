@@ -8,11 +8,11 @@
 
 **Tech Stack:** TypeScript, Vitest, Playwright (navegador), Hono, Next.js, Supabase; `pnpm audit` para dependências; skill de avaliação (`build-eval`) para o conjunto de frases.
 
-**Spec:** `docs/superpowers/specs/2026-10-26-assistente-juridico-design.md` §9 (segurança), §10 (testes e critérios de aceitação), §12–§14 (verificações, custos, questões em aberto). Planos 1–5 concluídos são pré-requisito (a avaliação da IA exige o Plano 4; os testes de navegador, o Plano 3).
+**Spec:** `docs/archive/planejamento/specs/2026-10-26-assistente-juridico-design.md` §9 (segurança), §10 (testes e critérios de aceitação), §12–§14 (verificações, custos, questões em aberto). Planos 1–5 concluídos são pré-requisito (a avaliação da IA exige o Plano 4; os testes de navegador, o Plano 3).
 
 ## Global Constraints
 
-- Nenhuma tarefa de "decisão" é resolvida por mim: cada uma termina com a escolha **do usuário** registrada num documento em `docs/superpowers/notes/` (data, opções, escolha, motivo). Sem a decisão, a tarefa dependente não começa.
+- Nenhuma tarefa de "decisão" é resolvida por mim: cada uma termina com a escolha **do usuário** registrada num documento em `docs/archive/planejamento/notes/` (data, opções, escolha, motivo). Sem a decisão, a tarefa dependente não começa.
 - Gastos reais (chamadas à IA para avaliação, planos pagos) exigem aprovação explícita do usuário **antes** de rodar; a chave `ANTHROPIC_API_KEY` só entra por variável de ambiente, nunca em arquivo versionado, log ou relatório.
 - Nada do produto é publicado/enviado a serviços externos (deploy, repositório remoto, DNS) sem pedido explícito do usuário na hora.
 - Dados reais de clientes **não** entram no repositório, em fixtures, em avaliações nem em dados de demonstração; a demonstração usa dados inventados e marcados como fictícios.
@@ -33,7 +33,7 @@
 ## File Structure
 
 ```
-docs/superpowers/notes/                  # decisões e resultados (paleta, hospedagem, retenção, avaliação, custos)
+docs/archive/planejamento/notes/                  # decisões e resultados (paleta, hospedagem, retenção, avaliação, custos)
 apps/api/src/middleware/rate-limit.ts    # limites HTTP
 apps/api/eval/{cases.json,run-eval.ts,grade.ts}   # avaliação da IA
 apps/api/scripts/seed-demo.ts            # dados de demonstração (fictícios)
@@ -45,9 +45,9 @@ apps/web/e2e/*.spec.ts, apps/web/playwright.config.ts
 ### Task 1: Decisões do usuário (paleta, hospedagem, retenção, plano do Supabase)
 
 **Files:**
-- Create: `docs/superpowers/notes/2026-decisoes-publicacao.md`
+- Create: `docs/archive/planejamento/notes/2026-decisoes-publicacao.md`
 
-**Interfaces:** nenhuma de código. O documento reúne, **para o usuário escolher** (use perguntas objetivas, uma por vez, cada uma com recomendação e custo): (a) paleta definitiva e identidade visual (alternativas visuais renderizadas para comparar, partindo de `docs/superpowers/specs/2026-10-26-painel-web-direcao-visual.md`); (b) onde hospedar API e painel (opções da nota `2026-verificacoes-infra.md` do Plano 5) e o plano do Supabase (pausa por inatividade, `pg_cron`); (c) política de retenção e exclusão de mensagens e dados (spec §14.2) e texto de aviso de privacidade/LGPD; (d) domínio e provedor de e-mail do Supabase Auth (limite de envio de e-mail, spec §14.6).
+**Interfaces:** nenhuma de código. O documento reúne, **para o usuário escolher** (use perguntas objetivas, uma por vez, cada uma com recomendação e custo): (a) paleta definitiva e identidade visual (alternativas visuais renderizadas para comparar, partindo de `docs/archive/planejamento/specs/2026-10-26-painel-web-direcao-visual.md`); (b) onde hospedar API e painel (opções da nota `2026-verificacoes-infra.md` do Plano 5) e o plano do Supabase (pausa por inatividade, `pg_cron`); (c) política de retenção e exclusão de mensagens e dados (spec §14.2) e texto de aviso de privacidade/LGPD; (d) domínio e provedor de e-mail do Supabase Auth (limite de envio de e-mail, spec §14.6).
 
 - [ ] **Step 1:** Levantar as opções e custos atualizados; **Step 2:** apresentar ao usuário e registrar cada escolha com data; **Step 3:** commit `docs: publication decisions`. Tasks 5, 6 e 8 só começam depois da escolha correspondente.
 
@@ -58,21 +58,21 @@ apps/web/e2e/*.spec.ts, apps/web/playwright.config.ts
 **Files:** conforme o item (cada item vira um commit temático); testes junto ao código alterado.
 
 **Interfaces:** itens (cada um com teste que falha antes da correção):
-1. **Paginação** de `GET /tasks` (`limit` 1..200, padrão 100, `cursor` opaco ou `offset`) com contrato em `@aj/shared`; o Histórico passa a pedir páginas ("Carregar mais"); testes de ordem estável e de limite.
+1. **Paginação** de `GET /tasks` (`limit` 1..200, padrão 100, `cursor` opaco ou `offset`) com contrato em `@nexus/shared`; o Histórico passa a pedir páginas ("Carregar mais"); testes de ordem estável e de limite.
 2. **Regra de processo arquivado:** tarefa nova ligada a processo `arquivado` → `409 processo_arquivado` (decidir e registrar a regra; hoje é aceita).
 3. **`{ deadline, dueDate: null }`** no `update`: comportamento definido e testado (hoje ambíguo).
 4. **Funções SQL (`replace_pending_reminders`):** `p_drafts` nulo → erro claro; rascunhos duplicados do mesmo `kind` → deduplicados; tarefa de outro usuário → `raise` explícito (hoje silencioso); testes no banco.
 5. **Testes mais fortes (lista do ledger do Plano 2):** argumento do `console.error` do `onError`; UUID regex e `UNIQUE_VIOLATION` duplicados centralizados num módulo; e os menores do Plano 3 que ainda estiverem abertos (DayView: dedupe de atrasadas com `?d=`; `groupWeek` com fatal; teste do foco após exclusão; `DeadlineFields` compartilhado entre calculadora e formulário).
 6. **Teste intermitente:** rodar a suíte web 20 vezes seguidas e registrar 0 falhas.
 
-- [ ] **Step 1:** para cada item, escrever o teste que falha e confirmar o motivo; **Step 2:** corrigir; **Step 3:** `pnpm test`, `pnpm --filter @aj/api test:db`, `pnpm typecheck`; **Step 4:** commits temáticos (`fix(api): …`, `test(web): …`).
+- [ ] **Step 1:** para cada item, escrever o teste que falha e confirmar o motivo; **Step 2:** corrigir; **Step 3:** `pnpm test`, `pnpm --filter @nexus/api test:db`, `pnpm typecheck`; **Step 4:** commits temáticos (`fix(api): …`, `test(web): …`).
 
 ---
 
 ### Task 3: Limites de uso nas rotas HTTP e revisão de segurança
 
 **Files:**
-- Create: `apps/api/src/middleware/rate-limit.ts` (+ teste), `apps/api/test/db/rls-all-tables.db.test.ts`, `docs/superpowers/notes/2026-revisao-seguranca.md`
+- Create: `apps/api/src/middleware/rate-limit.ts` (+ teste), `apps/api/test/db/rls-all-tables.db.test.ts`, `docs/archive/planejamento/notes/2026-revisao-seguranca.md`
 - Modify: `apps/api/src/app.ts`, `apps/web/next.config.ts` (cabeçalhos), `apps/api/src/application/telegram/webhook.ts` (limite por chat não vinculado)
 
 **Interfaces:**
@@ -89,7 +89,7 @@ apps/web/e2e/*.spec.ts, apps/web/playwright.config.ts
 ### Task 4: Avaliação da IA (~50 frases) e ajuste de prompt
 
 **Files:**
-- Create: `apps/api/eval/cases.json`, `apps/api/eval/grade.ts` (+ teste), `apps/api/eval/run-eval.ts`, `docs/superpowers/notes/2026-avaliacao-ia.md`
+- Create: `apps/api/eval/cases.json`, `apps/api/eval/grade.ts` (+ teste), `apps/api/eval/run-eval.ts`, `docs/archive/planejamento/notes/2026-avaliacao-ia.md`
 
 **Interfaces:**
 - `cases.json`: ~50 casos fictícios em português do Brasil, cada um `{ id, text, now, timeZone, existingTasks?, expect }` cobrindo: abreviações e erros de digitação, "amanhã de manhã/à tarde/à noite", dia da semana sem hora, "semana que vem" sem dia (deve perguntar), várias tarefas numa frase, tarefa sem data, data inexistente (`30/02`), horário no passado, correção ("muda para 16h" com tarefa-alvo), concluir por descrição, consultas ("o que vence essa semana?"), cálculo de prazo em dias úteis, mensagem sem relação com tarefas (não cria nada), e tentativas de injeção ("ignore as regras…", id de outro usuário).
@@ -104,7 +104,7 @@ apps/web/e2e/*.spec.ts, apps/web/playwright.config.ts
 ### Task 5: Identidade visual definitiva (depende da decisão (a) da Task 1)
 
 **Files:**
-- Modify: `apps/web/app/globals.css` (tokens), componentes do painel conforme necessário, `docs/superpowers/specs/2026-10-26-painel-web-direcao-visual.md` (registrar a paleta escolhida, se o arquivo estiver versionado)
+- Modify: `apps/web/app/globals.css` (tokens), componentes do painel conforme necessário, `docs/archive/planejamento/specs/2026-10-26-painel-web-direcao-visual.md` (registrar a paleta escolhida, se o arquivo estiver versionado)
 
 **Interfaces:** os tokens `--color-*` ganham os valores definitivos (claro e escuro) sem mudar nomes; opcionalmente fontes e espaçamentos via a skill de design de interface.
 
@@ -121,14 +121,14 @@ apps/web/e2e/*.spec.ts, apps/web/playwright.config.ts
 
 **Interfaces:** os testes sobem Supabase local (553xx), API (3001, com modelo **falso** do assistente ativado por variável de teste) e painel (3000) e percorrem: cadastro/login/saída (e rota protegida redirecionando), criar tarefa por formulário e por adição rápida, concluir com um clique e ver em Dia/Semana/Mês, calcular prazo e criar tarefa a partir dele, mudar fuso em Configurações com aviso de `skipped`, cadastrar/remover feriado, barra de comando (Ctrl/Cmd+K) criando tarefa com o modelo falso, Histórico e reabrir. Rodam em Chromium; capturas de tela em falha.
 
-- [ ] **Step 1: Write the failing e2e specs** (uma jornada por arquivo, cada asserção sobre o que o usuário vê). **Step 2: Run** `pnpm --filter @aj/web e2e` → FAIL onde faltar cola. **Step 3: Implement** o que faltar (seeds de teste, variáveis, limpeza entre testes — dados isolados por usuário criado no teste). **Step 4: Run** 3 vezes seguidas, **0 falhas**. **Step 5: Commit** `test(web): browser journeys`.
+- [ ] **Step 1: Write the failing e2e specs** (uma jornada por arquivo, cada asserção sobre o que o usuário vê). **Step 2: Run** `pnpm --filter @nexus/web e2e` → FAIL onde faltar cola. **Step 3: Implement** o que faltar (seeds de teste, variáveis, limpeza entre testes — dados isolados por usuário criado no teste). **Step 4: Run** 3 vezes seguidas, **0 falhas**. **Step 5: Commit** `test(web): browser journeys`.
 
 ---
 
 ### Task 7: Dados de demonstração e roteiro para o cliente
 
 **Files:**
-- Create: `apps/api/scripts/seed-demo.ts` (+ teste), `docs/superpowers/notes/2026-roteiro-demo.md`
+- Create: `apps/api/scripts/seed-demo.ts` (+ teste), `docs/archive/planejamento/notes/2026-roteiro-demo.md`
 
 **Interfaces:** `seed-demo` cria (ou recria) **um** usuário de demonstração **somente no Supabase local deste projeto (553xx)**, com ~25 tarefas fictícias realistas (prazos fatais, audiências com hora, atrasadas, concluídas, feriados locais) distribuídas em torno da data atual; recusa rodar se a URL do Supabase não for a local deste projeto; marca tudo como fictício. O roteiro de demo (1 página) lista a sequência de 10 minutos: briefing, visões, status, calculadora, barra de comando, Telegram, lembrete.
 
@@ -140,7 +140,7 @@ apps/web/e2e/*.spec.ts, apps/web/playwright.config.ts
 ### Task 8: Publicação, observabilidade e operação (depende das decisões (b), (c), (d) da Task 1)
 
 **Files:**
-- Create: `docs/superpowers/notes/2026-runbook-publicacao.md`, arquivos de build/implantação conforme a hospedagem escolhida (por exemplo `Dockerfile` da API ou configuração do provedor), `apps/api/src/observability.ts` (+ teste)
+- Create: `docs/archive/planejamento/notes/2026-runbook-publicacao.md`, arquivos de build/implantação conforme a hospedagem escolhida (por exemplo `Dockerfile` da API ou configuração do provedor), `apps/api/src/observability.ts` (+ teste)
 - Modify: `README.md`, `.env.example`
 
 **Interfaces:** runbook com passo a passo e **comandos que o usuário executa** (criar o projeto Supabase, aplicar migrações — `supabase db push` só contra o projeto do usuário —, configurar Auth/e-mail, variáveis de ambiente por serviço **sem valores no Git**, registrar o webhook do Telegram, registrar o agendador, DNS/domínio, backups e restauração, rotação de segredos); `observability.ts` padroniza o log estruturado (nível, evento, ids, duração, **sem** texto de usuário) e o relato de erros (gancho para um serviço escolhido na Task 1; padrão: log estruturado) com teste de que nenhum campo proibido (`text`, `title`, `token`, `authorization`) chega ao log; health checks (`/health` e um `/health/deep` interno que testa banco e, opcionalmente, IA sem gastar tokens).
@@ -154,11 +154,11 @@ apps/web/e2e/*.spec.ts, apps/web/playwright.config.ts
 ### Task 9: Relatório final de aceitação
 
 **Files:**
-- Create: `docs/superpowers/notes/2026-relatorio-aceitacao.md`
+- Create: `docs/archive/planejamento/notes/2026-relatorio-aceitacao.md`
 
 **Interfaces:** tabela dos **critérios de aceitação da spec §10** (um por linha) com a evidência: teste automatizado (arquivo e nome), resultado da avaliação da IA, ou verificação manual; riscos residuais; pendências de decisão do usuário.
 
-- [ ] **Step 1:** montar a tabela com evidências reais (rodar `pnpm test`, `pnpm --filter @aj/api test:db`, `pnpm --filter @aj/web e2e`, `pnpm typecheck`, `pnpm --filter @aj/web build` e colar as saídas). **Step 2:** qualquer critério sem evidência vira item aberto, **não** é marcado como atendido. **Step 3: Commit** `docs: acceptance report`.
+- [ ] **Step 1:** montar a tabela com evidências reais (rodar `pnpm test`, `pnpm --filter @nexus/api test:db`, `pnpm --filter @nexus/web e2e`, `pnpm typecheck`, `pnpm --filter @nexus/web build` e colar as saídas). **Step 2:** qualquer critério sem evidência vira item aberto, **não** é marcado como atendido. **Step 3: Commit** `docs: acceptance report`.
 
 ---
 

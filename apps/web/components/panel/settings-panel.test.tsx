@@ -13,7 +13,7 @@ const holder = vi.hoisted(() => ({
 vi.mock("@/components/auth-provider", () => ({
   DISPLAY_NAME_MAX: 40,
   useApi: () => holder.api,
-  useAuth: () => ({ displayName: "Paulo", saveDisplayName: holder.saveDisplayName, signOut: holder.signOut }),
+  useAuth: () => ({ displayName: "Ana", saveDisplayName: holder.saveDisplayName, signOut: holder.signOut }),
 }));
 
 const settings = { timezone: "America/Sao_Paulo", earlyReminderMinutes: 15, briefingTime: "08:00", telegramLinked: true, channelPaused: false, uf: null };
@@ -49,7 +49,7 @@ describe("SettingsPanel", () => {
   it("salva o nome de exibição", async () => {
     renderPanel();
     const input = await screen.findByLabelText("Como você quer ser chamado?");
-    expect(input).toHaveValue("Paulo");
+    expect(input).toHaveValue("Ana");
     await userEvent.clear(input);
     await userEvent.type(input, "Paulinho");
     await userEvent.click(screen.getByRole("button", { name: "Salvar nome" }));

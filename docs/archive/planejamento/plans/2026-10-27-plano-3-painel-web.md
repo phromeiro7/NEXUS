@@ -4,18 +4,18 @@
 
 **Goal:** Painel Next.js que usa a API do Plano 2: login, visões Dia/Semana/Mês, status com um clique, criação/edição/exclusão de tarefas, calculadora de prazos, histórico e configurações (com feriados locais). Produto já usável sem IA.
 
-**Architecture:** `apps/web` só tem interface; toda regra de negócio fica na API. O front autentica no Supabase Auth (somente login) e chama a API com o token, usando um cliente tipado sobre `@aj/shared`. Lógica de datas e de agrupamento de tarefas vive em funções puras (`lib/`) testadas com Vitest; telas são finas e usam TanStack Query. A autenticação é do lado do cliente (sem SSR de dados).
+**Architecture:** `apps/web` só tem interface; toda regra de negócio fica na API. O front autentica no Supabase Auth (somente login) e chama a API com o token, usando um cliente tipado sobre `@nexus/shared`. Lógica de datas e de agrupamento de tarefas vive em funções puras (`lib/`) testadas com Vitest; telas são finas e usam TanStack Query. A autenticação é do lado do cliente (sem SSR de dados).
 
 **Tech Stack:** Next.js (App Router, última versão estável), React, TypeScript strict, Tailwind CSS, TanStack Query, `@supabase/supabase-js`, Vitest + Testing Library + jsdom. Sem shadcn/ui nesta etapa (Ruling P3-1).
 
-**Spec:** `docs/superpowers/specs/2026-10-26-assistente-juridico-design.md` (§4.2, §8) e `docs/superpowers/specs/2026-10-26-painel-web-direcao-visual.md`. API: README e `packages/shared`.
+**Spec:** `docs/archive/planejamento/specs/2026-10-26-assistente-juridico-design.md` (§4.2, §8) e `docs/archive/planejamento/specs/2026-10-26-painel-web-direcao-visual.md`. API: README e `packages/shared`.
 
 ## Global Constraints
 
 - O front **não lê nem escreve no banco**; só `supabase.auth.*` e a API (`NEXT_PUBLIC_API_URL`, padrão `http://localhost:3001`). Painel na porta **3000**.
 - Variáveis públicas (nomes apenas, sem valores no Git): `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`. **Nunca** a service role no front.
 - Datas são `YYYY-MM-DD` e horas `HH:mm`; "hoje" é a data **no fuso das configurações do usuário**, não a do navegador.
-- Textos da interface em português do Brasil. Contratos vêm só de `@aj/shared` (nenhum tipo duplicado no front).
+- Textos da interface em português do Brasil. Contratos vêm só de `@nexus/shared` (nenhum tipo duplicado no front).
 - Estados nunca dependem só de cor: atraso, fatal, audiência e concluída têm texto ou ícone com rótulo acessível.
 - Sem aba/tela de Processos (spec §8). Processo pode aparecer como referência na tarefa; o formulário permite escolher o processo existente.
 - Paleta provisória, isolada em tokens CSS (`app/globals.css`) para troca posterior; contraste mínimo AA.
@@ -61,12 +61,12 @@ packages/shared/src/task-status.ts   # canTransition movido da API (Task 3)
 - Modify: `.env.example` (nomes `NEXT_PUBLIC_*`, sem valores), `README.md` (seção Painel), `package.json` raiz (sem mudança de scripts: `pnpm -r` já cobre)
 
 **Interfaces:**
-- Produces: workspace `@aj/web` com scripts `dev` (porta 3000), `build`, `test`, `typecheck`; `transpilePackages: ['@aj/shared']`; tokens CSS `--color-*` em `globals.css`; ambiente de teste jsdom com Testing Library e `@testing-library/jest-dom`.
+- Produces: workspace `@nexus/web` com scripts `dev` (porta 3000), `build`, `test`, `typecheck`; `transpilePackages: ['@nexus/shared']`; tokens CSS `--color-*` em `globals.css`; ambiente de teste jsdom com Testing Library e `@testing-library/jest-dom`.
 
 - [ ] **Step 1: Write the failing test** — `app/smoke.test.tsx` renderiza `<Home />` e espera o texto "Assistente Jurídico" (RED: pacote e página não existem).
-- [ ] **Step 2: Run** `pnpm --filter @aj/web test` → falha por módulo ausente.
-- [ ] **Step 3: Scaffold** manualmente (sem `create-next-app` interativo): dependências `next react react-dom @aj/shared@workspace:* @tanstack/react-query @supabase/supabase-js zod`; dev `tailwindcss @tailwindcss/postcss typescript vitest jsdom @testing-library/react @testing-library/user-event @testing-library/jest-dom @vitejs/plugin-react @types/react @types/react-dom`. `tsconfig` estende `../../tsconfig.base.json` com `jsx: preserve`, `lib: [dom, dom.iterable, es2022]`, `types: [node, vitest/globals]`, alias `@/*` → raiz do app. Tokens: fundo, superfície, texto, borda, destaque, atraso, fatal, sucesso, cada um com versão clara e escura via `prefers-color-scheme`.
-- [ ] **Step 4: Run** `pnpm --filter @aj/web test` e `pnpm typecheck` e `pnpm --filter @aj/web build` → verdes.
+- [ ] **Step 2: Run** `pnpm --filter @nexus/web test` → falha por módulo ausente.
+- [ ] **Step 3: Scaffold** manualmente (sem `create-next-app` interativo): dependências `next react react-dom @nexus/shared@workspace:* @tanstack/react-query @supabase/supabase-js zod`; dev `tailwindcss @tailwindcss/postcss typescript vitest jsdom @testing-library/react @testing-library/user-event @testing-library/jest-dom @vitejs/plugin-react @types/react @types/react-dom`. `tsconfig` estende `../../tsconfig.base.json` com `jsx: preserve`, `lib: [dom, dom.iterable, es2022]`, `types: [node, vitest/globals]`, alias `@/*` → raiz do app. Tokens: fundo, superfície, texto, borda, destaque, atraso, fatal, sucesso, cada um com versão clara e escura via `prefers-color-scheme`.
+- [ ] **Step 4: Run** `pnpm --filter @nexus/web test` e `pnpm typecheck` e `pnpm --filter @nexus/web build` → verdes.
 - [ ] **Step 5: Commit** `feat(web): scaffold Next.js app with Tailwind and Vitest`
 
 ---
@@ -92,7 +92,7 @@ packages/shared/src/task-status.ts   # canTransition movido da API (Task 3)
   - `weekRange('2026-10-25')` (domingo) → `{ from: '2026-10-19', to: '2026-10-25' }`; `weekRange('2026-12-30')` → `{ from: '2026-12-28', to: '2027-01-03' }`.
   - `monthGrid(2026, 2)` (fev/2026 começa no domingo) → 5 linhas, primeira linha começa em `2026-01-26`, última termina em `2026-03-01`; `monthGrid(2028, 2)` contém `2028-02-29`; todas as linhas têm 7 dias consecutivos.
   - `daysBetween('2026-10-26','2026-10-29') === 3`, negativo quando inverte.
-- [ ] **Step 2: Run** `pnpm --filter @aj/web test lib/dates` → FAIL.
+- [ ] **Step 2: Run** `pnpm --filter @nexus/web test lib/dates` → FAIL.
 - [ ] **Step 3: Implement** em UTC puro sobre `Date.UTC`; `todayIn` com `Intl.DateTimeFormat('en-CA', { timeZone })`.
 - [ ] **Step 4: Run** → PASS; `pnpm typecheck`.
 - [ ] **Step 5: Commit** `feat(web): calendar and time-zone date helpers`
@@ -106,7 +106,7 @@ packages/shared/src/task-status.ts   # canTransition movido da API (Task 3)
 - Modify: `packages/shared/src/index.ts` (exporta), `apps/api/src/domain/task-status.ts` (importa `canTransition` e a tabela do shared, mantendo `applyStatusChange` e `InvalidTransitionError` na API; testes da API continuam verdes)
 
 **Interfaces:**
-- Produces em `@aj/shared`: `canTransition(from: TaskStatus, to: TaskStatus): boolean`, `nextStatuses(from: TaskStatus): readonly TaskStatus[]` (mesma tabela da API).
+- Produces em `@nexus/shared`: `canTransition(from: TaskStatus, to: TaskStatus): boolean`, `nextStatuses(from: TaskStatus): readonly TaskStatus[]` (mesma tabela da API).
 - Produces em `lib/tasks-view.ts`:
   - `groupDay(tasks: TaskDto[], today: IsoDate): { overdue: TaskDto[]; fatalToday: TaskDto[]; timed: TaskDto[]; dateOnly: TaskDto[]; undated: TaskDto[] }` — considera só abertas (`pendente`/`em_andamento`); `overdue` ordenada por data e hora; `fatalToday` = vence hoje e `fatal`; `timed` = vence hoje com hora, por hora, sem repetir fatais; `dateOnly` = vence hoje sem hora, sem repetir fatais.
   - `groupWeek(tasks, from: IsoDate): Array<{ date: IsoDate; tasks: TaskDto[] }>` (7 colunas, cada uma ordenada: com hora por hora, depois sem hora; fatais marcadas pelo `fatal` da tarefa).
@@ -131,7 +131,7 @@ packages/shared/src/task-status.ts   # canTransition movido da API (Task 3)
 **Interfaces:**
 - Produces:
   - `class ApiError extends Error { status: number; code: string; body: unknown }`
-  - `createApiClient(opts: { baseUrl: string; getToken: () => Promise<string | null>; onUnauthorized: () => void; fetch?: typeof fetch })` com métodos: `me()`, `listTasks(query: ListTasksQuery)`, `getTask(id)`, `createTask(input: CreateTaskInput)`, `updateTask(id, input: UpdateTaskInput)`, `deleteTask(id)`, `listCases(status?)`, `calculateDeadline(input: DeadlineRule)`, `getSettings()`, `updateSettings(input): Promise<UpdateSettingsResultDto>`, `listHolidays()`, `createHoliday(input)`, `deleteHoliday(id)`, `getBriefing()`. Tipos de retorno vêm de `@aj/shared`.
+  - `createApiClient(opts: { baseUrl: string; getToken: () => Promise<string | null>; onUnauthorized: () => void; fetch?: typeof fetch })` com métodos: `me()`, `listTasks(query: ListTasksQuery)`, `getTask(id)`, `createTask(input: CreateTaskInput)`, `updateTask(id, input: UpdateTaskInput)`, `deleteTask(id)`, `listCases(status?)`, `calculateDeadline(input: DeadlineRule)`, `getSettings()`, `updateSettings(input): Promise<UpdateSettingsResultDto>`, `listHolidays()`, `createHoliday(input)`, `deleteHoliday(id)`, `getBriefing()`. Tipos de retorno vêm de `@nexus/shared`.
   - Serializa `ListTasksQuery` na query string (`status` como lista separada por vírgula, `withoutDate=true`).
   - `messageFor(error: unknown): string` em `messages.ts`: mapeia `entrada_invalida` → "Confira os campos destacados.", `nao_encontrado` → "Não encontramos este item. Atualize a página.", `transicao_invalida` → "Esta mudança de status não é permitida.", `tarefa_encerrada` → "A tarefa já está encerrada.", `numero_ja_cadastrado`, `feriado_ja_cadastrado` → "Este feriado já está cadastrado.", `hora_invalida` com `reason` `hora_inexistente`/`hora_ambigua` → mensagens distintas, `corpo_muito_grande`, falha de rede → "Sem conexão com o servidor.", desconhecido → "Algo deu errado. Tente novamente."
 
@@ -155,7 +155,7 @@ packages/shared/src/task-status.ts   # canTransition movido da API (Task 3)
 - [ ] **Step 1: Write the failing tests** (Supabase mockado por injeção, sem rede): guarda com `signedOut` → `router.replace('/entrar?next=%2F')`; `loading` não redireciona nem renderiza filhos; `signedIn` renderiza; login com credenciais erradas mostra "E-mail ou senha incorretos." e mantém o e-mail digitado; cadastro valida senha mínima de 8 caracteres antes de chamar o Supabase; `onUnauthorized` chamado duas vezes seguidas redireciona uma só vez; `next` só aceita caminho interno iniciado por `/` (rejeita `//evil.com` e `https://…`).
 - [ ] **Step 2: Run** → FAIL.
 - [ ] **Step 3: Implement.** Sessão do `supabase-js` no navegador; sem `@supabase/ssr`. Páginas de auth em português, rótulos e `autocomplete` corretos, botão desabilitado durante o envio.
-- [ ] **Step 4: Run** testes e `pnpm --filter @aj/web build`.
+- [ ] **Step 4: Run** testes e `pnpm --filter @nexus/web build`.
 - [ ] **Step 5: Commit** `feat(web): Supabase Auth screens and route guard`
 
 ---
@@ -275,14 +275,14 @@ packages/shared/src/task-status.ts   # canTransition movido da API (Task 3)
 ### Task 13: Responsividade, acessibilidade, documentação e verificação ponta a ponta
 
 **Files:**
-- Modify: `apps/web/**` (ajustes de layout), `README.md` (seção "Painel": variáveis, `pnpm --filter @aj/web dev`, ordem para subir Supabase + API + painel), `docs/superpowers/specs/2026-10-26-painel-web-direcao-visual.md` (registrar paleta ainda provisória e o que foi implementado)
+- Modify: `apps/web/**` (ajustes de layout), `README.md` (seção "Painel": variáveis, `pnpm --filter @nexus/web dev`, ordem para subir Supabase + API + painel), `docs/archive/planejamento/specs/2026-10-26-painel-web-direcao-visual.md` (registrar paleta ainda provisória e o que foi implementado)
 
 **Interfaces:** nenhuma nova.
 
 - [ ] **Step 1: Write the failing tests:** teste de contrato "nenhum arquivo de `apps/web` importa `supabase.from(`/`.rpc(`" (varredura de texto: front não acessa o banco); teste de que o app falha com mensagem clara se `NEXT_PUBLIC_API_URL`/`NEXT_PUBLIC_SUPABASE_*` faltarem; varredura de que nenhum arquivo versionado contém `service_role`.
 - [ ] **Step 2: Run** → FAIL (exceto o que já existir). **Step 3: Implement** os ajustes; revisão manual em 360 px, 768 px e 1280 px (sem rolagem horizontal; alvos de toque ≥ 40 px; foco visível; rótulos em campos e botões).
 - [ ] **Step 4: Verificação ponta a ponta manual**, registrada no relatório da tarefa: subir Supabase local (portas 553xx), API (3001) e painel (3000); criar conta, entrar, criar tarefa com e sem hora, concluir, ver nas três visões, calcular prazo, cadastrar feriado, mudar o fuso e ver o aviso `skipped` quando houver. Confirmar CORS (`WEB_ORIGIN=http://localhost:3000`).
-- [ ] **Step 5: Run** `pnpm test`, `pnpm typecheck`, `pnpm --filter @aj/web build` → verdes. **Commit** `docs(web): panel setup and final checks`
+- [ ] **Step 5: Run** `pnpm test`, `pnpm typecheck`, `pnpm --filter @nexus/web build` → verdes. **Commit** `docs(web): panel setup and final checks`
 
 ---
 

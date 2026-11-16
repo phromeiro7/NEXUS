@@ -1,5 +1,5 @@
 import { Hono, type MiddlewareHandler } from 'hono';
-import { createInviteInputSchema, inviteCodeSchema, type InviteDto, type InviteListDto, type InviteSummaryDto } from '@aj/shared';
+import { createInviteInputSchema, inviteCodeSchema, type InviteDto, type InviteListDto, type InviteSummaryDto } from '@nexus/shared';
 import { NotFoundError } from '../application/errors.js';
 import { ValidationError } from '../http-errors.js';
 

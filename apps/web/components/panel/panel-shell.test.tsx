@@ -17,7 +17,7 @@ const listOf = <T extends { status: string }>(invites: T[]) => ({ invites, summa
 const holder = vi.hoisted(() => ({
   pathname: "/",
   signOut: vi.fn(),
-  displayName: "Paulo" as string | null,
+  displayName: "Ana" as string | null,
   api: { listInvites: vi.fn() },
 }));
 vi.mock("next/navigation", () => ({ usePathname: () => holder.pathname }));
@@ -39,7 +39,7 @@ function renderShell() {
 
 beforeEach(() => {
   holder.pathname = "/";
-  holder.displayName = "Paulo";
+  holder.displayName = "Ana";
   holder.signOut.mockReset();
   holder.api.listInvites.mockReset().mockResolvedValue(listOf([]));
 });
@@ -86,7 +86,7 @@ describe("PanelShell", () => {
 
   it("mostra quem está usando e Sair encerra a sessão", async () => {
     renderShell();
-    expect(screen.getByText("Paulo")).toBeInTheDocument();
+    expect(screen.getByText("Ana")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Sair" }));
     expect(holder.signOut).toHaveBeenCalledTimes(1);
   });

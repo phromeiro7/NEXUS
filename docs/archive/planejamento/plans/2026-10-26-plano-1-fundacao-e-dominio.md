@@ -8,7 +8,7 @@
 
 **Tech Stack:** pnpm workspaces, TypeScript (strict, ESM), Vitest, Zod, Hono + `@hono/node-server`, `@supabase/supabase-js`, Supabase CLI, `pg` (só em testes), `tsx`.
 
-**Spec:** `docs/superpowers/specs/2026-10-26-assistente-juridico-design.md`
+**Spec:** `docs/archive/planejamento/specs/2026-10-26-assistente-juridico-design.md`
 
 **Este plano é o 1 de 5.** Os próximos, escritos quando este terminar: 2) painel Next.js com login e CRUD; 3) assistente (ciclo de ferramentas e briefing); 4) Telegram, lembretes e agendador; 5) acabamento e avaliação da IA. O **login (tela)** sai da etapa 1 da spec e vai para o Plano 2, porque depende do painel; aqui o login é coberto no lado da API (verificação de token).
 
@@ -56,10 +56,10 @@ supabase/migrations/0001_schema.sql · supabase/migrations/0002_rls.sql
 - Test: `packages/shared/src/index.test.ts`
 
 **Interfaces:**
-- Produces: workspaces `@aj/shared` (exporta o TypeScript direto, `"exports": "./src/index.ts"`) e `@aj/api`. Scripts na raiz: `test` (unitários, sem banco), `typecheck`. Em `apps/api`: `test:db` (só arquivos `*.db.test.ts` e `test/db/*.test.ts`).
+- Produces: workspaces `@nexus/shared` (exporta o TypeScript direto, `"exports": "./src/index.ts"`) e `@nexus/api`. Scripts na raiz: `test` (unitários, sem banco), `typecheck`. Em `apps/api`: `test:db` (só arquivos `*.db.test.ts` e `test/db/*.test.ts`).
 
 - [ ] **Step 1: Write the failing test** — `packages/shared/src/index.test.ts`: `expect(APP_NAME).toBe('assistente-juridico')`, importando de `./index`.
-- [ ] **Step 2: Run** `pnpm install && pnpm --filter @aj/shared test` → Expected: FAIL (`APP_NAME` não exportado).
+- [ ] **Step 2: Run** `pnpm install && pnpm --filter @nexus/shared test` → Expected: FAIL (`APP_NAME` não exportado).
 - [ ] **Step 3: Scaffold.** TypeScript `strict`, `module ESNext`, `moduleResolution Bundler`, `noUncheckedIndexedAccess`. Dependências: `zod` (shared e api); `hono`, `@hono/node-server`, `@supabase/supabase-js` (api); dev: `vitest`, `typescript`, `tsx`, `pg`, `@types/pg`, `@types/node`, `supabase`. `.gitignore` cobre `node_modules`, `.env`, `.env.local`, `dist`, `supabase/.temp`. `.env.example` lista `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `DATABASE_URL`, `PORT` sem valores. `export const APP_NAME = 'assistente-juridico'` em `packages/shared/src/index.ts`. `apps/api/vitest.config.ts` exclui `**/*.db.test.ts` e `test/db/**` do `test` padrão.
 - [ ] **Step 4: Run** `pnpm test && pnpm typecheck` → Expected: PASS.
 - [ ] **Step 5: Commit** `chore: scaffold pnpm monorepo`.
@@ -73,7 +73,7 @@ supabase/migrations/0001_schema.sql · supabase/migrations/0002_rls.sql
 - Test: `packages/shared/src/{primitives,deadline,time}.test.ts`
 
 **Interfaces:**
-- Produces (`@aj/shared`):
+- Produces (`@nexus/shared`):
   - `type IsoDate = string` (`YYYY-MM-DD`); `isoDateSchema: z.ZodType<IsoDate>` que rejeita datas inexistentes.
   - `taskStatusSchema`, `taskTypeSchema`, `countTypeSchema` (`'uteis' | 'corridos'`) e os tipos `TaskStatus`, `TaskType`, `CountType`.
   - `calculateDeadlineInputSchema = z.object({ baseDate: isoDateSchema, days: int 1..365, countType: countTypeSchema })`; `type CalculateDeadlineInput`.
@@ -86,7 +86,7 @@ supabase/migrations/0001_schema.sql · supabase/migrations/0002_rls.sql
   - `calculateDeadlineInputSchema` rejeita `days` = `0`, `-3`, `2.5`, `366`.
   - `todayIn('America/Sao_Paulo', new Date('2026-10-27T01:30:00Z')) === '2026-10-26'` (no UTC já é dia 27).
   - `classifyTask({status:'pendente', dueDate:'2026-10-25'}, '2026-10-26') === 'atrasada'`; mesmo dia → `'hoje'`; dia seguinte → `'futura'`; `dueDate: null` → `'sem_data'`; `status:'concluida'` → `'encerrada'`.
-- [ ] **Step 2: Run** `pnpm --filter @aj/shared test` → Expected: FAIL.
+- [ ] **Step 2: Run** `pnpm --filter @nexus/shared test` → Expected: FAIL.
 - [ ] **Step 3: Implement** as assinaturas acima. `todayIn` usa `Intl.DateTimeFormat` com o fuso informado.
 - [ ] **Step 4: Run** → Expected: PASS.
 - [ ] **Step 5: Commit** `feat(shared): add contracts, todayIn and classifyTask`.
@@ -99,7 +99,7 @@ supabase/migrations/0001_schema.sql · supabase/migrations/0002_rls.sql
 - Create: `apps/api/src/domain/holidays.ts`; Test: `apps/api/src/domain/holidays.test.ts`
 
 **Interfaces:**
-- Consumes: `IsoDate`, `Holiday` de `@aj/shared`.
+- Consumes: `IsoDate`, `Holiday` de `@nexus/shared`.
 - Produces: `easterSunday(year: number): IsoDate`; `nationalHolidays(year: number): Holiday[]` (ordenado por data).
 
 - [ ] **Step 1: Write the failing tests:** `easterSunday(2025) === '2025-04-20'`, `(2026) === '2026-04-05'`, `(2027) === '2027-03-28'`. `nationalHolidays(2026)` contém `'2026-04-03'` (Sexta-feira Santa), `'2026-11-20'` (Consciência Negra), `'2026-11-02'` (Finados) e tem 10 itens.
@@ -204,9 +204,9 @@ supabase/migrations/0001_schema.sql · supabase/migrations/0002_rls.sql
   - trigger `set_updated_at()` em `cases` e `tasks`.
 
 - [ ] **Step 1: Write the failing test** `schema.test.ts`: consulta `information_schema.tables` e espera as 10 tabelas acima; insere duas linhas em `inbound_events` com o mesmo `(channel, external_id)` e espera erro de unicidade; insere task com `due_time` e sem `due_date` e espera erro de check; insere um `auth.users` e espera o `profiles` correspondente com `timezone = 'America/Sao_Paulo'`.
-- [ ] **Step 2: Run** `pnpm exec supabase start && pnpm --filter @aj/api test:db` → Expected: FAIL (tabelas ausentes). Anotar `DATABASE_URL` impresso pelo `supabase start` em `.env`.
+- [ ] **Step 2: Run** `pnpm exec supabase start && pnpm --filter @nexus/api test:db` → Expected: FAIL (tabelas ausentes). Anotar `DATABASE_URL` impresso pelo `supabase start` em `.env`.
 - [ ] **Step 3: Write** `0001_schema.sql` conforme acima.
-- [ ] **Step 4: Run** `pnpm exec supabase db reset && pnpm --filter @aj/api test:db` → Expected: PASS.
+- [ ] **Step 4: Run** `pnpm exec supabase db reset && pnpm --filter @nexus/api test:db` → Expected: PASS.
 - [ ] **Step 5: Commit** `feat(db): initial schema`.
 
 ---
@@ -226,9 +226,9 @@ supabase/migrations/0001_schema.sql · supabase/migrations/0002_rls.sql
   - B tenta `insert into tasks (user_id = A, ...)` → erro de política.
   - A tenta `update profiles set telegram_chat_id = 123` → erro de permissão; `update profiles set timezone = 'America/Recife'` funciona.
   - A não lê `inbound_events`, `chat_messages`, `link_codes`, `task_confirmations` (erro de permissão); `asAnon` não lê `tasks`.
-- [ ] **Step 2: Run** `pnpm --filter @aj/api test:db` → Expected: FAIL (sem RLS, B vê tudo).
+- [ ] **Step 2: Run** `pnpm --filter @nexus/api test:db` → Expected: FAIL (sem RLS, B vê tudo).
 - [ ] **Step 3: Write** `0002_rls.sql`.
-- [ ] **Step 4: Run** `pnpm exec supabase db reset && pnpm --filter @aj/api test:db` → Expected: PASS.
+- [ ] **Step 4: Run** `pnpm exec supabase db reset && pnpm --filter @nexus/api test:db` → Expected: PASS.
 - [ ] **Step 5: Commit** `feat(db): row level security with isolation tests`.
 
 ---
@@ -254,7 +254,7 @@ supabase/migrations/0001_schema.sql · supabase/migrations/0002_rls.sql
   - `GET /health` → 200 sem token; `GET /me` sem token → 401; com `Bearer token-ok` → `{ userId: 'u1' }`.
   - `POST /deadlines/calculate` com `{ baseDate:'2026-10-26', days:15, countType:'uteis' }` → 200 com `dueDate '2026-11-17'` e `feriadosDescontados` com Finados; `days: 0` → 400; `baseDate: '2026-02-31'` → 400.
   - Use case: feriado estadual do usuário (`2026-11-05`) entra na conta (15 úteis → `'2026-11-18'`); prazo de 5 úteis a partir de `2027-12-29` usa os feriados de 2028 (resultado `'2028-01-05'`); o repositório recebe `userId` da chamada, nunca de dentro da entrada.
-- [ ] **Step 2: Run** `pnpm --filter @aj/api test` → Expected: FAIL.
+- [ ] **Step 2: Run** `pnpm --filter @nexus/api test` → Expected: FAIL.
 - [ ] **Step 3: Implement** as assinaturas. `server.ts` monta as dependências reais (cliente Supabase com service role) e sobe com `@hono/node-server`; adicionar script `dev` com `tsx watch src/server.ts`.
 - [ ] **Step 4: Run** `pnpm test && pnpm typecheck` → Expected: PASS.
 - [ ] **Step 5: Commit** `feat(api): layered Hono app with auth and deadline calculation`.
@@ -270,9 +270,9 @@ supabase/migrations/0001_schema.sql · supabase/migrations/0002_rls.sql
 - Consumes: `createSupabaseAuthVerifier`, `createSupabaseHolidayRepository`, `createApp`, `makeCalculateDeadline`.
 
 - [ ] **Step 1: Write the failing test** (precisa do Supabase local ligado e `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` do `supabase status`): cria usuário pelo admin do Supabase, faz login e obtém o `access_token`; insere um feriado municipal do usuário em `holidays`. Espera: `createSupabaseAuthVerifier` devolve o `userId` para o token real e `null` para `'lixo'`; `listByUser` devolve só os feriados daquele usuário (não os de outro); `POST /deadlines/calculate` pela app montada com as peças reais, usando o token real, devolve o prazo descontando o feriado; sem token, 401.
-- [ ] **Step 2: Run** `pnpm --filter @aj/api test:db` → Expected: FAIL até as peças reais estarem ligadas corretamente.
+- [ ] **Step 2: Run** `pnpm --filter @nexus/api test:db` → Expected: FAIL até as peças reais estarem ligadas corretamente.
 - [ ] **Step 3: Fix** o que o teste apontar na infraestrutura (sem mudar as portas).
-- [ ] **Step 4: Run** `pnpm --filter @aj/api test:db && pnpm test` → Expected: PASS em ambos.
+- [ ] **Step 4: Run** `pnpm --filter @nexus/api test:db && pnpm test` → Expected: PASS em ambos.
 - [ ] **Step 5: Commit** `test(api): integration against local Supabase`.
 
 ---

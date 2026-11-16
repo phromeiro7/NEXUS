@@ -3,19 +3,19 @@ import { maskEmail } from './mask-email.js';
 
 describe('maskEmail', () => {
   it('keeps the first character, three stars and the full domain', () => {
-    expect(maskEmail('paulo@exemplo.com.br')).toBe('p***@exemplo.com.br');
+    expect(maskEmail('ana@exemplo.com.br')).toBe('a***@exemplo.com.br');
   });
 
   it('a one-character local part becomes a single star', () => {
-    expect(maskEmail('p@exemplo.com')).toBe('*@exemplo.com');
+    expect(maskEmail('a@exemplo.com')).toBe('*@exemplo.com');
   });
 
   it('keeps the original case of the first character and of the domain', () => {
-    expect(maskEmail('Paulo@Exemplo.COM')).toBe('P***@Exemplo.COM');
+    expect(maskEmail('Ana@Exemplo.COM')).toBe('A***@Exemplo.COM');
   });
 
   it('plus-addressing never leaks the tag', () => {
-    expect(maskEmail('paulo+segredo@exemplo.com')).toBe('p***@exemplo.com');
+    expect(maskEmail('ana+segredo@exemplo.com')).toBe('a***@exemplo.com');
   });
 
   it('subdomains stay whole', () => {
@@ -36,9 +36,9 @@ describe('maskEmail', () => {
     expect(maskEmail('')).toBeNull();
     expect(maskEmail('semarroba.com')).toBeNull();
     expect(maskEmail('@exemplo.com')).toBeNull();
-    expect(maskEmail('paulo@')).toBeNull();
+    expect(maskEmail('ana@')).toBeNull();
     expect(maskEmail('pa ulo@exemplo.com')).toBeNull();
-    expect(maskEmail('paulo@exem plo.com')).toBeNull();
+    expect(maskEmail('ana@exem plo.com')).toBeNull();
     expect(maskEmail(`${'a'.repeat(250)}@exemplo.com`)).toBeNull();
   });
 
