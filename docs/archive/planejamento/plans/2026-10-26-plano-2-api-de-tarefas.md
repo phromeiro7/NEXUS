@@ -8,7 +8,7 @@
 
 **Tech Stack:** o do Plano 1 (Hono, Zod, Vitest, Supabase local, `pg` nos testes) + `hono/cors`.
 
-**Spec:** `docs/superpowers/specs/2026-10-26-assistente-juridico-design.md` (§5, §6 regras de data, §7, §8, §9). Plano anterior: `docs/superpowers/plans/2026-10-26-plano-1-fundacao-e-dominio.md` (já executado e integrado na `main`).
+**Spec:** `docs/archive/planejamento/specs/2026-10-26-assistente-juridico-design.md` (§5, §6 regras de data, §7, §8, §9). Plano anterior: `docs/archive/planejamento/plans/2026-10-26-plano-1-fundacao-e-dominio.md` (já executado e integrado na `main`).
 
 **Renumeração dos planos.** O "Plano 2: painel" da spec foi dividido: **este é o Plano 2 (API)**; o **Plano 3 é o painel Next.js** (login, visões, formulários); 4) assistente de IA e briefing em texto; 5) Telegram, envio de lembretes e agendador; 6) acabamento e avaliação da IA.
 
@@ -56,7 +56,7 @@ apps/api/src/{app,config,server}.ts · apps/api/test/db/api.db.test.ts · README
 
 **Interfaces:**
 - Consumes: `isoDateSchema`, `IsoDate`, `taskStatusSchema`, `taskTypeSchema`, `countTypeSchema`, `calculateDeadlineInputSchema`, `Holiday`.
-- Produces (`@aj/shared`):
+- Produces (`@nexus/shared`):
   - `timeOfDaySchema` (`HH:mm`, 00:00–23:59). `export function isValidTimeZone(tz: string): boolean` (usa `Intl.DateTimeFormat`).
   - `deadlineRuleSchema = calculateDeadlineInputSchema` (`{ baseDate, days, countType }`).
   - `createTaskInputSchema`: `{ title: trim 1..200; type?: TaskType (padrão 'tarefa'); caseId?: uuid|null; dueDate?: IsoDate|null; dueTime?: HH:mm|null; fatal?: boolean (padrão false); deadline?: DeadlineRule }`. Regras: `deadline` e `dueDate` não coexistem (o servidor calcula `dueDate` a partir de `deadline`); `dueTime` exige `dueDate` ou `deadline`. `type CreateTaskInput`.
@@ -74,9 +74,9 @@ apps/api/src/{app,config,server}.ts · apps/api/test/db/api.db.test.ts · README
   - `updateTaskInputSchema`: `{}` falha; `{ status: 'concluida' }` válido; `{ status: 'feito' }` falha.
   - `listTasksQuerySchema`: `status: 'pendente,em_andamento'` vira `['pendente','em_andamento']`; `from '2026-11-02'` com `to '2026-11-01'` falha; `withoutDate: 'true'` vira `true`.
   - Casos e feriados: `number: ''` falha; `uf: 'sp'` falha (precisa maiúscula) e `'SP'` passa; `scope: 'nacional'` falha; `earlyReminderMinutes: -1` e `1441` falham; `timezone: 'Nao/Existe'` falha.
-- [ ] **Step 2: Run** `pnpm --filter @aj/shared test` → Expected: FAIL.
+- [ ] **Step 2: Run** `pnpm --filter @nexus/shared test` → Expected: FAIL.
 - [ ] **Step 3: Implement** as assinaturas acima; reexportar tudo em `index.ts`.
-- [ ] **Step 4: Run** `pnpm --filter @aj/shared test && pnpm typecheck` → Expected: PASS.
+- [ ] **Step 4: Run** `pnpm --filter @nexus/shared test && pnpm typecheck` → Expected: PASS.
 - [ ] **Step 5: Commit** `feat(shared): add task, case, settings, holiday and briefing contracts`.
 
 ---
@@ -91,9 +91,9 @@ apps/api/src/{app,config,server}.ts · apps/api/test/db/api.db.test.ts · README
 - Produces: `public.replace_pending_reminders(p_user_id uuid, p_task_id uuid, p_drafts jsonb) returns void`, onde `p_drafts` é uma lista `[{ "kind": text, "scheduled_at": timestamptz-iso }]`. Apaga os lembretes `pendente` da tarefa e insere os novos numa só transação; ignora conflito com um lembrete `enviando` do mesmo tipo (`on conflict do nothing`). `[]` apenas remove. Só `service_role` pode executar (`revoke ... from public, anon, authenticated`).
 
 - [ ] **Step 1: Write the failing tests** (`asServiceRole` e `createUser` de `test/db/helpers.ts`; dentro de transação com rollback): (a) com uma tarefa de A e dois rascunhos válidos, a função deixa exatamente 2 lembretes `pendente`; (b) chamar de novo com outros 2 rascunhos substitui os anteriores (continuam 2, com os novos horários); (c) um lembrete `enviado` e um `enviando` da tarefa nunca são apagados; (d) `p_drafts = '[]'` remove só os `pendente`; (e) `p_user_id` de B com `p_task_id` de A falha com 23503 (a chave composta) e não altera nada; (f) um `kind` inválido falha com 23514; (g) `anon` e `authenticated` não conseguem executar (42501).
-- [ ] **Step 2: Run** `pnpm --filter @aj/api test:db` → Expected: FAIL (função ausente).
+- [ ] **Step 2: Run** `pnpm --filter @nexus/api test:db` → Expected: FAIL (função ausente).
 - [ ] **Step 3: Write** `0004_replace_pending_reminders.sql` (`language plpgsql`, `security invoker`, `set search_path = ''`, nomes qualificados; `jsonb_to_recordset` para inserir).
-- [ ] **Step 4: Run** `./apps/api/node_modules/.bin/supabase db reset --workdir . && pnpm --filter @aj/api test:db` → Expected: PASS, incluindo o teste de catálogo existente.
+- [ ] **Step 4: Run** `./apps/api/node_modules/.bin/supabase db reset --workdir . && pnpm --filter @nexus/api test:db` → Expected: PASS, incluindo o teste de catálogo existente.
 - [ ] **Step 5: Commit** `feat(db): atomic replace_pending_reminders function`.
 
 ---
@@ -112,7 +112,7 @@ apps/api/src/{app,config,server}.ts · apps/api/test/db/api.db.test.ts · README
   - `fakes.ts`: `createFakes(seed?)` devolve implementações em memória de todas as portas (com `Clock` ajustável por `setNow(date)`), onde o fake de `ReminderRepository` guarda `calls` e o estado atual de lembretes por tarefa, e aceita `failNextReplace()` para simular falha.
 
 - [ ] **Step 1: Write the failing tests** do `fakes.ts` (para o resto do plano poder confiar nele): criar e ler tarefa de A; B não enxerga nem altera a tarefa de A; `softDelete` esconde de `get` e `list`; `list` filtra por `status`, `from`/`to`, `caseId` e `withoutDate`; `replacePending` substitui os anteriores e `failNextReplace()` faz a próxima chamada lançar; caso duplicado lança `ConflictError('numero_ja_cadastrado')`.
-- [ ] **Step 2: Run** `pnpm --filter @aj/api test` → Expected: FAIL.
+- [ ] **Step 2: Run** `pnpm --filter @nexus/api test` → Expected: FAIL.
 - [ ] **Step 3: Implement** as portas, os erros e o fake (o fake obedece o mesmo contrato das portas, inclusive o isolamento por `userId`).
 - [ ] **Step 4: Run** `pnpm test && pnpm typecheck` → Expected: PASS.
 - [ ] **Step 5: Commit** `feat(api): application ports, errors and in-memory fakes`.
@@ -140,7 +140,7 @@ apps/api/src/{app,config,server}.ts · apps/api/test/db/api.db.test.ts · README
   - **Review Focus 1:** usuário em `America/New_York`, `dueDate '2026-03-08'`, `dueTime '02:30'` → lança `HoraInvalidaError` e a lista de tarefas do usuário continua vazia;
   - **falha na troca de lembretes** (`failNextReplace()`): o erro sobe, e `list` não mostra a tarefa (foi apagada logicamente);
   - `get` de id de outro usuário → `NotFoundError('tarefa')`; `list` isola por usuário e respeita `from`/`to`/`status`/`withoutDate`.
-- [ ] **Step 2: Run** `pnpm --filter @aj/api test` → Expected: FAIL.
+- [ ] **Step 2: Run** `pnpm --filter @nexus/api test` → Expected: FAIL.
 - [ ] **Step 3: Implement** as assinaturas e regras acima.
 - [ ] **Step 4: Run** `pnpm test && pnpm typecheck` → Expected: PASS.
 - [ ] **Step 5: Commit** `feat(api): create, get and list tasks with reminders`.
@@ -165,7 +165,7 @@ apps/api/src/{app,config,server}.ts · apps/api/test/db/api.db.test.ts · README
   - hora inválida (`America/New_York`, 2026-03-08 02:30) em `update` → `HoraInvalidaError` e a tarefa permanece como estava;
   - falha na troca de lembretes (`failNextReplace()`) → erro sobe e a tarefa volta ao estado anterior;
   - **Review Focus 3:** `update`/`remove` com id de outra pessoa → `NotFoundError('tarefa')`; `caseId` de outro usuário no `update` → `NotFoundError('processo')`.
-- [ ] **Step 2: Run** `pnpm --filter @aj/api test` → Expected: FAIL.
+- [ ] **Step 2: Run** `pnpm --filter @nexus/api test` → Expected: FAIL.
 - [ ] **Step 3: Implement** `update` e `remove` conforme as regras.
 - [ ] **Step 4: Run** `pnpm test && pnpm typecheck` → Expected: PASS.
 - [ ] **Step 5: Commit** `feat(api): update, change status and delete tasks`.
@@ -193,7 +193,7 @@ apps/api/src/{app,config,server}.ts · apps/api/test/db/api.db.test.ts · README
   - processos: número duplicado → `ConflictError('numero_ja_cadastrado')`; arquivar com `update`; `get`/`update` de outro usuário → `NotFoundError('processo')`;
   - feriados: data duplicada → `ConflictError('feriado_ja_cadastrado')`; `remove` de outro usuário → `NotFoundError('feriado')`;
   - **Review Focus 5:** `update` de configurações mudando `earlyReminderMinutes` de 15 para 30 refaz os lembretes das tarefas abertas com hora (`antecipado` 30 min antes) e devolve `remindersRebuilt` correto; mudar só `city` não chama `replacePending`; mudar o fuso para `America/New_York` com uma tarefa em 2026-03-08 02:30 conta essa tarefa em `remindersSkipped` e refaz as outras; configurações são sempre do `userId` do token.
-- [ ] **Step 2: Run** `pnpm --filter @aj/api test` → Expected: FAIL.
+- [ ] **Step 2: Run** `pnpm --filter @nexus/api test` → Expected: FAIL.
 - [ ] **Step 3: Implement** conforme as assinaturas.
 - [ ] **Step 4: Run** `pnpm test && pnpm typecheck` → Expected: PASS.
 - [ ] **Step 5: Commit** `feat(api): case, holiday, settings and briefing use cases`.
@@ -211,9 +211,9 @@ apps/api/src/{app,config,server}.ts · apps/api/test/db/api.db.test.ts · README
 - Produces: `createSupabaseTaskRepository(client: SupabaseClient): TaskRepository`, `createSupabaseCaseRepository`, `createSupabaseProfileRepository`, `createSupabaseReminderRepository(client): ReminderRepository` (chama `rpc('replace_pending_reminders', …)`) e o repositório de feriados ampliado com `list`, `create`, `remove`. Regras: toda consulta filtra por `user_id`; `due_time` sai como `HH:mm` (corta os segundos); `completed_at` e carimbos como string ISO; `get`/`list` filtram `deleted_at is null`; violação única (SQLSTATE 23505) vira `ConflictError` do tipo certo; erro desconhecido do Supabase vira `Error` com a mensagem (sem vazar chaves).
 
 - [ ] **Step 1: Write the failing test** (Supabase local com `getSupabaseEnv`, usuários A e B criados e removidos como em `supabase.db.test.ts`; sem `.db.test.ts` ele não entra no `pnpm test`): ciclo completo de cada repositório com A; B nunca enxerga nem altera linhas de A (`get` devolve `null`, `update`/`softDelete` devolvem `null`/`false`, `list` não mistura); `dueTime` gravado como `'09:00'` volta `'09:00'` (não `'09:00:00'`); **Review Focus 4**; processo duplicado → `ConflictError('numero_ja_cadastrado')`; feriado duplicado → `ConflictError('feriado_ja_cadastrado')`; `replacePending` deixa exatamente os rascunhos pedidos em `reminders`; `profiles.get` de usuário recém-criado devolve fuso `America/Sao_Paulo`, antecedência 15, `briefingTime '08:00'`, `telegramLinked false`.
-- [ ] **Step 2: Run** `pnpm --filter @aj/api test:db` → Expected: FAIL.
+- [ ] **Step 2: Run** `pnpm --filter @nexus/api test:db` → Expected: FAIL.
 - [ ] **Step 3: Implement** os repositórios.
-- [ ] **Step 4: Run** `pnpm --filter @aj/api test:db && pnpm test && pnpm typecheck` → Expected: PASS.
+- [ ] **Step 4: Run** `pnpm --filter @nexus/api test:db && pnpm test && pnpm typecheck` → Expected: PASS.
 - [ ] **Step 5: Commit** `feat(api): Supabase repositories for tasks, cases, profile, reminders and holidays`.
 
 ---
@@ -231,7 +231,7 @@ apps/api/src/{app,config,server}.ts · apps/api/test/db/api.db.test.ts · README
   - `routes/tasks.ts`: `tasksRoutes(deps: { tasks: ReturnType<typeof makeTaskUseCases> }, auth: MiddlewareHandler): Hono<{ Variables: { userId: string } }>` com `GET /` (query validada por `listTasksQuerySchema`), `POST /` (201 com o `TaskDto`), `GET /:id`, `PATCH /:id`, `DELETE /:id` (204). O `id` precisa ser uuid (senão 404 `nao_encontrado`). `app.ts`: `AppDeps` ganha `tasks`; monta `app.route('/tasks', tasksRoutes(...))`.
 
 - [ ] **Step 1: Write the failing tests** (`app.request`, casos de uso com os fakes, verificador falso `token-ok → u1`): sem token → 401 em todas as rotas; `POST /tasks` válido → 201 com o DTO; corpo inválido → 400 com `issues`; JSON malformado → 400; `GET /tasks?status=pendente,em_andamento&from=2026-10-26` repassa a query já convertida; `GET /tasks/<uuid inexistente>` → 404; `GET /tasks/abc` → 404; `PATCH` de tarefa encerrada → 409 `tarefa_encerrada`; transição inválida → 409 `transicao_invalida`; `POST` com hora inexistente → 422 `hora_invalida` com `reason`; **Review Focus 3:** o `userId` repassado ao caso de uso é o do token mesmo que o corpo traga `userId` ou `user_id`; um erro inesperado → 500 `erro_interno` sem vazar a mensagem.
-- [ ] **Step 2: Run** `pnpm --filter @aj/api test` → Expected: FAIL.
+- [ ] **Step 2: Run** `pnpm --filter @nexus/api test` → Expected: FAIL.
 - [ ] **Step 3: Implement** conforme as assinaturas; trocar o `onError` atual para usar `errorResponse` (mantendo o `console.error` só no caso 500).
 - [ ] **Step 4: Run** `pnpm test && pnpm typecheck` → Expected: PASS.
 - [ ] **Step 5: Commit** `feat(api): task routes and error mapping`.
@@ -248,7 +248,7 @@ apps/api/src/{app,config,server}.ts · apps/api/test/db/api.db.test.ts · README
 - Produces: `casesRoutes`, `holidaysRoutes`, `settingsRoutes`, `briefingRoutes` (mesmo formato de `tasksRoutes`). Rotas: `GET/POST /cases`, `GET/PATCH /cases/:id`; `GET/POST /holidays`, `DELETE /holidays/:id`; `GET/PATCH /settings` (o `PATCH` devolve `{ settings, remindersRebuilt, remindersSkipped }`); `GET /briefing` (devolve `BriefingDto`). `AppDeps` ganha `cases`, `holidays`, `settings`, `briefing` e `webOrigin: string`. CORS: `createApp` aplica `cors({ origin: deps.webOrigin, allowHeaders: ['Authorization', 'Content-Type'], allowMethods: ['GET','POST','PATCH','DELETE','OPTIONS'] })` antes das rotas; a resposta ao preflight não exige token. `loadConfig` passa a devolver também `webOrigin` (variável `WEB_ORIGIN`, padrão `http://localhost:3000`) e a porta padrão muda de 3000 para **3001** (o painel usará a 3000).
 
 - [ ] **Step 1: Write the failing tests:** sem token → 401 em todas; `POST /cases` → 201, duplicado → 409 `numero_ja_cadastrado`; `PATCH /cases/:id` com `status: 'arquivado'`; `POST /holidays` → 201, `DELETE` → 204, de outro usuário → 404; `GET /settings` devolve `SettingsDto`; `PATCH /settings` com `timezone: 'Nao/Existe'` → 400; com `uf: 'sp'` → 400; `GET /briefing` devolve as quatro listas; preflight `OPTIONS /tasks` com `Origin` igual ao `webOrigin` → 204 com `access-control-allow-origin` igual ao `webOrigin`, e com outra origem a resposta **não** traz `access-control-allow-origin`; `loadConfig` com `WEB_ORIGIN` ausente → `http://localhost:3000` e porta padrão `3001`.
-- [ ] **Step 2: Run** `pnpm --filter @aj/api test` → Expected: FAIL.
+- [ ] **Step 2: Run** `pnpm --filter @nexus/api test` → Expected: FAIL.
 - [ ] **Step 3: Implement**; atualizar `.env.example` (`WEB_ORIGIN`, sem valor) e o README (porta 3001 e rotas).
 - [ ] **Step 4: Run** `pnpm test && pnpm typecheck` → Expected: PASS.
 - [ ] **Step 5: Commit** `feat(api): case, holiday, settings and briefing routes with CORS`.
@@ -272,13 +272,13 @@ apps/api/src/{app,config,server}.ts · apps/api/test/db/api.db.test.ts · README
   - **Review Focus 3, ponta a ponta:** B recebe 404 em `GET/PATCH/DELETE /tasks/<id de A>`, em `PATCH /cases/<id de A>` e em `DELETE /holidays/<id de A>`; `POST /tasks` de B com `caseId` de A → 404 `nao_encontrado`; `GET /tasks`, `/cases`, `/holidays` e `/briefing` de B não contêm nada de A;
   - `dueTime` volta como `'09:00'` no JSON; `GET /briefing` usa o dia do fuso do usuário;
   - limpeza: os usuários criados são removidos e não sobra linha em `auth.users`.
-- [ ] **Step 2: Run** `pnpm --filter @aj/api test:db` → Expected: FAIL até a montagem existir.
+- [ ] **Step 2: Run** `pnpm --filter @nexus/api test:db` → Expected: FAIL até a montagem existir.
 - [ ] **Step 3: Implement** `compose.ts` e ajustar `server.ts`; corrigir na infraestrutura o que o teste apontar, sem mudar as portas.
-- [ ] **Step 4: Run** `pnpm --filter @aj/api test:db && pnpm test && pnpm typecheck` → Expected: PASS em todos.
+- [ ] **Step 4: Run** `pnpm --filter @nexus/api test:db && pnpm test && pnpm typecheck` → Expected: PASS em todos.
 - [ ] **Step 5: Commit** `feat(api): compose real app and end-to-end tests against local Supabase`.
 
 ---
 
 ## Resultado ao final do Plano 2
 
-Com o Supabase local ligado e `pnpm --filter @aj/api dev`, um usuário autenticado cria, lista, edita, conclui e apaga tarefas e processos, cadastra feriados locais, ajusta suas configurações e lê o briefing do dia, e a tabela `reminders` acompanha cada mudança. O painel (Plano 3) só precisa consumir essas rotas.
+Com o Supabase local ligado e `pnpm --filter @nexus/api dev`, um usuário autenticado cria, lista, edita, conclui e apaga tarefas e processos, cadastra feriados locais, ajusta suas configurações e lê o briefing do dia, e a tabela `reminders` acompanha cada mudança. O painel (Plano 3) só precisa consumir essas rotas.

@@ -1,4 +1,4 @@
-import type { TaskDto } from '@aj/shared';
+import type { TaskDto } from '@nexus/shared';
 
 export class NotFoundError extends Error {
   constructor(readonly resource: 'tarefa' | 'processo' | 'feriado' | 'lancamento' | 'convite' | 'login') {

@@ -1,4 +1,4 @@
-import type { AssistantReplyDto, TaskDto } from '@aj/shared';
+import type { AssistantReplyDto, TaskDto } from '@nexus/shared';
 import { describe, expect, it, vi } from 'vitest';
 import { createFakes } from '../../../test/fakes.js';
 import { newTask } from '../../../test/harness.js';

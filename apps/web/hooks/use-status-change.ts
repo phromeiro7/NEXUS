@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import type { TaskDto, TaskStatus } from "@aj/shared";
+import type { TaskDto, TaskStatus } from "@nexus/shared";
 import { useRef, useState } from "react";
 import { ApiError } from "@/lib/api";
 import { messageFor } from "@/lib/messages";

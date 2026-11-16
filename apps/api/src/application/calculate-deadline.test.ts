@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Holiday, IsoDate } from '@aj/shared';
+import type { Holiday, IsoDate } from '@nexus/shared';
 import type { HolidayRepository } from './ports.js';
 import { makeCalculateDeadline } from './calculate-deadline.js';
 

@@ -1,4 +1,4 @@
-import type { IsoDate } from "@aj/shared";
+import type { IsoDate } from "@nexus/shared";
 import { describe, expect, it } from "vitest";
 import { makeTask } from "@/test/factories";
 import { pluralTasks, postponeOptions, reminderState, spokenTime, whenLabel } from "./mini-tasks";

@@ -1,4 +1,4 @@
-import type { CreateFinanceEntryInput, FinanceEntryDto } from "@aj/shared";
+import type { CreateFinanceEntryInput, FinanceEntryDto } from "@nexus/shared";
 import type { Lancamento } from "./finance";
 
 /** DTO da API (inglês, vindo do contrato compartilhado) → modelo das telas. */

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { IsoDate } from "@aj/shared";
+import type { IsoDate } from "@nexus/shared";
 import { EntryFormFields } from "@/components/mini/entry-form";
 import { FinanceNotice } from "@/components/mini/finance-notice";
 import { BackIcon, ChevronIcon, PlusIcon } from "@/components/mini/icons";

@@ -1,4 +1,4 @@
-import { QR_LOGIN_POLL_HEADER, qrLoginCreateResultSchema, qrLoginStatusSchema, type QrLoginStatus } from "@aj/shared";
+import { QR_LOGIN_POLL_HEADER, qrLoginCreateResultSchema, qrLoginStatusSchema, type QrLoginStatus } from "@nexus/shared";
 
 /** Falhas que a tela sabe explicar. Nunca carregam o segredo nem o token. */
 export type QrLoginFailure = "rede" | "muitas_tentativas" | "login_desabilitado" | "ja_utilizado" | "nao_encontrado" | "generico";

@@ -1,4 +1,4 @@
-import type { CaseDto, FinanceEntryDto, HolidayDto, IsoDate, SettingsDto, TaskDto } from '@aj/shared';
+import type { CaseDto, FinanceEntryDto, HolidayDto, IsoDate, SettingsDto, TaskDto } from '@nexus/shared';
 import {
   ChatAlreadyLinkedError,
   ConflictError,

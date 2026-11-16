@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { IsoDate, TaskDto } from '@aj/shared';
+import type { IsoDate, TaskDto } from '@nexus/shared';
 import {
   countByDay,
   groupDay,

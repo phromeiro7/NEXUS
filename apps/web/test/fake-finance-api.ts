@@ -1,4 +1,4 @@
-import type { CreateFinanceEntryInput, FinanceEntryDto, UpdateFinanceEntryInput } from "@aj/shared";
+import type { CreateFinanceEntryInput, FinanceEntryDto, UpdateFinanceEntryInput } from "@nexus/shared";
 import { vi } from "vitest";
 import { ApiError } from "@/lib/api";
 

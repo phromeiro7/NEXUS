@@ -1,4 +1,4 @@
-import { todayIn, type CreateFinanceEntryInput, type CreateTaskInput, type FinanceEntryDto, type IsoDate, type TaskDto } from '@aj/shared';
+import { todayIn, type CreateFinanceEntryInput, type CreateTaskInput, type FinanceEntryDto, type IsoDate, type TaskDto } from '@nexus/shared';
 import { z } from 'zod';
 import { addDays, weekday } from '../../domain/calendar.js';
 import { interpretCapture, type CaptureProposal } from '../../domain/chat-capture.js';

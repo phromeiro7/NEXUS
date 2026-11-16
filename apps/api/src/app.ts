@@ -6,7 +6,7 @@ import {
   type BriefingDto,
   type CalculateDeadlineResultDto,
   type MeDto,
-} from '@aj/shared';
+} from '@nexus/shared';
 import { authMiddleware, type AuthVerifier } from './auth.js';
 import type { makeCalculateDeadline } from './application/calculate-deadline.js';
 import type { makeCaseUseCases } from './application/cases.js';

@@ -28,8 +28,8 @@ async function setup(metadata?: { display_name?: unknown }) {
 
 describe("nome de exibição", () => {
   it("lê o nome da sessão", async () => {
-    await setup({ display_name: "  Paulo " });
-    expect(auth.displayName).toBe("Paulo");
+    await setup({ display_name: "  Ana " });
+    expect(auth.displayName).toBe("Ana");
   });
 
   it("ignora valor que não é texto ou está vazio", async () => {
@@ -47,7 +47,7 @@ describe("nome de exibição", () => {
   });
 
   it("nome vazio remove", async () => {
-    const f = await setup({ display_name: "Paulo" });
+    const f = await setup({ display_name: "Ana" });
     await act(async () => {
       await auth.saveDisplayName("   ");
     });
@@ -56,13 +56,13 @@ describe("nome de exibição", () => {
   });
 
   it("devolve erro e mantém o nome se o servidor falhar", async () => {
-    const f = await setup({ display_name: "Paulo" });
+    const f = await setup({ display_name: "Ana" });
     f.auth.updateUser.mockResolvedValueOnce({ data: {}, error: { message: "x" } });
     let result: { error: string | null } = { error: null };
     await act(async () => {
       result = await auth.saveDisplayName("Ana");
     });
     expect(result.error).not.toBeNull();
-    expect(auth.displayName).toBe("Paulo");
+    expect(auth.displayName).toBe("Ana");
   });
 });

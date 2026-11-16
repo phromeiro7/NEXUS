@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { IsoDate, TaskDto } from "@aj/shared";
+import type { IsoDate, TaskDto } from "@nexus/shared";
 import { timeOnlyLabel, whenLabel } from "@/lib/mini-tasks";
 import { CheckIcon, ChevronIcon, ClockIcon } from "./icons";
 

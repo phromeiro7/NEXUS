@@ -31,7 +31,7 @@ describe("TelegramCard", () => {
     holder.api.createLinkCode.mockResolvedValue({
       code: "ABCD2345",
       expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
-      deepLink: "https://t.me/NexusAssitant_bot?start=ABCD2345",
+      deepLink: "https://t.me/nexus_bot?start=ABCD2345",
     });
     wrap(false, false);
     expect(screen.getByText(/Ainda não conectado/)).toBeInTheDocument();
@@ -39,7 +39,7 @@ describe("TelegramCard", () => {
     expect(await screen.findByLabelText(/Código de vínculo: A B C D 2 3 4 5/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Abrir no Telegram" })).toHaveAttribute(
       "href",
-      "https://t.me/NexusAssitant_bot?start=ABCD2345",
+      "https://t.me/nexus_bot?start=ABCD2345",
     );
     expect(screen.getByText("Se preferir, envie ao bot: /start ABCD2345")).toBeInTheDocument();
   });

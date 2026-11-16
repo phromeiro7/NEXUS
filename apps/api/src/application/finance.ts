@@ -4,7 +4,7 @@ import {
   type FinanceEntryDto,
   type ListFinanceEntriesQuery,
   type UpdateFinanceEntryInput,
-} from '@aj/shared';
+} from '@nexus/shared';
 import { InvalidInputError, NotFoundError } from './errors.js';
 import type { Clock, FinanceEntryPatch, FinanceEntryRepository } from './ports.js';
 

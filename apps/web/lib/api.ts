@@ -26,7 +26,7 @@ import type {
   UpdateSettingsInput,
   UpdateSettingsResultDto,
   UpdateTaskInput,
-} from '@aj/shared';
+} from '@nexus/shared';
 
 export class ApiError extends Error {
   constructor(

@@ -1,4 +1,4 @@
-import type { CaptureProposalDto, CreateTaskInput, IsoDate } from "@aj/shared";
+import type { CaptureProposalDto, CreateTaskInput, IsoDate } from "@nexus/shared";
 import { addDays, daysBetween, formatShort } from "./dates";
 import { CATEGORIAS_ENTRADA, CATEGORIAS_GASTO, formatBRL, type LancamentoInput } from "./finance";
 import { spokenTime } from "./mini-tasks";

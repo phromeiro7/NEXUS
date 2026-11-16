@@ -1,5 +1,5 @@
 import { Hono, type MiddlewareHandler } from 'hono';
-import type { BriefingDto } from '@aj/shared';
+import type { BriefingDto } from '@nexus/shared';
 
 export function briefingRoutes(
   deps: { briefing: (userId: string) => Promise<BriefingDto> },

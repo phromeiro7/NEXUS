@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { FinanceEntryDto, FinanceStatus } from "@aj/shared";
+import type { FinanceEntryDto, FinanceStatus } from "@nexus/shared";
 import { useApi, useAuth } from "@/components/auth-provider";
 import { ApiError } from "@/lib/api";
 import type { Lancamento, LancamentoInput } from "@/lib/finance";

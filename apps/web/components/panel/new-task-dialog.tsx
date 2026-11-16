@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { createTaskInputSchema } from "@aj/shared";
+import { createTaskInputSchema } from "@nexus/shared";
 import { useToast } from "@/components/mini/toast";
 import { useCreateTask, useDeleteTask } from "@/hooks/queries";
 import { messageFor } from "@/lib/messages";

@@ -93,7 +93,7 @@ async function deliver(deps: PollDeps, update: unknown): Promise<boolean> {
 }
 
 /** Remove o webhook (o `getUpdates` falha com 409 enquanto ele existir). Mantém as atualizações pendentes. */
-export async function deleteWebhook(deps: PollDeps): Promise<boolean> {
+async function deleteWebhook(deps: PollDeps): Promise<boolean> {
   try {
     const res = await deps.fetch(telegramUrl(deps.config.token, 'deleteWebhook'), {
       method: 'POST',

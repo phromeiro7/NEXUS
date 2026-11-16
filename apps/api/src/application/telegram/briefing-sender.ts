@@ -1,4 +1,4 @@
-import { renderBriefing, type BriefingDto } from '@aj/shared';
+import { renderBriefing, type BriefingDto } from '@nexus/shared';
 import type { BriefingRecipient, BriefingRepository, Clock, ReminderQueue, TelegramClient } from '../ports.js';
 import type { RemindersLogger } from '../run-reminders.js';
 

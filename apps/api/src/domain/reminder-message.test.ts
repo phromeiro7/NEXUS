@@ -1,4 +1,4 @@
-import type { IsoDate, TaskType } from '@aj/shared';
+import type { IsoDate, TaskType } from '@nexus/shared';
 import { describe, expect, it } from 'vitest';
 import type { ReminderKind } from './reminders.js';
 import { classifyTelegramError, isLate, renderReminder, retryDelayMs } from './reminder-message.js';

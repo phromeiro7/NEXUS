@@ -24,15 +24,15 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 echo "Compilando o site (uma vez)..."
-pnpm --filter @aj/web build
+pnpm --filter @nexus/web build
 
-pnpm --filter @aj/api start & pids+=($!)
-pnpm --filter @aj/web exec next start -p "$WEB_PORT" & pids+=($!)
+pnpm --filter @nexus/api start & pids+=($!)
+pnpm --filter @nexus/web exec next start -p "$WEB_PORT" & pids+=($!)
 # Dá tempo da API abrir a porta antes de o agendador e o polling chamarem.
 sleep 5
-pnpm --filter @aj/api reminders:loop & pids+=($!)
+pnpm --filter @nexus/api reminders:loop & pids+=($!)
 if [ "${1:-}" != "--sem-telegram" ]; then
-  pnpm --filter @aj/api telegram:poll & pids+=($!)
+  pnpm --filter @nexus/api telegram:poll & pids+=($!)
 fi
 
 # Mantém o Mac acordado enquanto este script viver.

@@ -1,5 +1,5 @@
 import { Hono, type MiddlewareHandler } from 'hono';
-import { interpretCaptureInputSchema } from '@aj/shared';
+import { interpretCaptureInputSchema } from '@nexus/shared';
 import type { makeCaptureInterpretUseCases } from '../application/capture-interpret.js';
 import { ValidationError } from '../http-errors.js';
 import { readJson } from './request.js';

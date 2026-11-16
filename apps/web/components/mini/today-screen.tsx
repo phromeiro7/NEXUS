@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import type { IsoDate, TaskDto, TaskStatus } from "@aj/shared";
+import type { IsoDate, TaskDto, TaskStatus } from "@nexus/shared";
 import { useFinance } from "@/hooks/finance";
 import { FinanceNotice } from "./finance-notice";
 import { useStatusChange } from "@/hooks/use-status-change";

@@ -1,4 +1,4 @@
-import { FINANCE_MAX_CENTS, type IsoDate } from '@aj/shared';
+import { FINANCE_MAX_CENTS, type IsoDate } from '@nexus/shared';
 import { addDays, weekday } from './calendar.js';
 
 /*

@@ -1,5 +1,5 @@
 import { Hono, type MiddlewareHandler } from 'hono';
-import { createHolidayInputSchema } from '@aj/shared';
+import { createHolidayInputSchema } from '@nexus/shared';
 import type { makeHolidayUseCases } from '../application/holidays.js';
 import { ValidationError } from '../http-errors.js';
 import { idParam, readJson } from './request.js';

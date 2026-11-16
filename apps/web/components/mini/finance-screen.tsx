@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import type { IsoDate } from "@aj/shared";
+import type { IsoDate } from "@nexus/shared";
 import { useFinance } from "@/hooks/finance";
 import { FinanceNotice } from "./finance-notice";
 import { useToday } from "@/hooks/use-today";

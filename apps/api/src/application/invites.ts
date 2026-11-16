@@ -1,5 +1,5 @@
 import { randomBytes as nodeRandomBytes } from 'node:crypto';
-import { INVITE_CODE_LENGTH, type InviteDto, type InviteStatus, type InviteSummaryDto } from '@aj/shared';
+import { INVITE_CODE_LENGTH, type InviteDto, type InviteStatus, type InviteSummaryDto } from '@nexus/shared';
 import { ConflictError, ForbiddenError, InviteCodeCollisionError, NotFoundError } from './errors.js';
 import type { AccountProvisioner, Clock, InviteRecord, InviteRepository, LinkCodeRepository } from './ports.js';
 import { generateCode } from './telegram/link.js';
@@ -18,7 +18,7 @@ export function inviteStatus(record: InviteRecord, now: Date): InviteStatus {
   return 'ativo';
 }
 
-export function inviteLink(botUsername: string, code: string): string {
+function inviteLink(botUsername: string, code: string): string {
   return `https://t.me/${botUsername}?start=${code}`;
 }
 

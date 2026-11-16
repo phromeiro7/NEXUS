@@ -5,7 +5,7 @@ import {
   type QrLoginCreateResultDto,
   type QrLoginStatusDto,
   type TelegramAuthResultDto,
-} from '@aj/shared';
+} from '@nexus/shared';
 import { TelegramAuthError } from '../application/errors.js';
 import { ValidationError } from '../http-errors.js';
 

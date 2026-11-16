@@ -8,7 +8,7 @@
 
 **Tech Stack:** TypeScript, Hono, Zod 4, Postgres (funções SQL), Telegram Bot API via `fetch`, Vitest; painel Next.js para o fluxo de vínculo.
 
-**Spec:** `docs/superpowers/specs/2026-10-26-assistente-juridico-design.md` §5 (modelo de dados), §6 (fluxo, passos 2–3 e 5), §7 (lembretes, envio, **Contrato do enviador**, briefing, vínculo), §9, §10, §12 (verificações obrigatórias). Plano 4 (`processMessage`, `ChatRepository`, `InboundEventRepository`) é pré-requisito.
+**Spec:** `docs/archive/planejamento/specs/2026-10-26-assistente-juridico-design.md` §5 (modelo de dados), §6 (fluxo, passos 2–3 e 5), §7 (lembretes, envio, **Contrato do enviador**, briefing, vínculo), §9, §10, §12 (verificações obrigatórias). Plano 4 (`processMessage`, `ChatRepository`, `InboundEventRepository`) é pré-requisito.
 
 ## Global Constraints
 
@@ -46,7 +46,7 @@ apps/api/src/application/run-reminders.ts
 apps/api/src/infra/{telegram-client.ts,supabase-reminder-queue.ts,supabase-link-repository.ts,supabase-confirmation-repository.ts}
 apps/api/src/routes/{telegram.ts,internal.ts}
 apps/api/scripts/reminders-tick.ts                # dispara o endpoint localmente
-docs/superpowers/notes/2026-verificacoes-infra.md # Task 1
+docs/archive/planejamento/notes/2026-verificacoes-infra.md # Task 1
 apps/web/components/telegram-link.tsx
 ```
 
@@ -55,8 +55,8 @@ apps/web/components/telegram-link.tsx
 ### Task 1: Verificações obrigatórias (spec §12) e decisão de infraestrutura
 
 **Files:**
-- Create: `docs/superpowers/notes/2026-verificacoes-infra.md`
-- Modify: `docs/superpowers/specs/2026-10-26-assistente-juridico-design.md` (§12: resultados e links)
+- Create: `docs/archive/planejamento/notes/2026-verificacoes-infra.md`
+- Modify: `docs/archive/planejamento/specs/2026-10-26-assistente-juridico-design.md` (§12: resultados e links)
 
 **Interfaces:** nenhuma de código. Produz uma nota com data e **fontes oficiais citadas** (URLs) respondendo, com "confirmado", "não confirmado" ou "depende do plano": (1) `pg_cron` e `pg_net` disponíveis no plano gratuito do Supabase e como guardar o segredo no Vault; (2) política de pausa de projetos gratuitos por inatividade; (3) onde hospedar a API para suportar uma chamada por minuto e o orçamento de ~20 s por mensagem (Vercel como projeto separado vs. serviço de processo longo), com o requisito de o endpoint do agendador ficar fora da proteção de implantação; (7) Telegram Bot API atual: `setWebhook` com `secret_token`, formato do `Update`, `sendMessage`, limites de taxa e códigos de erro de bot bloqueado e de limite (`retry_after`). Termina com **recomendação** e o que depende de decisão do usuário (custos, plano do Supabase, provedor).
 
@@ -83,7 +83,7 @@ apps/web/components/telegram-link.tsx
   - `recover_stuck_events(p_now) returns table(recovered int, failed int)` (Plano 4, Ruling 10): eventos de `inbound_events` em `recebido` ou `processando` há mais de **2 minutos** — se **houve chamada ao modelo** (`attempt_count >= 1`), grava uma resposta terminal (`reply` = `{ reply: 'Sua mensagem pode ter sido processada só em parte. Confira suas tarefas e envie de novo o que faltar.', affectedTasks: [] }`), marca `processado` (o reenvio repete essa resposta e **nunca** cria tarefas em dobro); se **não houve** chamada ao modelo (`recebido`, `attempt_count = 0`), marca `falhou` (reenviável).
 
 - [ ] **Step 1: Write the failing DB tests** (Postgres local 553xx; **nunca** a stack 543xx): reserva sob concorrência — 20 lembretes vencidos e 4 chamadas simultâneas a `claim_due_reminders(…, 10)` (`Promise.all`, conexões distintas) devolvem 20 ids **sem repetição** e deixam `enviando`; tarefa apagada/concluída não é reservada e `cancel_dead_reminders` a cancela; perfil sem Telegram ou com canal pausado não é reservado; lembrete com 25 h de atraso → `cancelado`; recuperação de `enviando` preso (6 min) e não de 2 min; `finish_reminder` com retry grava `next_attempt_at` e o lembrete só é reservado depois dele; `consume_link_code`: válido vincula e zera pausa, segundo uso → `invalido`, vencido → `invalido`, chat de outra conta → `chat_em_uso` **sem** apagar o código; `claim_briefing` duas chamadas simultâneas no mesmo dia → exatamente uma `true`; usuário B nunca é afetado por operação sobre o usuário A.
-- [ ] **Step 2: Run** `pnpm --filter @aj/api test:db` → FAIL. **Step 3: Implement** a migração (escreva as funções com `set search_path = public` e sem SQL dinâmico). **Step 4: Run** → PASS (`supabase db reset` só na stack deste projeto). **Step 5: Commit** `feat(db): reminder queue, link and cleanup functions`
+- [ ] **Step 2: Run** `pnpm --filter @nexus/api test:db` → FAIL. **Step 3: Implement** a migração (escreva as funções com `set search_path = public` e sem SQL dinâmico). **Step 4: Run** → PASS (`supabase db reset` só na stack deste projeto). **Step 5: Commit** `feat(db): reminder queue, link and cleanup functions`
 
 ---
 
@@ -199,7 +199,7 @@ apps/web/components/telegram-link.tsx
 - Produces: `TelegramLink({ linked: boolean; paused: boolean })` — não vinculado: botão "Gerar código" mostra o código, o link "Abrir no Telegram" (`deepLink`, `rel="noopener noreferrer"`), contagem regressiva de 10 min e atualização automática das configurações a cada 5 s enquanto o código é válido; vinculado: texto "Telegram vinculado" e botão "Desvincular" (com confirmação); `paused` mostra aviso "O envio está pausado (bot bloqueado). Gere um novo código para retomar."
 
 - [ ] **Step 1: Write the failing tests:** gerar código mostra o código e o link; código vencido (relógio falso +10 min) some e pede novo; ao detectar `linked: true` nas configurações o componente muda de estado; desvincular só chama a API após confirmar; `paused` mostra o aviso; erro da API aparece em `role="alert"` sem perder o estado.
-- [ ] **Step 2: Run** → FAIL. **Step 3: Implement.** **Step 4: Run** `pnpm --filter @aj/web test`, typecheck, build. **Step 5: Commit** `feat(web): Telegram link flow in settings`
+- [ ] **Step 2: Run** → FAIL. **Step 3: Implement.** **Step 4: Run** `pnpm --filter @nexus/web test`, typecheck, build. **Step 5: Commit** `feat(web): Telegram link flow in settings`
 
 ---
 
@@ -207,12 +207,12 @@ apps/web/components/telegram-link.tsx
 
 **Files:**
 - Create: `apps/api/test/db/telegram-e2e.db.test.ts`
-- Modify: `README.md` (runbook), `docs/superpowers/specs/2026-10-26-assistente-juridico-design.md` (§7 item 5: decisão "manter como está"; §12: ponteiro para a nota)
+- Modify: `README.md` (runbook), `docs/archive/planejamento/specs/2026-10-26-assistente-juridico-design.md` (§7 item 5: decisão "manter como está"; §12: ponteiro para a nota)
 
 **Interfaces:** nenhuma nova. Teste de banco com usuário real, modelo falso, Telegram falso e relógio fixo percorrendo a jornada completa: gerar código → `/start CODIGO` no webhook → mensagem "reunião amanhã às 14h" cria tarefa e lembretes → resposta ao bot com "muda para 16h" altera **aquela** tarefa (via `task_confirmations`) e refaz lembretes → avançar o relógio até o lembrete `antecipado` e chamar o endpoint interno → o Telegram falso recebe o lembrete com a hora nova, uma vez → segunda chamada concorrente não duplica → concluir a tarefa → lembrete seguinte `cancelado`.
 
 - [ ] **Step 1: Write the failing e2e test** (jornada acima, com asserções exatas sobre o que o Telegram falso recebeu e o estado do banco).
-- [ ] **Step 2: Run** → FAIL. **Step 3: Implement** o que faltar de cola/documentação: runbook (criar o bot no BotFather, variáveis, `setWebhook` com `secret_token`, como apontar o agendador — pg_cron+pg_net **ou** cron externo, conforme a nota da Task 1 —, como rodar `reminders:tick` localmente, como testar sem bot real). **Step 4: Run** `pnpm test`, `pnpm --filter @aj/api test:db`, `pnpm typecheck`, `pnpm --filter @aj/web build` → verdes. **Step 5: Commit** `test(api): Telegram and reminder end-to-end journey; runbook`
+- [ ] **Step 2: Run** → FAIL. **Step 3: Implement** o que faltar de cola/documentação: runbook (criar o bot no BotFather, variáveis, `setWebhook` com `secret_token`, como apontar o agendador — pg_cron+pg_net **ou** cron externo, conforme a nota da Task 1 —, como rodar `reminders:tick` localmente, como testar sem bot real). **Step 4: Run** `pnpm test`, `pnpm --filter @nexus/api test:db`, `pnpm typecheck`, `pnpm --filter @nexus/web build` → verdes. **Step 5: Commit** `test(api): Telegram and reminder end-to-end journey; runbook`
 
 ---
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import type { CaptureProposalDto, IsoDate } from "@aj/shared";
+import type { CaptureProposalDto, IsoDate } from "@nexus/shared";
 import { useApi } from "@/components/auth-provider";
 import { PlusIcon } from "@/components/mini/icons";
 import { useToast } from "@/components/mini/toast";

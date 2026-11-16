@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRef, useState, type FormEvent } from "react";
-import { updateSettingsInputSchema, type SettingsDto } from "@aj/shared";
+import { updateSettingsInputSchema, type SettingsDto } from "@nexus/shared";
 import { DISPLAY_NAME_MAX, useAuth } from "@/components/auth-provider";
 import { useSettings, useUpdateSettings } from "@/hooks/queries";
 import { messageFor } from "@/lib/messages";

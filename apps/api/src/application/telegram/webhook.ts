@@ -1,4 +1,4 @@
-import { QR_LOGIN_START_PREFIX, type AssistantReplyDto } from '@aj/shared';
+import { QR_LOGIN_START_PREFIX, type AssistantReplyDto } from '@nexus/shared';
 import { z } from 'zod';
 import type { AssistantLogger, ProcessMessageInput } from '../assistant/process-message.js';
 import {

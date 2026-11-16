@@ -8,7 +8,7 @@ import {
   type CreateTaskInput,
   type TaskDto,
   type UpdateTaskInput,
-} from '@aj/shared';
+} from '@nexus/shared';
 import { z } from 'zod';
 import { HoraInvalidaError } from '../../domain/reminders.js';
 import { InvalidTransitionError } from '../../domain/task-status.js';

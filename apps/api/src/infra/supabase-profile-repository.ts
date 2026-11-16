@@ -1,4 +1,4 @@
-import type { SettingsDto } from '@aj/shared';
+import type { SettingsDto } from '@nexus/shared';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ProfileRepository } from '../application/ports.js';
 import { definedOnly, toHourMinute } from './mappers.js';

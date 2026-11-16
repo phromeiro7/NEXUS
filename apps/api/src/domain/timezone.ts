@@ -1,4 +1,4 @@
-import type { IsoDate } from '@aj/shared';
+import type { IsoDate } from '@nexus/shared';
 
 export type LocalToUtcResult =
   | { ok: true; utc: Date }

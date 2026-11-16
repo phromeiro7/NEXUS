@@ -1,4 +1,4 @@
-import { todayIn, type InterpretCaptureInput, type InterpretCaptureResultDto } from '@aj/shared';
+import { todayIn, type InterpretCaptureInput, type InterpretCaptureResultDto } from '@nexus/shared';
 import { interpretCapture } from '../domain/chat-capture.js';
 import type { Clock, ProfileRepository } from './ports.js';
 

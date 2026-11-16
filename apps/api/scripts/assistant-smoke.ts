@@ -5,7 +5,7 @@
  * Supabase) e o adaptador real da Anthropic. Só precisa de ANTHROPIC_API_KEY. Gasta dinheiro de
  * verdade: por isso exige `--yes` depois de mostrar o máximo de chamadas e a estimativa de custo.
  *
- *   ANTHROPIC_API_KEY=<sua-chave> pnpm --filter @aj/api smoke:assistant --yes [--out relatorio.txt]
+ *   ANTHROPIC_API_KEY=<sua-chave> pnpm --filter @nexus/api smoke:assistant --yes [--out relatorio.txt]
  *
  * Nunca imprime a chave nem cabeçalhos; só grava em disco o `--out` passado explicitamente.
  */
@@ -27,7 +27,7 @@ export const USER_ID = 'smoke-user';
 
 /**
  * ESTIMATIVAS (US$ por milhão de tokens) do Haiku 5.5. Reconferir na página de preços do provedor
- * antes de confiar nos números; ver docs/superpowers/notes/2026-assistente-custos.md.
+ * antes de confiar nos números; ver docs/archive/planejamento/notes/2026-assistente-custos.md.
  */
 export const PRICE_INPUT_PER_MTOK = 0.1;
 export const PRICE_OUTPUT_PER_MTOK = 0.5;

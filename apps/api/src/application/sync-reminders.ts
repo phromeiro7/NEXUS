@@ -1,4 +1,4 @@
-import type { TaskDto } from '@aj/shared';
+import type { TaskDto } from '@nexus/shared';
 import { buildReminders, type ReminderDraft } from '../domain/reminders.js';
 import type { Clock, ProfileRecord, ReminderRepository } from './ports.js';
 

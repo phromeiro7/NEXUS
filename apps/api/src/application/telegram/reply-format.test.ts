@@ -1,4 +1,4 @@
-import type { TaskDto } from '@aj/shared';
+import type { TaskDto } from '@nexus/shared';
 import { describe, expect, it } from 'vitest';
 import { TELEGRAM_MAX_CHARS, formatAssistantReply, formatTaskLine } from './reply-format.js';
 

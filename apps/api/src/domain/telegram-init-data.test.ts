@@ -16,13 +16,13 @@ function sign(fields: Record<string, string>, token = TOKEN): string {
   return new URLSearchParams({ ...fields, hash }).toString();
 }
 
-const user = JSON.stringify({ id: 4242, first_name: 'Paulo', language_code: 'pt-br' });
+const user = JSON.stringify({ id: 4242, first_name: 'Ana', language_code: 'pt-br' });
 const base = { auth_date: String(NOW - 30), query_id: 'AAH', user };
 
 describe('verifyInitData', () => {
   it('aceita um initData válido e devolve o usuário assinado', () => {
     const r = verifyInitData(sign(base), TOKEN, NOW, 3600);
-    expect(r).toMatchObject({ ok: true, user: { id: 4242, firstName: 'Paulo' }, authDate: NOW - 30 });
+    expect(r).toMatchObject({ ok: true, user: { id: 4242, firstName: 'Ana' }, authDate: NOW - 30 });
     expect(r.ok && r.hash).toMatch(/^[0-9a-f]{64}$/);
   });
 

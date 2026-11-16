@@ -1,5 +1,5 @@
 import { Hono, type MiddlewareHandler } from 'hono';
-import { createTaskInputSchema, listTasksQuerySchema, updateTaskInputSchema } from '@aj/shared';
+import { createTaskInputSchema, listTasksQuerySchema, updateTaskInputSchema } from '@nexus/shared';
 import type { makeTaskUseCases } from '../application/tasks.js';
 import { ValidationError } from '../http-errors.js';
 import { idParam, readJson } from './request.js';

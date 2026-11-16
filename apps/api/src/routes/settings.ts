@@ -1,5 +1,5 @@
 import { Hono, type MiddlewareHandler } from 'hono';
-import { updateSettingsInputSchema, type SettingsDto, type UpdateSettingsResultDto } from '@aj/shared';
+import { updateSettingsInputSchema, type SettingsDto, type UpdateSettingsResultDto } from '@nexus/shared';
 import type { makeSettingsUseCases } from '../application/settings.js';
 import { ValidationError } from '../http-errors.js';
 import { readJson } from './request.js';

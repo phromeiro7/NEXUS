@@ -1,4 +1,4 @@
-import type { SettingsDto, SkippedReminderTaskDto, UpdateSettingsInput, UpdateSettingsResultDto } from '@aj/shared';
+import type { SettingsDto, SkippedReminderTaskDto, UpdateSettingsInput, UpdateSettingsResultDto } from '@nexus/shared';
 import { HoraInvalidaError } from '../domain/reminders.js';
 import type { ProfileRepository, TaskRepository } from './ports.js';
 import type { makeSyncReminders } from './sync-reminders.js';

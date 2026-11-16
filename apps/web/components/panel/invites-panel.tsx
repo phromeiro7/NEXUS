@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import type { InviteDto } from "@aj/shared";
+import type { InviteDto } from "@nexus/shared";
 import { copyLink, deleteWarning, shareInvite, statusLabel, summaryText, validityDays } from "@/components/mini/invites-card";
 import { isForbidden, useCreateInvite, useInvites, useDeleteInvite } from "@/hooks/use-invites";
 import { messageFor } from "@/lib/messages";

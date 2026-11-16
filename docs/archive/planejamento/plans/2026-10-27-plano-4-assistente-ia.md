@@ -8,7 +8,7 @@
 
 **Tech Stack:** TypeScript, Hono, Zod 4, `@anthropic-ai/sdk` (Messages API, ferramentas com `strict: true`), Supabase/Postgres, Vitest; no painel, Next.js + TanStack Query.
 
-**Spec:** `docs/superpowers/specs/2026-10-26-assistente-juridico-design.md` §6 (fluxo de uma mensagem), §7 (briefing), §8 (barra de comando), §9 (segurança), §10 (testes). Casos de uso existentes: `apps/api/src/application/{tasks,calculate-deadline,briefing}.ts`.
+**Spec:** `docs/archive/planejamento/specs/2026-10-26-assistente-juridico-design.md` §6 (fluxo de uma mensagem), §7 (briefing), §8 (barra de comando), §9 (segurança), §10 (testes). Casos de uso existentes: `apps/api/src/application/{tasks,calculate-deadline,briefing}.ts`.
 
 ## Global Constraints
 
@@ -67,7 +67,7 @@ apps/web/components/command-bar.tsx, briefing-card.tsx, hooks/use-assistant.ts
   - `renderBriefing(dto: BriefingDto): string` — texto fixo em português: saudação com a data por extenso, seções "Atrasadas", "Fatais de hoje", "Audiências de hoje", "Próximas 48 horas" (cada item `• 14:30 — Título (Prazo, fatal)` ou `• Título (Tarefa)` para sem hora); seção vazia some; **devolve `''` quando as quatro listas estão vazias** (o Telegram não envia briefing vazio).
 
 - [ ] **Step 1: Write the failing tests:** texto com 1.001 caracteres e texto só de espaços falham; `clientMessageId` inválido falha; `renderBriefing` com listas vazias → `''`; com uma atrasada e uma audiência de hoje às 14:30 → contém "Atrasadas", "• 14:30 — " e não contém "Fatais de hoje"; tarefa fatal tem o texto "fatal"; ordem das seções fixa; nenhuma data em formato ISO cru no texto.
-- [ ] **Step 2: Run** `pnpm --filter @aj/shared test` → FAIL.
+- [ ] **Step 2: Run** `pnpm --filter @nexus/shared test` → FAIL.
 - [ ] **Step 3: Implement** (função pura; formatação de data por `Intl` com `timeZone: 'UTC'` sobre a data ISO).
 - [ ] **Step 4: Run** → PASS; `pnpm typecheck`.
 - [ ] **Step 5: Commit** `feat(shared): assistant contracts and plain-text briefing`
@@ -88,7 +88,7 @@ apps/web/components/command-bar.tsx, briefing-card.tsx, hooks/use-assistant.ts
 - Migração: índices `chat_messages (user_id, channel, created_at desc)` e `inbound_events (user_id, channel, received_at desc)`; coluna `inbound_events.reply jsonb` (resposta final guardada para devolver em reenvio idempotente) — a coluna precisa de `check` de tamanho razoável (< 64 KB).
 
 - [ ] **Step 1: Write the failing DB tests** (contra o Postgres local 553xx; nunca o 543xx): `register` duas vezes simultâneas (`Promise.all`) com o mesmo `externalId` → exatamente um `firstTime: true`; `register` de evento `falhou` permite reprocessar; `countSince` conta só o usuário e o canal pedidos (outro usuário com eventos não entra); `recent` ignora expiradas e devolve na ordem cronológica, limitada; usuário B nunca vê mensagens do usuário A.
-- [ ] **Step 2: Run** `pnpm --filter @aj/api test:db` → FAIL.
+- [ ] **Step 2: Run** `pnpm --filter @nexus/api test:db` → FAIL.
 - [ ] **Step 3: Implement** migração e repositórios (filtro explícito por `user_id` em toda consulta; falha do banco propaga erro, nunca vira "ok").
 - [ ] **Step 4: Run** testes de banco e `pnpm test` → verdes; `supabase db reset` só na stack deste projeto.
 - [ ] **Step 5: Commit** `feat(api): chat and inbound-event persistence for the assistant`
@@ -159,7 +159,7 @@ apps/web/components/command-bar.tsx, briefing-card.tsx, hooks/use-assistant.ts
 - Produces: `POST /assistant/message` (auth) com corpo `assistantMessageInputSchema` → `200 AssistantReplyDto`; erros: `400 entrada_invalida`, `413 corpo_muito_grande` (já existe), `429 limite_de_mensagens` (com `retryAfterSeconds`), `503 assistente_indisponivel` (corpo `{ error, reason, partial: TaskDto[] }`, onde `partial` são as tarefas realmente gravadas). Com o assistente desabilitado (sem chave) a rota responde `503 assistente_indisponivel` com `reason: 'configuracao'`. `buildApp(config, { clock, assistantModel? })` aceita um modelo falso para testes.
 
 - [ ] **Step 1: Write the failing tests:** rota com `processMessage` falso — 200, 400 (texto vazio / 1.001 caracteres / `clientMessageId` ruim), 401 sem token, 429, 503 com `partial`; mapeamento de erros não vaza mensagem interna nem texto do usuário; teste de banco ponta a ponta com **modelo falso** (sem rede): usuário real com token, "criar tarefa" cria a linha, reenvio do mesmo `clientMessageId` não duplica e devolve a mesma resposta, usuário B não enxerga/altera a tarefa do A mesmo com o id no texto, 31ª mensagem na hora → 429.
-- [ ] **Step 2: Run** → FAIL. **Step 3: Implement.** **Step 4: Run** `pnpm test`, `pnpm --filter @aj/api test:db`, typecheck → verdes. **Step 5: Commit** `feat(api): assistant message endpoint`
+- [ ] **Step 2: Run** → FAIL. **Step 3: Implement.** **Step 4: Run** `pnpm test`, `pnpm --filter @nexus/api test:db`, typecheck → verdes. **Step 5: Commit** `feat(api): assistant message endpoint`
 
 ---
 
@@ -174,20 +174,20 @@ apps/web/components/command-bar.tsx, briefing-card.tsx, hooks/use-assistant.ts
 - Produces: `useAssistant()` → `{ send(text): Promise<AssistantReplyDto>; pending: boolean }` que gera `clientMessageId` (UUID) **uma vez por tentativa de envio** e o reutiliza em reenvio automático após falha de rede; ao sucesso invalida `['tasks']` e `['briefing']`. `CommandBar` abre com `Ctrl/Cmd+K` (e botão "Perguntar ao assistente"), é um `<dialog>` acessível: campo com contador de 1.000 caracteres, Enter envia, `Esc` fecha, foco volta a quem abriu; mostra a resposta do assistente em painel curto e **destaca por alguns segundos** as tarefas afetadas (lista com título/data e rótulo) e, quando `affectedTasks` não é vazio, as linhas correspondentes nas visões ganham a marca "atualizada agora" (texto, não só cor); erros mapeados (429 "Limite de 30 mensagens por hora atingido", 503 "O assistente está indisponível agora. Nada foi alterado." — ou, com `partial` não vazio, "Algumas ações foram aplicadas: …"); texto digitado **não** é apagado em erro; botão desabilitado durante o envio. `BriefingCard` mostra `renderBriefing(dto)` (texto fixo, sem IA) no topo do Painel, some quando `''`.
 
 - [ ] **Step 1: Write the failing tests:** atalho Ctrl+K e Cmd+K abrem; Esc fecha e devolve o foco; contador e bloqueio acima de 1.000; envio chama a API com `{ text, clientMessageId }` e o mesmo id numa nova tentativa automática após erro de rede; sucesso mostra a resposta e as tarefas afetadas e invalida as consultas; 429 e 503 (com e sem `partial`) mostram as mensagens exatas e mantêm o texto; dois Enter rápidos → uma chamada; `BriefingCard` oculto com lista vazia e com o texto esperado num caso; a barra não aparece sem login.
-- [ ] **Step 2: Run** → FAIL (provar cada comportamento importante por mutação). **Step 3: Implement.** **Step 4: Run** `pnpm --filter @aj/web test`, typecheck, build. **Step 5: Commit** `feat(web): command bar and plain-text briefing`
+- [ ] **Step 2: Run** → FAIL (provar cada comportamento importante por mutação). **Step 3: Implement.** **Step 4: Run** `pnpm --filter @nexus/web test`, typecheck, build. **Step 5: Commit** `feat(web): command bar and plain-text briefing`
 
 ---
 
 ### Task 8: Roteiro manual com o modelo real, custos e documentação
 
 **Files:**
-- Create: `apps/api/scripts/assistant-smoke.ts`, `docs/superpowers/notes/2026-assistente-custos.md`
-- Modify: `README.md`, `docs/superpowers/specs/2026-10-26-assistente-juridico-design.md` (§6 passo 12: semântica de falha com ações parciais; §14 nota)
+- Create: `apps/api/scripts/assistant-smoke.ts`, `docs/archive/planejamento/notes/2026-assistente-custos.md`
+- Modify: `README.md`, `docs/archive/planejamento/specs/2026-10-26-assistente-juridico-design.md` (§6 passo 12: semântica de falha com ações parciais; §14 nota)
 
 **Interfaces:** nenhuma nova em produção. O roteiro roda ~10 frases reais (várias tarefas, "amanhã de manhã", dia da semana, ambígua, injeção, horário no passado) contra o modelo real usando um usuário de teste **local** e imprime, por frase: ferramentas chamadas, tarefas afetadas, tokens (entrada/saída/cache) e duração; **nunca** imprime a chave nem grava texto em log do servidor.
 
 - [ ] **Step 1: Write the failing test:** teste unitário do formatador do relatório do roteiro (não do modelo): recebe resultados falsos e devolve a tabela; recusa rodar sem `ANTHROPIC_API_KEY` com erro claro que **nomeia** a variável.
-- [ ] **Step 2: Run** → FAIL. **Step 3: Implement** o roteiro e a nota de custos (preço do Haiku 5.5, estimativa por mensagem a partir dos tokens medidos, teto mensal configurado no painel do provedor, o que reduz custo: briefing sem IA, limites, cache). **Step 4: Executar o roteiro uma vez, SÓ se o usuário fornecer a chave** (caso contrário registrar "não executado" no relatório); anexar a tabela à nota. **Step 5: Run** `pnpm test`, `pnpm typecheck`, `pnpm --filter @aj/web build` → verdes. **Commit** `docs: assistant smoke script and cost notes`
+- [ ] **Step 2: Run** → FAIL. **Step 3: Implement** o roteiro e a nota de custos (preço do Haiku 5.5, estimativa por mensagem a partir dos tokens medidos, teto mensal configurado no painel do provedor, o que reduz custo: briefing sem IA, limites, cache). **Step 4: Executar o roteiro uma vez, SÓ se o usuário fornecer a chave** (caso contrário registrar "não executado" no relatório); anexar a tabela à nota. **Step 5: Run** `pnpm test`, `pnpm typecheck`, `pnpm --filter @nexus/web build` → verdes. **Commit** `docs: assistant smoke script and cost notes`
 
 ---
 

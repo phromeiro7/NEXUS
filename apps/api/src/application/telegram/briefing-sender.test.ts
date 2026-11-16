@@ -1,4 +1,4 @@
-import { renderBriefing, type BriefingDto, type IsoDate } from '@aj/shared';
+import { renderBriefing, type BriefingDto, type IsoDate } from '@nexus/shared';
 import { describe, expect, it, vi } from 'vitest';
 import { createFakes } from '../../../test/fakes.js';
 import type { TelegramErrorClass } from '../../domain/reminder-message.js';

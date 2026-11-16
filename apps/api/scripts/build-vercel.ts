@@ -7,7 +7,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 /**
  * Gera `.vercel/output` (Build Output API v3) com uma única função Node em `functions/api.func`, atendendo a
- * todos os caminhos. O handler é um bundle CommonJS autocontido (inclui @aj/shared e todas as dependências):
+ * todos os caminhos. O handler é um bundle CommonJS autocontido (inclui @nexus/shared e todas as dependências):
  * não há TypeScript nem resolução de workspace em tempo de execução. Devolve o caminho do bundle.
  */
 export async function buildVercelOutput(): Promise<string> {

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useId, useState, type FormEvent } from "react";
-import type { IsoDate } from "@aj/shared";
+import type { IsoDate } from "@nexus/shared";
 import { useFinance } from "@/hooks/finance";
 import { useToday } from "@/hooks/use-today";
 import { addDays, formatShort } from "@/lib/dates";

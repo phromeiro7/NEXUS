@@ -1,4 +1,4 @@
-import type { CaseDto, CreateCaseInput, UpdateCaseInput } from '@aj/shared';
+import type { CaseDto, CreateCaseInput, UpdateCaseInput } from '@nexus/shared';
 import { NotFoundError } from './errors.js';
 import type { CaseRepository } from './ports.js';
 

@@ -1,4 +1,4 @@
-import type { IsoDate } from '@aj/shared';
+import type { IsoDate } from '@nexus/shared';
 
 const MS_PER_DAY = 86_400_000;
 

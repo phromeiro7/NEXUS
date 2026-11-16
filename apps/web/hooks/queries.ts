@@ -12,7 +12,7 @@ import type {
   TaskDto,
   UpdateSettingsInput,
   UpdateTaskInput,
-} from "@aj/shared";
+} from "@nexus/shared";
 import { useApi } from "@/components/auth-provider";
 
 export const queryKeys = {

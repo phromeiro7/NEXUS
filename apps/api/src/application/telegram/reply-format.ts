@@ -1,4 +1,4 @@
-import type { TaskDto } from '@aj/shared';
+import type { TaskDto } from '@nexus/shared';
 import { sanitizeTitle } from '../../domain/reminder-message.js';
 
 /** Limite do Telegram por mensagem de texto (em pontos de código, como o cliente HTTP conta). */

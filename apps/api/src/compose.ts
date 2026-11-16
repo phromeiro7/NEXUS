@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import type { TaskDto } from '@aj/shared';
+import type { TaskDto } from '@nexus/shared';
 import { createApp } from './app.js';
 import { makeProcessMessage } from './application/assistant/process-message.js';
 import { makeToolExecutor } from './application/assistant/tools.js';

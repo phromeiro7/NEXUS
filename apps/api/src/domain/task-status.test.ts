@@ -1,4 +1,4 @@
-import type { TaskStatus } from '@aj/shared';
+import type { TaskStatus } from '@nexus/shared';
 import { describe, expect, it } from 'vitest';
 import { applyStatusChange, canTransition, InvalidTransitionError } from './task-status.js';
 

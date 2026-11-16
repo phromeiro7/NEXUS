@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import type { LinkCodeDto } from "@aj/shared";
+import type { LinkCodeDto } from "@nexus/shared";
 import { useApi } from "@/components/auth-provider";
 import { queryKeys } from "@/hooks/queries";
 import { messageFor } from "@/lib/messages";

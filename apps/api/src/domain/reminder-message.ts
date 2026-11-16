@@ -1,4 +1,4 @@
-import type { IsoDate, TaskType } from '@aj/shared';
+import type { IsoDate, TaskType } from '@nexus/shared';
 import type { ReminderKind } from './reminders.js';
 
 const TYPE_LABEL: Record<TaskType, string> = {

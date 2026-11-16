@@ -37,7 +37,7 @@ Nome Nexus. Símbolo "N contínuo" com ponto terracota. Paleta confirmada como v
 
 ## Evidence on Hand
 
-Docs de identidade, Mini App e Instagram em `docs/nexus/`; conceitos SVG na raiz e em `docs/nexus/`; direção do painel em `docs/superpowers/specs/2026-10-26-painel-web-direcao-visual.md`. Não há usuários, depoimentos, métricas nem validação de mercado: não inventar.
+Docs de identidade, Mini App e Instagram em `docs/nexus/`; conceitos SVG em `docs/nexus/conceitos/`; direção do painel em `docs/archive/planejamento/specs/2026-10-26-painel-web-direcao-visual.md`. Não há usuários, depoimentos, métricas nem validação de mercado: não inventar.
 
 ## Product Principles
 

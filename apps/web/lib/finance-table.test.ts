@@ -1,4 +1,4 @@
-import type { IsoDate } from "@aj/shared";
+import type { IsoDate } from "@nexus/shared";
 import { describe, expect, it } from "vitest";
 import type { Lancamento } from "./finance";
 import { monthRows, nextSort, rowActionLabel, situationLabel, sortRows, tableTotal } from "./finance-table";

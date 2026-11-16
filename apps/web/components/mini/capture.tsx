@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useRef, useState, type FocusEvent, type FormEvent } from "react";
-import { createTaskInputSchema, type IsoDate } from "@aj/shared";
+import { createTaskInputSchema, type IsoDate } from "@nexus/shared";
 import { useCreateTask, useDeleteTask } from "@/hooks/queries";
 import { addDays } from "@/lib/dates";
 import { messageFor } from "@/lib/messages";

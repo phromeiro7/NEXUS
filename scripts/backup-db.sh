@@ -19,7 +19,7 @@ if [ -n "${SUPABASE_BIN:-}" ]; then
   "$SUPABASE_BIN" "${flags[@]}" --project-ref "${SUPABASE_PROJECT_REF:?defina SUPABASE_PROJECT_REF}" >/dev/null
 else
   cd "$(dirname "$0")/.."
-  pnpm --filter @aj/api exec supabase "${flags[@]}" --linked >/dev/null
+  pnpm --filter @nexus/api exec supabase "${flags[@]}" --linked >/dev/null
 fi
 
 gzip -c "$tmp" > "$out"

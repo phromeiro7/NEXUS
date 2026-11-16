@@ -1,4 +1,4 @@
-import type { CalculateDeadlineInput, CalculateDeadlineResultDto, Holiday, IsoDate } from '@aj/shared';
+import type { CalculateDeadlineInput, CalculateDeadlineResultDto, Holiday, IsoDate } from '@nexus/shared';
 import { assertValidDeadlineDays, calculateDeadline } from '../domain/deadline.js';
 import { nationalHolidays } from '../domain/holidays.js';
 import type { HolidayRepository } from './ports.js';

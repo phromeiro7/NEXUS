@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
-import { updateTaskInputSchema, type IsoDate } from "@aj/shared";
+import { updateTaskInputSchema, type IsoDate } from "@nexus/shared";
 import { useDeleteTask, useTask, useUpdateTask } from "@/hooks/queries";
 import { useToday } from "@/hooks/use-today";
 import { ApiError } from "@/lib/api";

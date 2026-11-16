@@ -1,4 +1,4 @@
-import type { IsoDate } from '@aj/shared';
+import type { IsoDate } from '@nexus/shared';
 import { addDays } from './calendar.js';
 import { type LocalToUtcResult, localToUtc } from './timezone.js';
 
