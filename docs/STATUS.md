@@ -1,6 +1,6 @@
 # Status do projeto e o que falta
 
-Atualizado em 2026-10-29. Este documento é o ponto de partida para retomar o trabalho: o que está
+Atualizado em 2026-11-03. Este documento é o ponto de partida para retomar o trabalho: o que está
 pronto, o que falta, o que depende de decisão ou de conta externa e o que ainda não foi verificado.
 
 Referências: especificação em `docs/superpowers/specs/2026-10-26-assistente-juridico-design.md`;
@@ -22,8 +22,25 @@ planos de implementação em `docs/superpowers/plans/` (um por etapa, numerados 
 | 5 | Telegram, envio de lembretes e agendador | **Implementado e revisado** (revisão final do ramo feita); falta Telegram, agendador e hospedagem reais |
 | 6 | Acabamento, avaliação da IA, segurança, publicação | Não iniciado (plano escrito) |
 
-Os PRs formam uma pilha: o PR do Plano 1 aponta para `main`, o do Plano 2 para o ramo do Plano 1, e
-assim por diante. Revise e integre na ordem.
+Os Planos 1 a 5 e os ajustes da publicação estão integrados na `main` do GitHub.
+
+## Em produção (publicado em 2026-11-03)
+
+| Peça | Onde | Estado |
+|---|---|---|
+| Banco | Supabase, projeto **NEXUS** (`jowqlwoiwiiboxykixss`, São Paulo, plano gratuito) | Migrações 0001 a 0006 aplicadas; RLS ligada; `pg_cron` e `pg_net` ativos |
+| API | Vercel, projeto `nexus-api`, `https://nexus-api-lilac.vercel.app` (pasta `apps/api`, preset Other) | No ar; região gru1; saída no formato Build Output API |
+| Painel | Vercel, projeto `nexus-web`, `https://nexus-web-five-sandy.vercel.app` (pasta `apps/web`) | No ar |
+| Bot do Telegram | `@NexusAssitant_bot` (atenção: **Assitant**, com um "s" só) | Webhook registrado em `…/telegram/webhook` |
+| Agendador | job `reminders-tick` (pg_cron, a cada minuto, 60 s de limite) com o segredo no Vault | Ativo |
+
+Verificado em produção: login, tarefa com horário, vínculo do Telegram por código, lembrete antecipado e no
+horário recebidos no Telegram. Variáveis de ambiente só nos painéis da Vercel e no Vault do Supabase.
+Contas: só o dono, criada à mão; o cadastro público do painel foi removido (desligue também "Allow new users
+to sign up" no Supabase).
+
+Ainda **não** em produção: a IA (sem chave da Anthropic; a barra de comando responde "indisponível"), o
+briefing diário (não exercitado com dados reais), o Mini App e o login por Telegram (Plano 7), a marca Nexus.
 
 ## O que funciona hoje (Planos 1 a 3)
 
@@ -126,10 +143,9 @@ hospedados.
 
 ## Ainda não verificado
 
-- O painel **nunca foi aberto num navegador real**: só a API foi exercitada ponta a ponta. Falta conferir
-  layout em 360, 768 e 1280 px, contraste medido, navegação por teclado/leitor de tela e os
-  redirecionamentos do lado do cliente.
-- Nada foi implantado; o runbook de publicação é do Plano 6.
+- O painel foi aberto num navegador real (Chrome) em 2026-11-03 e o fluxo principal funcionou, mas faltam
+  layout em 360/768/1280 px conferido item a item, contraste medido e teclado/leitor de tela. Problemas
+  vistos: menu cortado em 360 px, sem favicon, textos ainda jurídicos e sem marca.
 - O comportamento real do modelo de IA ainda não foi exercitado: o roteiro existe, mas não foi executado
   (aguarda chave e aprovação do gasto). O do Telegram é do Plano 5.
 
