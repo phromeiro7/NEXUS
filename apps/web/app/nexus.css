@@ -1380,3 +1380,19 @@ details.mini-more[open] > summary svg {
     --borda: 2px;
   }
 }
+
+/* Atalho "Amanhã" na linha da tarefa: texto visível, alvo de toque de 64x56 no mínimo. */
+.mini-postpone {
+  flex: none;
+  min-width: 64px;
+  min-height: 56px;
+  padding: 0 12px;
+  border: 0;
+  border-left: 1px solid var(--linha);
+  background: none;
+  color: var(--texto);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}

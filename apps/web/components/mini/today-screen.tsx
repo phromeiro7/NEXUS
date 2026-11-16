@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { IsoDate, TaskDto, TaskStatus } from "@nexus/shared";
 import { useFinance } from "@/hooks/finance";
 import { FinanceNotice } from "./finance-notice";
+import { usePostpone } from "@/hooks/use-postpone";
 import { useStatusChange } from "@/hooks/use-status-change";
 import { useSettings, useTasks } from "@/hooks/queries";
 import { useClock } from "@/hooks/use-clock";
@@ -12,6 +13,7 @@ import { useToday } from "@/hooks/use-today";
 import { addDays } from "@/lib/dates";
 import { dueBills, formatBRLShort, hasMonthEntries, monthName, monthOf, monthTotals, type Lancamento } from "@/lib/finance";
 import { dayTitle, nextUp, pluralTasks, spokenTime } from "@/lib/mini-tasks";
+import { postponeInput, type PostponeKind } from "@/lib/postpone";
 import { groupDay } from "@/lib/tasks-view";
 import { BillItem } from "./bill-item";
 import { Capture } from "./capture";
@@ -105,6 +107,7 @@ function TodayContent({ today }: { today: IsoDate }) {
   const undatedQ = useTasks({ status: OPEN, withoutDate: true });
   const nextQ = useTasks({ status: OPEN, from: addDays(today, 1), to: addDays(today, 7) });
   const { error, change } = useStatusChange();
+  const postponer = usePostpone();
   const toast = useToast();
   const clock = useClock(useSettings().data?.timezone);
   const finance = useFinance();
@@ -136,6 +139,10 @@ function TodayContent({ today }: { today: IsoDate }) {
     toast({ message: `Tarefa concluída: ${task.title}.`, undo: () => void change(task.id, "pendente") });
   }
 
+  function postponeTask(task: TaskDto, kind: PostponeKind) {
+    void postponer.postpone(task, postponeInput(task, kind, today), today);
+  }
+
   const section = (title: string, items: TaskDto[], opts: { cls?: string; compact?: boolean; bills?: Lancamento[] } = {}) =>
     items.length + (opts.bills?.length ?? 0) > 0 && (
       <section className={`mini-section ${opts.cls ?? ""}`} aria-labelledby={`h-${title}`}>
@@ -144,7 +151,7 @@ function TodayContent({ today }: { today: IsoDate }) {
         </h2>
         <ul className="mini-list grouped">
           {items.map((t, i) => (
-            <TaskItem key={t.id} task={t} today={today} onComplete={complete} index={i} compact={opts.compact} />
+            <TaskItem key={t.id} task={t} today={today} onComplete={complete} onPostpone={postponeTask} index={i} compact={opts.compact} />
           ))}
           {(opts.bills ?? []).map((b, i) => (
             <BillItem key={b.id} bill={b} today={today} onPay={payBill} index={items.length + i} />
@@ -185,9 +192,9 @@ function TodayContent({ today }: { today: IsoDate }) {
       <Capture today={today} />
       <AddChoice />
 
-      {error && (
+      {(error ?? postponer.error) && (
         <p role="alert" className="mini-alert">
-          {error}
+          {error ?? postponer.error}
         </p>
       )}
       {failed && (
@@ -225,7 +232,7 @@ function TodayContent({ today }: { today: IsoDate }) {
                   <p className="mini-day-label">{dayTitle(date, today)}</p>
                   <ul className="mini-list grouped">
                     {items.map((t) => (
-                      <TaskItem key={t.id} task={t} today={today} onComplete={complete} compact />
+                      <TaskItem key={t.id} task={t} today={today} onComplete={complete} onPostpone={postponeTask} compact />
                     ))}
                   </ul>
                 </div>

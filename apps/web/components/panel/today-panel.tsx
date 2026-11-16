@@ -8,6 +8,7 @@ import { useToast } from "@/components/mini/toast";
 import { useFinance } from "@/hooks/finance";
 import { useSettings, useTasks, useUpdateTask } from "@/hooks/queries";
 import { useClock } from "@/hooks/use-clock";
+import { usePostpone } from "@/hooks/use-postpone";
 import { useStatusChange } from "@/hooks/use-status-change";
 import { useToday } from "@/hooks/use-today";
 import { addDays } from "@/lib/dates";
@@ -25,6 +26,7 @@ import {
   type Lancamento,
 } from "@/lib/finance";
 import { closedLabel, dayTitle, nextUp, spokenTime, timeOnlyLabel, whenLabel } from "@/lib/mini-tasks";
+import { postponeInput, postponeShortcuts, type PostponeKind } from "@/lib/postpone";
 import { groupDay, groupHistory } from "@/lib/tasks-view";
 import { CaptureBar } from "./capture-bar";
 import { TaskDialog } from "./task-dialog";
@@ -67,7 +69,7 @@ export function TodayPanel() {
   );
 }
 
-function TaskRow({ task, today, kind, onComplete, onOpen }: { task: TaskDto; today: IsoDate; kind: "overdue" | "today" | "later" | "undated"; onComplete: (t: TaskDto) => void; onOpen: (t: TaskDto) => void }) {
+function TaskRow({ task, today, kind, onComplete, onPostpone, onOpen }: { task: TaskDto; today: IsoDate; kind: "overdue" | "today" | "later" | "undated"; onComplete: (t: TaskDto) => void; onPostpone: (t: TaskDto, k: PostponeKind) => void; onOpen: (t: TaskDto) => void }) {
   const sub = kind === "today" ? timeOnlyLabel(task) : kind === "undated" ? "Sem data" : whenLabel(task, today);
   return (
     <li className="pn-row">
@@ -78,6 +80,11 @@ function TaskRow({ task, today, kind, onComplete, onOpen }: { task: TaskDto; tod
         <span className="pn-row-title">{task.title}</span>
         <span className={`pn-row-sub${kind === "overdue" ? " late" : ""}`}>{sub}</span>
       </button>
+      {postponeShortcuts(task, today).map((s) => (
+        <button key={s.kind} type="button" className="mini-btn pn-small-btn" aria-label={s.ariaLabel} onClick={() => onPostpone(task, s.kind)}>
+          {s.kind === "segunda" ? "Segunda" : s.label}
+        </button>
+      ))}
     </li>
   );
 }
@@ -91,6 +98,7 @@ function TodayContent({ today }: { today: IsoDate }) {
   const settings = useSettings();
   const { error, change } = useStatusChange();
   const update = useUpdateTask();
+  const postponer = usePostpone();
   const toast = useToast();
   const finance = useFinance();
   const clock = useClock(settings.data?.timezone);
@@ -135,6 +143,9 @@ function TodayContent({ today }: { today: IsoDate }) {
     void change(task.id, "concluida");
     toast({ message: `Tarefa concluída: ${task.title}.`, undo: () => void change(task.id, "pendente") });
   }
+  function postponeTask(task: TaskDto, kind: PostponeKind) {
+    void postponer.postpone(task, postponeInput(task, kind, today), today);
+  }
   function reopen(task: TaskDto) {
     void update.mutateAsync({ id: task.id, input: { status: "pendente" } });
     toast({ message: `Tarefa reaberta: ${task.title}.`, undo: () => void update.mutateAsync({ id: task.id, input: { status: "concluida" } }) });
@@ -158,9 +169,9 @@ function TodayContent({ today }: { today: IsoDate }) {
         )}
 
         <FinanceNotice />
-        {error !== null && (
+        {(error ?? postponer.error) !== null && (
           <p role="alert" className="mini-alert">
-            {error}
+            {error ?? postponer.error}
           </p>
         )}
         {failed && (
@@ -177,7 +188,7 @@ function TodayContent({ today }: { today: IsoDate }) {
                 <h2 className="pn-h2">Já passaram</h2>
                 <ul className="pn-list">
                   {overdue.map((t) => (
-                    <TaskRow key={t.id} task={t} today={today} kind="overdue" onComplete={complete} onOpen={setOpenTask} />
+                    <TaskRow key={t.id} task={t} today={today} kind="overdue" onComplete={complete} onPostpone={postponeTask} onOpen={setOpenTask} />
                   ))}
                 </ul>
               </>
@@ -187,7 +198,7 @@ function TodayContent({ today }: { today: IsoDate }) {
             {todayItems.length > 0 ? (
               <ul className="pn-list">
                 {todayItems.map((t) => (
-                  <TaskRow key={t.id} task={t} today={today} kind="today" onComplete={complete} onOpen={setOpenTask} />
+                  <TaskRow key={t.id} task={t} today={today} kind="today" onComplete={complete} onPostpone={postponeTask} onOpen={setOpenTask} />
                 ))}
               </ul>
             ) : (
@@ -199,7 +210,7 @@ function TodayContent({ today }: { today: IsoDate }) {
                 <h2 className="pn-h2">Sem data</h2>
                 <ul className="pn-list">
                   {undated.map((t) => (
-                    <TaskRow key={t.id} task={t} today={today} kind="undated" onComplete={complete} onOpen={setOpenTask} />
+                    <TaskRow key={t.id} task={t} today={today} kind="undated" onComplete={complete} onPostpone={postponeTask} onOpen={setOpenTask} />
                   ))}
                 </ul>
               </>
@@ -210,7 +221,7 @@ function TodayContent({ today }: { today: IsoDate }) {
                 <h2 className="pn-h2">Próximos dias</h2>
                 <ul className="pn-list">
                   {later.map((t) => (
-                    <TaskRow key={t.id} task={t} today={today} kind="later" onComplete={complete} onOpen={setOpenTask} />
+                    <TaskRow key={t.id} task={t} today={today} kind="later" onComplete={complete} onPostpone={postponeTask} onOpen={setOpenTask} />
                   ))}
                 </ul>
               </>

@@ -5,10 +5,12 @@ import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { updateTaskInputSchema, type IsoDate } from "@nexus/shared";
 import { useDeleteTask, useTask, useUpdateTask } from "@/hooks/queries";
+import { usePostpone } from "@/hooks/use-postpone";
 import { useToday } from "@/hooks/use-today";
 import { ApiError } from "@/lib/api";
 import { messageFor } from "@/lib/messages";
-import { postponeOptions, reminderState, whenLabel } from "@/lib/mini-tasks";
+import { reminderState, whenLabel } from "@/lib/mini-tasks";
+import { postponeOptions, type PostponeOption } from "@/lib/postpone";
 import { BackIcon, CheckIcon } from "./icons";
 import { useToast } from "./toast";
 
@@ -59,6 +61,7 @@ function Loaded({
   const toast = useToast();
   const update = useUpdateTask();
   const del = useDeleteTask();
+  const postponer = usePostpone();
   const [mode, setMode] = useState<"view" | "postpone" | "edit" | "cancel">("view");
   const [error, setError] = useState<string | null>(null);
   const [title, setTitle] = useState(task.title);
@@ -76,6 +79,11 @@ function Loaded({
     } catch (err) {
       setError(messageFor(err));
     }
+  }
+
+  async function postponeTo(input: PostponeOption["input"]) {
+    setError(null);
+    if (await postponer.postpone(task, input, today)) setMode("view");
   }
 
   async function complete() {
@@ -119,7 +127,8 @@ function Loaded({
     }
   }
 
-  const pending = update.isPending || del.isPending;
+  const pending = update.isPending || del.isPending || postponer.pending;
+  const shownError = error ?? postponer.error;
   const tag = task.fatal ? "Prazo fatal" : TYPE_LABEL[task.type];
 
   return (
@@ -143,9 +152,9 @@ function Loaded({
         </dl>
       </div>
 
-      {error !== null && (
+      {shownError !== null && (
         <p role="alert" className="mini-alert">
-          {error}
+          {shownError}
         </p>
       )}
 
@@ -179,7 +188,7 @@ function Loaded({
           <h2 style={{ margin: 0, fontSize: "1.0625rem" }}>Adiar para quando?</h2>
           <div className="mini-sheet">
             {postponeOptions(task, today).map((o) => (
-              <button key={o.key} type="button" className="mini-btn" disabled={pending} onClick={() => void apply(o.input)}>
+              <button key={o.key} type="button" className="mini-btn" disabled={pending} onClick={() => void postponeTo(o.input)}>
                 {o.label}
               </button>
             ))}

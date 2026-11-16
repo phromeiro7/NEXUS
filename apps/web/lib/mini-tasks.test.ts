@@ -1,7 +1,7 @@
 import type { IsoDate } from "@nexus/shared";
 import { describe, expect, it } from "vitest";
 import { makeTask } from "@/test/factories";
-import { pluralTasks, postponeOptions, reminderState, spokenTime, whenLabel } from "./mini-tasks";
+import { pluralTasks, reminderState, spokenTime, whenLabel } from "./mini-tasks";
 
 const today = "2026-11-03" as IsoDate;
 
@@ -32,23 +32,6 @@ describe("reminderState", () => {
     expect(reminderState(makeTask({ dueDate: today, dueTime: "14:00" }))).toBe("Agendado para 14h");
     expect(reminderState(makeTask({ dueDate: today }))).toMatch(/^Sem lembrete/);
     expect(reminderState(makeTask({ status: "concluida" }))).toBe("Concluída");
-  });
-});
-
-describe("postponeOptions", () => {
-  it("oferece +1 hora só para tarefa de hoje com horário e vira o dia à meia-noite", () => {
-    const t = makeTask({ dueDate: today, dueTime: "23:30" });
-    const hora = postponeOptions(t, today).find((o) => o.key === "hora");
-    expect(hora?.input).toEqual({ dueDate: "2026-11-04", dueTime: "00:30" });
-    expect(postponeOptions(makeTask({ dueDate: "2026-11-05", dueTime: "10:00" }), today).some((o) => o.key === "hora")).toBe(false);
-  });
-  it("atrasada pode ir para hoje", () => {
-    const keys = postponeOptions(makeTask({ dueDate: "2026-11-01" }), today).map((o) => o.key);
-    expect(keys).toContain("hoje");
-  });
-  it("amanhã preserva o horário", () => {
-    const o = postponeOptions(makeTask({ dueDate: today, dueTime: "09:00" }), today).find((x) => x.key === "amanha");
-    expect(o?.input).toEqual({ dueDate: "2026-11-04", dueTime: "09:00" });
   });
 });
 

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { IsoDate, TaskDto } from "@nexus/shared";
 import { timeOnlyLabel, whenLabel } from "@/lib/mini-tasks";
+import { postponeShortcuts, type PostponeKind } from "@/lib/postpone";
 import { CheckIcon, ChevronIcon, ClockIcon } from "./icons";
 
 const TYPE_TAG: Record<string, string> = { prazo: "Prazo", audiencia: "Audiência" };
@@ -11,17 +12,21 @@ export function TaskItem({
   task,
   today,
   onComplete,
+  onPostpone,
   index = 0,
   compact = false,
 }: {
   task: TaskDto;
   today: IsoDate;
   onComplete: (task: TaskDto) => void;
+  /** Atalho "Amanhã" na linha; sem isto a linha não mostra adiar. */
+  onPostpone?: (task: TaskDto, kind: PostponeKind) => void;
   index?: number;
   /** Na seção "Hoje" o dia é redundante: mostra só o horário. */
   compact?: boolean;
 }) {
   const late = task.dueDate !== null && task.dueDate < today;
+  const tomorrow = onPostpone ? postponeShortcuts(task, today)[0] : undefined;
   const tag = task.fatal ? "Prazo fatal" : TYPE_TAG[task.type];
   return (
     <li className={`mini-item${late ? " late" : ""}`} style={{ animationDelay: `${Math.min(index, 8) * 30}ms` }}>
@@ -54,6 +59,11 @@ export function TaskItem({
         </div>
         <ChevronIcon />
       </Link>
+      {tomorrow && (
+        <button type="button" className="mini-postpone" aria-label={tomorrow.ariaLabel} onClick={() => onPostpone?.(task, tomorrow.kind)}>
+          {tomorrow.label}
+        </button>
+      )}
     </li>
   );
 }
