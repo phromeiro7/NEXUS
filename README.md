@@ -1,6 +1,6 @@
 # Nexus
 
-[![CI](https://github.com/phromeiro7/nexus_assist_pessoal/actions/workflows/ci.yml/badge.svg)](https://github.com/phromeiro7/nexus_assist_pessoal/actions/workflows/ci.yml)
+[![CI](https://github.com/phromeiro7/NEXUS/actions/workflows/ci.yml/badge.svg)](https://github.com/phromeiro7/NEXUS/actions/workflows/ci.yml)
 
 Assistente pessoal de tarefas, lembretes e finanças. Você registra por mensagem no Telegram ("gastei 100 em
 roupa", "me lembra de ligar para o João amanhã às 10h") e organiza o dia no painel web ou no Mini App do
