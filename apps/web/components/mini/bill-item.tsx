@@ -40,7 +40,7 @@ export function BillItem({
                 {dueLabel(bill, today)}
               </span>
             ) : (
-              <span>{incoming ? dueLabel(bill, today).replace("Vence", "Chega").replace("Venceu", "Chegava") : dueLabel(bill, today)}</span>
+              <span>{incoming ? dueLabel(bill, today).replace("Venceu", "Chegava").replace("Vence", "Chega") : dueLabel(bill, today)}</span>
             )}
           </span>
         </div>
