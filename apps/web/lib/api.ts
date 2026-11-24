@@ -21,9 +21,8 @@ import type {
   UpdateSettingsResultDto,
   UpdateTaskInput,
 } from '@nexus/shared';
+import { HTTP_NO_CONTENT, HTTP_UNAUTHORIZED } from './http';
 
-const HTTP_NO_CONTENT = 204;
-const HTTP_UNAUTHORIZED = 401;
 /** Status usado quando a requisição nem chegou ao servidor (sem resposta HTTP). */
 const NETWORK_FAILURE_STATUS = 0;
 

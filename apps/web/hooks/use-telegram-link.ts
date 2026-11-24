@@ -109,7 +109,7 @@ export function useTelegramLink({ linked, paused }: { linked: boolean; paused: b
     }
   }
 
-  /** Copia o código ativo para a área de transferência e mostra o resultado em `copyMsg`. */
+  /** Copia o código ativo para a área de transferência e mostra o resultado em `copyMessage`. */
   async function copy() {
     if (activeCode === null) return;
     try {
@@ -144,7 +144,7 @@ export function useTelegramLink({ linked, paused }: { linked: boolean; paused: b
     pending,
     error,
     clearError: () => setError(null),
-    copyMsg: copyMessage,
+    copyMessage,
     unlinkPending,
     hasClipboard: typeof navigator !== "undefined" && !!navigator.clipboard,
     link: activeCode && activeCode.deepLink.startsWith(TELEGRAM_PREFIX) ? activeCode.deepLink : null,

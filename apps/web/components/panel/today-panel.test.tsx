@@ -8,7 +8,7 @@ import { ToastProvider } from "@/components/mini/toast";
 import { createFakeFinanceApi } from "@/test/fake-finance-api";
 import { makeTask } from "@/test/factories";
 import { ShortcutsProvider } from "./shortcuts";
-import { daySentence, TodayPanel } from "./today-panel";
+import { describeDaySummary, TodayPanel } from "./today-panel";
 
 const holder = vi.hoisted(() => ({ api: null as unknown }));
 vi.mock("@/components/auth-provider", () => ({
@@ -77,13 +77,13 @@ beforeEach(() => {
   };
 });
 
-describe("daySentence", () => {
+describe("describeDaySummary", () => {
   it("concorda em número e some com a parte vazia", () => {
-    expect(daySentence(2, 2)).toBe("2 tarefas e 2 contas para hoje.");
-    expect(daySentence(1, 1)).toBe("1 tarefa e 1 conta para hoje.");
-    expect(daySentence(3, 0)).toBe("3 tarefas para hoje.");
-    expect(daySentence(0, 2)).toBe("2 contas para hoje.");
-    expect(daySentence(0, 0)).toBe("Hoje está em dia.");
+    expect(describeDaySummary(2, 2)).toBe("2 tarefas e 2 contas para hoje.");
+    expect(describeDaySummary(1, 1)).toBe("1 tarefa e 1 conta para hoje.");
+    expect(describeDaySummary(3, 0)).toBe("3 tarefas para hoje.");
+    expect(describeDaySummary(0, 2)).toBe("2 contas para hoje.");
+    expect(describeDaySummary(0, 0)).toBe("Hoje está em dia.");
   });
 });
 

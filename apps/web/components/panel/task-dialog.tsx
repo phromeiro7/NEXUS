@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { updateTaskInputSchema, type IsoDate, type TaskDto, type UpdateTaskInput } from "@nexus/shared";
+import { TASK_TITLE_MAX, updateTaskInputSchema, type IsoDate, type TaskDto, type UpdateTaskInput } from "@nexus/shared";
 import { CheckIcon } from "@/components/mini/icons";
 import { useToast } from "@/components/mini/toast";
 import { useDeleteTask, useUpdateTask } from "@/hooks/queries";
@@ -13,9 +13,6 @@ import { Dialog } from "./dialog";
 
 /** Qual painel do diálogo está aberto: ações, opções de adiar, edição ou confirmação de cancelamento. */
 type DialogMode = "view" | "postpone" | "edit" | "cancel";
-
-/** Mesmo limite de título do schema compartilhado (updateTaskInputSchema). */
-const TASK_TITLE_MAX_LENGTH = 200;
 
 /** Uma tarefa aberta no painel: concluir, adiar, editar, cancelar ou excluir. Fecha quando a ação termina. */
 export function TaskDialog({ task, today, onClose }: { task: TaskDto; today: IsoDate; onClose: () => void }) {
@@ -61,7 +58,7 @@ export function TaskDialog({ task, today, onClose }: { task: TaskDto; today: Iso
     }
     const parsed = updateTaskInputSchema.safeParse({ title: title.trim(), dueDate: date === "" ? null : date, dueTime: time === "" ? null : time });
     if (!parsed.success) {
-      setError(`Confira o título (até ${TASK_TITLE_MAX_LENGTH} caracteres), o dia e o horário.`);
+      setError(`Confira o título (até ${TASK_TITLE_MAX} caracteres), o dia e o horário.`);
       return;
     }
     await applyUpdate(parsed.data);
@@ -133,7 +130,7 @@ export function TaskDialog({ task, today, onClose }: { task: TaskDto; today: Iso
         <form onSubmit={saveEdit} noValidate className="mini-stack" aria-label="Editar tarefa">
           <label className="mini-label">
             Título
-            <input className="mini-field" value={title} maxLength={TASK_TITLE_MAX_LENGTH} onChange={(event) => setTitle(event.target.value)} />
+            <input className="mini-field" value={title} maxLength={TASK_TITLE_MAX} onChange={(event) => setTitle(event.target.value)} />
           </label>
           <div className="pn-two">
             <label className="mini-label">

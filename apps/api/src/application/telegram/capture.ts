@@ -1,9 +1,9 @@
 import { todayIn, type CreateFinanceEntryInput, type CreateTaskInput, type FinanceEntryDto, type IsoDate, type TaskDto } from '@nexus/shared';
 import { z } from 'zod';
-import { addDays, weekday } from '../../domain/calendar.js';
+import { addDays, weekdayOf } from '../../domain/calendar.js';
 import { interpretCapture, type CaptureProposal } from '../../domain/chat-capture.js';
 import type { TelegramErrorClass } from '../../domain/reminder-message.js';
-import { HoraInvalidaError } from '../../domain/reminders.js';
+import { InvalidLocalTimeError } from '../../domain/reminders.js';
 import type { AssistantLogger } from '../assistant/process-message.js';
 import type { CaptureRepository, Clock, InlineKeyboard, ProfileRepository, TelegramClient } from '../ports.js';
 
@@ -42,7 +42,7 @@ type FinanceProposal = Extract<Proposal, { kind: 'gasto' | 'entrada' | 'conta' }
 type MenuKind = 'cat' | 'day' | 'time';
 
 /** Resposta quando as regras não entendem a mensagem e não há assistente de IA. */
-export const CAPTURE_HELP =
+export const CAPTURE_NOT_UNDERSTOOD_MESSAGE =
   'Não entendi. Tente: gastei 45 no mercado · recebi 800 de um serviço · reunião com a equipe sexta 9h30';
 
 const EXPENSE_CATEGORIES = ['Moradia', 'Mercado', 'Transporte', 'Lazer', 'Saúde', 'Roupas', 'Outra'] as const;
@@ -87,7 +87,7 @@ export function dayText(date: IsoDate, today: IsoDate): string {
   const [, month = '', day = ''] = date.split('-');
   const shortDate = `${day}/${month}`;
   for (let daysAhead = 2; daysAhead <= MAX_DAYS_AHEAD_WITH_WEEKDAY; daysAhead += 1) {
-    if (date === addDays(today, daysAhead)) return `${WEEKDAY_NAMES[weekday(date)]}, ${shortDate}`;
+    if (date === addDays(today, daysAhead)) return `${WEEKDAY_NAMES[weekdayOf(date)]}, ${shortDate}`;
   }
   return shortDate;
 }
@@ -377,7 +377,7 @@ export function makeCaptureFlow(deps: CaptureFlowDeps) {
           await captures.abortConfirm(captureId);
           logger.error('telegram.capture_create_failed', { errorName: errorNameOf(error) });
           const text =
-            error instanceof HoraInvalidaError
+            error instanceof InvalidLocalTimeError
               ? 'Esse horário não existe no seu fuso (horário de verão). Escolha outro.'
               : 'Não consegui anotar agora. Nada foi salvo. Tente de novo.';
           return void (await answerCallback(input.id, text));

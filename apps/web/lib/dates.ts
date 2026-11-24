@@ -1,7 +1,8 @@
 import type { IsoDate } from '@nexus/shared';
 
-const MS_PER_DAY = 86_400_000;
-const DAYS_PER_WEEK = 7;
+/** Milissegundos em um dia de 24 h (a aritmética de datas é feita em UTC, sem horário de verão). */
+export const MS_PER_DAY = 86_400_000;
+export const DAYS_PER_WEEK = 7;
 /** Tamanho de "YYYY-MM-DD" no início de uma string ISO. */
 const ISO_DATE_LENGTH = 10;
 

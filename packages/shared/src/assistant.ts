@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { BriefingDto } from './briefing.js';
 import type { IsoDate } from './primitives.js';
 import type { TaskDto } from './task-api.js';
-import type { TaskType } from './task.js';
+import { TASK_TYPE_LABEL } from './task.js';
 
 const ASSISTANT_MESSAGE_MAX = 1000;
 
@@ -15,12 +15,6 @@ export type AssistantMessageInput = z.infer<typeof assistantMessageInputSchema>;
 
 /** `affectedTasks`: tarefas criadas/alteradas/concluídas neste ciclo, sem ids repetidos. */
 export type AssistantReplyDto = { reply: string; affectedTasks: TaskDto[] };
-
-const TASK_TYPE_LABEL: Record<TaskType, string> = {
-  prazo: 'Prazo',
-  tarefa: 'Tarefa',
-  audiencia: 'Audiência',
-};
 
 /** Ex.: "segunda-feira, 3 de março de 2025". Em UTC porque a data ISO já é o dia local. */
 const LONG_DATE_FORMAT = new Intl.DateTimeFormat('pt-BR', {

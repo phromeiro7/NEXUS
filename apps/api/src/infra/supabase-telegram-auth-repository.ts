@@ -1,8 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { SessionIssuer, TelegramAuthReplayRepository } from '../application/ports.js';
-
-/** SQLSTATE `unique_violation`: este `initData` já foi usado. */
-const UNIQUE_VIOLATION = '23505';
+import { UNIQUE_VIOLATION } from './mappers.js';
 
 /** Anti-replay do login pelo Mini App: cada hash de `initData` só pode ser usado uma vez. */
 export function createSupabaseTelegramAuthRepository(client: SupabaseClient): TelegramAuthReplayRepository {

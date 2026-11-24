@@ -7,7 +7,7 @@ import { useAuth } from "@/components/auth-provider";
 
 /** Pedido do link de recuperação de senha; a resposta é neutra para não revelar se a conta existe. */
 export default function RecuperarPage() {
-  const { sendReset } = useAuth();
+  const { sendPasswordResetEmail } = useAuth();
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
@@ -17,7 +17,7 @@ export default function RecuperarPage() {
     setError(null);
     setSent(false);
     setSubmitting(true);
-    const result = await sendReset(email.trim());
+    const result = await sendPasswordResetEmail(email.trim());
     setSubmitting(false);
     if (result.error !== null) {
       setError(result.error);

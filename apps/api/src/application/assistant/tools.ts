@@ -1,5 +1,6 @@
 import {
   isoDateSchema,
+  TASK_TITLE_MAX,
   taskStatusSchema,
   taskTypeSchema,
   timeOfDaySchema,
@@ -9,7 +10,7 @@ import {
   type UpdateTaskInput,
 } from '@nexus/shared';
 import { z } from 'zod';
-import { HoraInvalidaError } from '../../domain/reminders.js';
+import { InvalidLocalTimeError } from '../../domain/reminders.js';
 import { InvalidTransitionError } from '../../domain/task-status.js';
 import { ValidationError } from '../../http-errors.js';
 import { ConflictError, InvalidInputError, NotFoundError } from '../errors.js';
@@ -18,10 +19,9 @@ import type { makeTaskUseCases } from '../tasks.js';
 
 /** `listar_tarefas` devolve no máximo isto; o restante só é contado (`maisResultados`). */
 const MAX_LISTED_TASKS = 50;
-const MAX_TITLE_LENGTH = 200;
 const MAX_TITLE_QUERY_LENGTH = 100;
 
-const titleSchema = z.string().trim().min(1).max(MAX_TITLE_LENGTH);
+const titleSchema = z.string().trim().min(1).max(TASK_TITLE_MAX);
 
 const createTaskArgsSchema = z
   .object({
@@ -121,12 +121,12 @@ export const ASSISTANT_TOOLS: ToolDefinition[] = [
 ];
 
 /**
- * Estado de um pedido ao assistente: `affected` são as tarefas gravadas (o recibo da resposta) e `knownIds`
+ * Estado de um pedido ao assistente: `affectedTasks` são as tarefas gravadas (o recibo da resposta) e `knownIds`
  * os ids que o modelo pode usar, porque vieram de uma ferramenta ou do alvo da resposta (nunca inventados).
  */
 export type ToolContext = {
   source: 'painel' | 'telegram';
-  affected: Map<string, TaskDto>;
+  affectedTasks: Map<string, TaskDto>;
   knownIds: Set<string>;
 };
 export type ToolResult = { content: string; isError: boolean };
@@ -184,7 +184,7 @@ export function makeToolExecutor(deps: {
 
   /** Guarda a tarefa gravada no recibo do pedido e libera o id para as próximas ferramentas. */
   function recordAffectedTask(context: ToolContext, task: TaskDto): ToolResult {
-    context.affected.set(task.id, task);
+    context.affectedTasks.set(task.id, task);
     context.knownIds.add(task.id);
     return successResult(toCompactTask(task));
   }
@@ -255,7 +255,7 @@ export function makeToolExecutor(deps: {
       if (error instanceof NotFoundError) return errorResult('tarefa não encontrada');
       if (error instanceof InvalidTransitionError) return errorResult('mudança de status não permitida');
       if (error instanceof ConflictError && error.code === 'tarefa_encerrada') return errorResult('tarefa já encerrada');
-      if (error instanceof HoraInvalidaError) {
+      if (error instanceof InvalidLocalTimeError) {
         return errorResult('essa hora não existe/é ambígua neste fuso (horário de verão)');
       }
       if (error instanceof InvalidInputError) return errorResult('argumento inválido: dueTime');

@@ -6,7 +6,7 @@ import { useTelegramLink } from "@/hooks/use-telegram-link";
 /** Vínculo do Telegram no Mini App: mesma lógica do painel (`useTelegramLink`), com a cara do Mini App. */
 export function TelegramCard({ linked, paused }: { linked: boolean; paused: boolean }) {
   const telegramLink = useTelegramLink({ linked, paused });
-  const { activeCode, expired, pending, error, copyMsg, unlinkPending, hasClipboard, link } = telegramLink;
+  const { activeCode, expired, pending, error, copyMessage, unlinkPending, hasClipboard, link } = telegramLink;
   // Desvincular pede confirmação na própria tela antes de agir.
   const [confirming, setConfirming] = useState(false);
 
@@ -107,9 +107,9 @@ export function TelegramCard({ linked, paused }: { linked: boolean; paused: bool
         </div>
       )}
 
-      {copyMsg !== null && (
+      {copyMessage !== null && (
         <p role="status" className="mini-tg-text">
-          {copyMsg}
+          {copyMessage}
         </p>
       )}
       {error !== null && (

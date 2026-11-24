@@ -134,13 +134,13 @@ function unavailableReasonOf(error: unknown, signal: AbortSignal): AssistantUnav
 }
 
 /** `logLevel: 'off'` fixo: ANTHROPIC_LOG=debug no ambiente nunca pode fazer o SDK logar corpos de requisição. */
-export function createSdkClient(apiKey: string): Anthropic {
+export function createAnthropicSdkClient(apiKey: string): Anthropic {
   return new Anthropic({ apiKey, logLevel: 'off' });
 }
 
 /** Modelo do assistente sobre a API da Anthropic; erros da API viram `AssistantUnavailableError` com motivo fixo. */
 export function createAnthropicAssistantModel(opts: { apiKey: string; model: string; client?: Anthropic }): AssistantModel {
-  const client = opts.client ?? createSdkClient(opts.apiKey);
+  const client = opts.client ?? createAnthropicSdkClient(opts.apiKey);
 
   return {
     async step({ system, messages, tools, signal }) {

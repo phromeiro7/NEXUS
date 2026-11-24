@@ -1,7 +1,7 @@
 import type { CreateTaskInput } from '@nexus/shared';
 import { describe, expect, it } from 'vitest';
 import { createFakes } from '../../test/fakes.js';
-import { HoraInvalidaError } from '../domain/reminders.js';
+import { InvalidLocalTimeError } from '../domain/reminders.js';
 import { InvalidTransitionError } from '../domain/task-status.js';
 import { ConflictError, InvalidInputError, NotFoundError } from './errors.js';
 import type { NewTask, TaskPatch } from './ports.js';
@@ -75,12 +75,12 @@ describe('tasks.create', () => {
     ]);
   });
 
-  it('nonexistent local time: HoraInvalidaError, nothing stored, no replace call', async () => {
+  it('nonexistent local time: InvalidLocalTimeError, nothing stored, no replace call', async () => {
     const { fakes, uc, created } = setup();
     fakes.setNow(new Date('2026-03-01T12:00:00Z'));
     fakes.setProfile(U1, { timezone: 'America/New_York' });
     await expect(uc.create(U1, input({ title: 'X', dueDate: '2026-03-08', dueTime: '02:30' }))).rejects.toBeInstanceOf(
-      HoraInvalidaError,
+      InvalidLocalTimeError,
     );
     expect(created).toEqual([]);
     expect(await uc.list(U1, {})).toEqual([]);
@@ -202,7 +202,7 @@ describe('tasks.update', () => {
     expect(fakes.reminders.remindersFor(t.id, U1).map((d) => d.kind)).toContain('tres_dias');
   });
 
-  it('nonexistent local time: HoraInvalidaError and the task is unchanged', async () => {
+  it('nonexistent local time: InvalidLocalTimeError and the task is unchanged', async () => {
     const { fakes, uc, updates } = setup();
     fakes.setNow(new Date('2026-03-01T12:00:00Z'));
     fakes.setProfile(U1, { timezone: 'America/New_York' });
@@ -211,7 +211,7 @@ describe('tasks.update', () => {
     fakes.setNow(new Date('2026-03-02T12:00:00Z'));
     const callsBefore = fakes.reminders.calls.length;
     await expect(uc.update(U1, t.id, { dueDate: '2026-03-08', dueTime: '02:30' })).rejects.toBeInstanceOf(
-      HoraInvalidaError,
+      InvalidLocalTimeError,
     );
     expect(updates).toEqual([]);
     expect(await uc.get(U1, t.id)).toEqual(t);

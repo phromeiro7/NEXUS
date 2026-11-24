@@ -11,7 +11,7 @@ const DEFAULT_MAX_TRACKED_CHATS = 10_000;
  * dentro de `windowMs`. Entradas vencidas são podadas e o número de chats rastreados é limitado,
  * então a memória não cresce sem fim. O relógio vem pelo argumento `now`.
  */
-export function createFailedStartLimiter(opts: { max: number; windowMs: number; maxChats?: number }) {
+export function makeFailedStartLimiter(opts: { max: number; windowMs: number; maxChats?: number }) {
   const { max, windowMs } = opts;
   const maxChats = opts.maxChats ?? DEFAULT_MAX_TRACKED_CHATS;
   const failures = new Map<number, number[]>();

@@ -1,9 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { InviteCodeCollisionError } from '../application/errors.js';
 import type { InviteRecord, InviteRepository } from '../application/ports.js';
-
-/** SQLSTATE `unique_violation`: o código sorteado já existe. */
-const UNIQUE_VIOLATION = '23505';
+import { UNIQUE_VIOLATION } from './mappers.js';
 
 const INVITE_COLUMNS = 'code, created_by, created_at, expires_at, revoked_at, used_at, used_by, label';
 
@@ -108,7 +106,7 @@ export function createSupabaseInviteRepository(client: SupabaseClient): InviteRe
       if (error) throw new Error(`Falha ao devolver convite: ${error.message}`);
     },
 
-    async telegramIdOf(userId) {
+    async telegramUserIdOf(userId) {
       const { data, error } = await client.from('profiles').select('telegram_chat_id').eq('id', userId).maybeSingle();
       if (error) throw new Error(`Falha ao buscar o Telegram da conta: ${error.message}`);
       // Em chat privado o id do chat é o id do usuário no Telegram; bigint pode chegar como string.

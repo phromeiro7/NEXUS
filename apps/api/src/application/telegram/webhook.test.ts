@@ -15,8 +15,8 @@ import {
 } from '../errors.js';
 import type { AssistantModel, ModelStep } from '../ports.js';
 import { makeTaskUseCases } from '../tasks.js';
-import { createFailedStartLimiter } from './failed-start-limiter.js';
-import { makeHandleTelegramUpdate } from './webhook.js';
+import { makeFailedStartLimiter } from './failed-start-limiter.js';
+import { makeTelegramWebhookHandler } from './webhook.js';
 
 const NOW = new Date('2026-10-26T13:00:00Z');
 const U1 = 'user-1';
@@ -73,8 +73,8 @@ function setup(opts: { script?: Array<ModelStep | Error>; limiter?: boolean } = 
     info: (event: string, fields: Logs[number]['fields']) => logs.push({ level: 'info', event, fields }),
     error: (event: string, fields: Logs[number]['fields']) => logs.push({ level: 'error', event, fields }),
   };
-  const limiter = createFailedStartLimiter({ max: 5, windowMs: 10 * 60_000 });
-  const handle = makeHandleTelegramUpdate({
+  const limiter = makeFailedStartLimiter({ max: 5, windowMs: 10 * 60_000 });
+  const handle = makeTelegramWebhookHandler({
     links: fakes.links,
     events: fakes.inboundEvents,
     confirmations: fakes.confirmations,
@@ -384,7 +384,7 @@ describe('command suffix and case', () => {
     const fakes = createFakes({ now: NOW });
     fakes.links.setChat(U1, CHAT1);
     const processMessage = vi.fn(async () => ({ reply: 'ok', affectedTasks: [] }));
-    const handle = makeHandleTelegramUpdate({
+    const handle = makeTelegramWebhookHandler({
       links: fakes.links,
       events: fakes.inboundEvents,
       confirmations: fakes.confirmations,
@@ -452,7 +452,7 @@ describe('model path', () => {
     });
     expect(s.sentTo(CHAT1)).toEqual(['Anotei.\n\n• Reunião — qua, 28/10, 14:00']);
     const [task] = await s.fakes.tasks.list(U1, {});
-    expect((await s.fakes.confirmations.tasksFor(U1, CHAT1, 777)).alive).toEqual([task!.id]);
+    expect((await s.fakes.confirmations.findConfirmedTasks(U1, CHAT1, 777)).aliveTaskIds).toEqual([task!.id]);
   });
 
   it('a reply without affected tasks records no confirmation', async () => {

@@ -51,7 +51,7 @@ function formatDayHeading(date: IsoDate): string {
 }
 
 /** "2 tarefas e 2 contas para hoje"; sem nada, "Hoje está em dia." */
-export function daySentence(taskCount: number, billCount: number): string {
+export function describeDaySummary(taskCount: number, billCount: number): string {
   const taskLabel = taskCount === 1 ? "1 tarefa" : `${taskCount} tarefas`;
   const billLabel = billCount === 1 ? "1 conta" : `${billCount} contas`;
   if (taskCount === 0 && billCount === 0) return "Hoje está em dia.";
@@ -207,7 +207,7 @@ function TodayContent({ today }: { today: IsoDate }) {
         <h1 id="pn-h-hoje" className="pn-h1">
           {formatDayHeading(today)}
         </h1>
-        {!loading && !failed && <p className="pn-lead">{daySentence(taskCount, billsDueToday)}</p>}
+        {!loading && !failed && <p className="pn-lead">{describeDaySummary(taskCount, billsDueToday)}</p>}
         {nextTask !== null && (
           <p className="pn-sub" style={{ margin: "4px 0 0", fontSize: "1rem" }}>
             Próxima: {nextTask.title}, {spokenTime(nextTask.dueTime ?? "")}

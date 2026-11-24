@@ -13,7 +13,7 @@ import type { makeTaskUseCases } from './application/tasks.js';
 import type { SchedulerResult } from './application/scheduler.js';
 import type { makeLinkUseCases } from './application/telegram/link.js';
 import { ForbiddenError } from './application/errors.js';
-import { errorResponse } from './http-errors.js';
+import { toErrorResponse } from './http-errors.js';
 import { telegramRoutes } from './routes/telegram.js';
 import { internalRoutes } from './routes/internal.js';
 import { assistantRoutes, type ProcessMessage } from './routes/assistant.js';
@@ -101,7 +101,7 @@ export function createApp(deps: AppDeps) {
   app.notFound((c) => c.json({ error: 'nao_encontrado' }, 404));
 
   app.onError((error, c) => {
-    const { status, body, headers } = errorResponse(error);
+    const { status, body, headers } = toErrorResponse(error);
     // Só o erro inesperado é logado: nunca headers, token ou config. O cliente recebe a resposta genérica.
     // Nas rotas internas a mensagem do erro pode citar segredo ou dados: só o nome também.
     // No assistente a mensagem do erro pode carregar texto do usuário: só o nome do erro é registrado.

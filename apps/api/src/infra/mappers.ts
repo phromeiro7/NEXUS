@@ -13,18 +13,21 @@ export function isUuid(value: string): boolean {
 /** SQLSTATE `invalid_text_representation` (ex.: uuid malformado que passou pela guarda). */
 export const INVALID_TEXT_REPRESENTATION = '22P02';
 
+/** SQLSTATE `unique_violation`: o insert bateu numa restrição `unique`. */
+export const UNIQUE_VIOLATION = '23505';
+
 /** `HH:MM:SS` (Postgres `time`) -> `HH:mm`. */
 export function toHourMinute(value: unknown): string | null {
   return value === null || value === undefined ? null : (value as string).slice(0, 5);
 }
 
 /** Timestamp do Postgres -> ISO 8601 em UTC; `null`/ausente continua `null`. */
-export function toIso(value: unknown): string | null {
+export function toIsoTimestamp(value: unknown): string | null {
   return value === null || value === undefined ? null : new Date(value as string).toISOString();
 }
 
 /** Mantém só as chaves definidas (`undefined` é ignorado; `null` é gravado). */
-export function definedOnly(entries: Record<string, unknown>): Row {
+export function omitUndefined(entries: Record<string, unknown>): Row {
   return Object.fromEntries(Object.entries(entries).filter(([, value]) => value !== undefined));
 }
 
@@ -42,9 +45,9 @@ export function taskFromRow(row: Row): TaskDto {
     dueDate: row.due_date as IsoDate | null,
     dueTime: toHourMinute(row.due_time),
     fatal: row.fatal as boolean,
-    completedAt: toIso(row.completed_at),
-    createdAt: toIso(row.created_at)!,
-    updatedAt: toIso(row.updated_at)!,
+    completedAt: toIsoTimestamp(row.completed_at),
+    createdAt: toIsoTimestamp(row.created_at)!,
+    updatedAt: toIsoTimestamp(row.updated_at)!,
   };
 }
 
@@ -64,8 +67,8 @@ export function financeEntryFromRow(row: Row): FinanceEntryDto {
     dueDate: row.due_date as IsoDate,
     status: row.status as FinanceEntryDto['status'],
     reminderTime: toHourMinute(row.reminder_time),
-    paidAt: toIso(row.paid_at),
-    createdAt: toIso(row.created_at) as string,
-    updatedAt: toIso(row.updated_at) as string,
+    paidAt: toIsoTimestamp(row.paid_at),
+    createdAt: toIsoTimestamp(row.created_at) as string,
+    updatedAt: toIsoTimestamp(row.updated_at) as string,
   };
 }

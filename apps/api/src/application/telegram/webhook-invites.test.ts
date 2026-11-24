@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { createFakes } from '../../../test/fakes.js';
 import { makeAcceptInvite, makeInviteUseCases } from '../invites.js';
-import { createFailedStartLimiter } from './failed-start-limiter.js';
-import { makeHandleTelegramUpdate } from './webhook.js';
+import { makeFailedStartLimiter } from './failed-start-limiter.js';
+import { makeTelegramWebhookHandler } from './webhook.js';
 
 const NOW = new Date('2026-11-04T12:00:00.000Z');
 const ADMIN = 'admin-user';
@@ -30,7 +30,7 @@ function setup(opts: { withInvites?: boolean; admins?: number[] } = {}) {
     clock: fakes.clock,
   });
   const logs: string[] = [];
-  const handle = makeHandleTelegramUpdate({
+  const handle = makeTelegramWebhookHandler({
     links: fakes.links,
     events: fakes.inboundEvents,
     confirmations: fakes.confirmations,
@@ -41,7 +41,7 @@ function setup(opts: { withInvites?: boolean; admins?: number[] } = {}) {
     clock: fakes.clock,
     logger: { info: () => undefined, error: (event) => void logs.push(event) },
     botUsername: 'nexus_bot',
-    failedStartLimiter: createFailedStartLimiter({ max: 5, windowMs: 10 * 60_000 }),
+    failedStartLimiter: makeFailedStartLimiter({ max: 5, windowMs: 10 * 60_000 }),
     miniAppUrl: MINI_APP,
     ...(opts.withInvites === false ? {} : { invites: inviteUseCases, acceptInvite }),
   });

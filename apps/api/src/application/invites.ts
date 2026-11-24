@@ -2,7 +2,7 @@ import { randomBytes as nodeRandomBytes } from 'node:crypto';
 import { INVITE_CODE_LENGTH, type InviteDto, type InviteStatus, type InviteSummaryDto } from '@nexus/shared';
 import { ConflictError, ForbiddenError, InviteCodeCollisionError, NotFoundError } from './errors.js';
 import type { AccountProvisioner, Clock, InviteRecord, InviteRepository, LinkCodeRepository } from './ports.js';
-import { generateCode } from './telegram/link.js';
+import { generateLinkCode } from './telegram/link.js';
 
 /** Convites ficam 7 dias por padrão; a config pode mudar (1 a 90 dias). */
 export const INVITE_DEFAULT_TTL_DAYS = 7;
@@ -14,7 +14,7 @@ const MS_PER_DAY = 24 * 60 * 60_000;
 const INVITE_SHARE_TEXT = 'Entre no Nexus, meu assistente de tarefas e lembretes:';
 
 /** Estado do convite calculado na hora: uso e revogação valem mais que o vencimento. */
-export function inviteStatus(record: InviteRecord, now: Date): InviteStatus {
+export function computeInviteStatus(record: InviteRecord, now: Date): InviteStatus {
   if (record.usedAt !== null) return 'usado';
   if (record.revokedAt !== null) return 'revogado';
   if (record.expiresAt.getTime() <= now.getTime()) return 'expirado';
@@ -54,7 +54,7 @@ export function makeInviteUseCases(deps: InviteDeps) {
   const toInviteDto = (record: InviteRecord, now: Date): InviteDto => ({
     code: record.code,
     link: inviteLink(deps.botUsername ?? '', record.code),
-    status: inviteStatus(record, now),
+    status: computeInviteStatus(record, now),
     createdAt: record.createdAt.toISOString(),
     expiresAt: record.expiresAt.toISOString(),
     usedAt: record.usedAt?.toISOString() ?? null,
@@ -64,7 +64,7 @@ export function makeInviteUseCases(deps: InviteDeps) {
   /** Lança `ForbiddenError` se a conta não tem Telegram vinculado ou se ele não está na lista de administradores. */
   async function requireAdmin(userId: string): Promise<void> {
     if (deps.adminTelegramIds.size === 0) throw new ForbiddenError();
-    const telegramId = await deps.invites.telegramIdOf(userId);
+    const telegramId = await deps.invites.telegramUserIdOf(userId);
     if (telegramId === null || !deps.adminTelegramIds.has(telegramId)) throw new ForbiddenError();
   }
 
@@ -91,7 +91,7 @@ export function makeInviteUseCases(deps: InviteDeps) {
       const now = deps.clock.now();
       const expiresAt = new Date(now.getTime() + ttlMs);
       for (let attempt = 0; ; attempt++) {
-        const code = generateCode(randomBytes, INVITE_CODE_LENGTH);
+        const code = generateLinkCode(randomBytes, INVITE_CODE_LENGTH);
         try {
           await deps.invites.create(userId, code, now, expiresAt, label);
           return toInviteDto({ code, createdBy: userId, createdAt: now, expiresAt, revokedAt: null, usedAt: null, label: label ?? null }, now);
@@ -107,7 +107,7 @@ export function makeInviteUseCases(deps: InviteDeps) {
       const now = deps.clock.now();
       const summary: InviteSummaryDto = { total: 0, ativos: 0, usados: 0, expirados: 0, revogados: 0 };
       for (const record of await deps.invites.list(INVITE_LIST_LIMIT)) {
-        const status = inviteStatus(record, now);
+        const status = computeInviteStatus(record, now);
         summary.total++;
         if (status === 'ativo') summary.ativos++;
         else if (status === 'usado') summary.usados++;
@@ -127,7 +127,7 @@ export function makeInviteUseCases(deps: InviteDeps) {
       if (record === null) throw new NotFoundError('convite');
       const guestUserId = record.usedBy ?? null;
       if (guestUserId !== null) {
-        const guestTelegramId = await deps.invites.telegramIdOf(guestUserId);
+        const guestTelegramId = await deps.invites.telegramUserIdOf(guestUserId);
         const guestIsAdmin = guestTelegramId !== null && deps.adminTelegramIds.has(guestTelegramId);
         if (guestUserId === userId || guestIsAdmin) throw new ConflictError('convite_de_administrador');
         await deps.accounts.block(guestUserId);

@@ -2,6 +2,7 @@ import type { CaptureProposalDto, CreateTaskInput, IsoDate } from "@nexus/shared
 import { addDays, daysBetween, formatShort } from "./dates";
 import { CATEGORIAS_ENTRADA, CATEGORIAS_GASTO, formatBRL, type LancamentoInput } from "./finance";
 import { spokenTime } from "./mini-tasks";
+import { normalizeForComparison } from "./text";
 
 /*
  * A barra de captura do painel lê a frase na API (as mesmas regras do bot) e mostra a proposta aqui.
@@ -43,9 +44,6 @@ function whenText(proposal: CaptureProposalDto, today: IsoDate): string {
   const day = dayText(proposal.date, today);
   return proposal.time === null ? day : `${day} às ${spokenTime(proposal.time)}`;
 }
-
-/** Minúsculas e sem acentos, para comparar "saude" com "Saúde". */
-const normalizeForComparison = (text: string) => text.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
 
 /** Frase curta do que foi entendido. */
 export function proposalSummary(proposal: CaptureProposalDto, today: IsoDate): string {

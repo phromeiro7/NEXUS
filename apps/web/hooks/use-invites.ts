@@ -3,13 +3,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useApi } from "@/components/auth-provider";
 import { ApiError } from "@/lib/api";
+import { HTTP_FORBIDDEN } from "@/lib/http";
 
 /** Chave de cache da lista de convites. */
 export const inviteKeys = { all: ["invites"] as const };
 
 /** A lista muda pouco: evita recarregar a cada troca de tela. */
 const INVITES_STALE_TIME_MS = 30_000;
-const HTTP_FORBIDDEN = 403;
 
 /** Quem não é administrador recebe 403: a seção de convites simplesmente não existe para essa pessoa. */
 export const isForbidden = (error: unknown): boolean => error instanceof ApiError && error.status === HTTP_FORBIDDEN;

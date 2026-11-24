@@ -8,7 +8,7 @@ import type {
   TaskPatch,
   TaskRepository,
 } from './ports.js';
-import { makeSyncReminders, remindersFor } from './sync-reminders.js';
+import { makeSyncReminders, computeRemindersForTask } from './sync-reminders.js';
 
 /**
  * Casos de uso das tarefas. Toda escrita mantém os lembretes em sincronia: eles são calculados antes de
@@ -39,11 +39,11 @@ export function makeTaskUseCases(deps: {
         completedAt: null,
       };
 
-      // (1) lembretes antes de gravar: HoraInvalidaError sobe sem estado gravado
+      // (1) lembretes antes de gravar: InvalidLocalTimeError sobe sem estado gravado
       const profile = await deps.profiles.get(userId);
       const now = deps.clock.now();
       const draft: TaskDto = { ...fields, id: '', createdAt: now.toISOString(), updatedAt: now.toISOString() };
-      remindersFor(draft, profile, now);
+      computeRemindersForTask(draft, profile, now);
 
       // (2) grava
       const task = await deps.tasks.create(userId, { ...fields, source, sourceText: null });
@@ -116,9 +116,9 @@ export function makeTaskUseCases(deps: {
       const merged: TaskDto = { ...current, ...patch };
       if (merged.dueTime !== null && merged.dueDate === null) throw new InvalidInputError('hora_sem_data');
 
-      // (4) lembretes calculados antes de gravar: HoraInvalidaError sobe sem estado gravado
+      // (4) lembretes calculados antes de gravar: InvalidLocalTimeError sobe sem estado gravado
       const profile = await deps.profiles.get(userId);
-      remindersFor(merged, profile, now);
+      computeRemindersForTask(merged, profile, now);
 
       // (5) grava
       const updated = await deps.tasks.update(userId, id, patch);

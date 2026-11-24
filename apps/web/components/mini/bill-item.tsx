@@ -3,10 +3,7 @@
 import type { IsoDate } from "@nexus/shared";
 import { dueLabel, formatBRL, isOverdue, type Lancamento } from "@/lib/finance";
 import { CheckIcon, ClockIcon } from "./icons";
-
-/** Animação de entrada escalonada: cada linha atrasa um pouco mais, até um teto para listas longas. */
-const STAGGER_STEP_MS = 30;
-const MAX_STAGGERED_ITEMS = 8;
+import { MAX_STAGGERED_ITEMS, STAGGER_STEP_MS } from "./stagger";
 
 /** Conta a pagar (ou entrada a receber) na mesma linha visual de uma tarefa, com o valor ao lado. */
 export function BillItem({

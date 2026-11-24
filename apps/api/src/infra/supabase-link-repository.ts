@@ -2,10 +2,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { LinkCodeCollisionError } from '../application/errors.js';
 import type { LinkCodeRepository } from '../application/ports.js';
 import { maskEmail } from '../application/telegram/mask-email.js';
+import { UNIQUE_VIOLATION } from './mappers.js';
 import { isSyntheticEmail } from './supabase-account-provisioner.js';
-
-/** SQLSTATE `unique_violation`: o código de vínculo sorteado já existe. */
-const UNIQUE_VIOLATION = '23505';
 
 /** Linha devolvida pela RPC `consume_link_code`. */
 type ConsumeRow = { status: 'ok' | 'invalido' | 'chat_em_uso'; user_id: string | null };

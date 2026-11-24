@@ -4,13 +4,11 @@ import { FINANCE_LIST_LIMIT, type FinanceEntryRepository } from '../application/
 import {
   FINANCE_COLUMNS,
   INVALID_TEXT_REPRESENTATION,
-  definedOnly,
+  omitUndefined,
+  UNIQUE_VIOLATION,
   financeEntryFromRow,
   isUuid,
 } from './mappers.js';
-
-/** SQLSTATE `unique_violation`: o id informado (idempotência) já foi usado. */
-const UNIQUE_VIOLATION = '23505';
 
 /**
  * Lançamentos financeiros. Toda consulta filtra por `user_id` (o cliente usa a service role, que ignora RLS);
@@ -22,7 +20,7 @@ export function createSupabaseFinanceRepository(client: SupabaseClient): Finance
       const { data, error } = await client
         .from('finance_entries')
         .insert({
-          ...definedOnly({ id: entry.id }),
+          ...omitUndefined({ id: entry.id }),
           user_id: userId,
           kind: entry.kind,
           description: entry.description,
@@ -70,7 +68,7 @@ export function createSupabaseFinanceRepository(client: SupabaseClient): Finance
 
     async update(userId, id, patch) {
       if (!isUuid(id)) return null;
-      const columns = definedOnly({
+      const columns = omitUndefined({
         description: patch.description,
         amount_cents: patch.amountCents,
         category: patch.category,

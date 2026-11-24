@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRef, useState, type FormEvent } from "react";
 import { updateSettingsInputSchema, type SettingsDto } from "@nexus/shared";
-import { DISPLAY_NAME_MAX, useAuth } from "@/components/auth-provider";
+import { DISPLAY_NAME_MAX_LENGTH, useAuth } from "@/components/auth-provider";
 import { useSettings, useUpdateSettings } from "@/hooks/queries";
 import { messageFor } from "@/lib/messages";
 import { BackIcon } from "./icons";
@@ -126,7 +126,7 @@ export function NameForm() {
         <input
           className="mini-field"
           value={name}
-          maxLength={DISPLAY_NAME_MAX}
+          maxLength={DISPLAY_NAME_MAX_LENGTH}
           autoComplete="given-name"
           placeholder="Seu nome ou apelido"
           onChange={(event) => setName(event.target.value)}

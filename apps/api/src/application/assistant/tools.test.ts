@@ -48,7 +48,7 @@ function setup(opts: { now?: Date } = {}) {
   const exec = makeToolExecutor({ tasks, profiles: fakes.profiles, clock: fakes.clock });
   const newCtx = (source: 'painel' | 'telegram' = 'painel') => ({
     source,
-    affected: new Map<string, TaskDto>(),
+    affectedTasks: new Map<string, TaskDto>(),
     knownIds: new Set<string>(),
   });
   return { fakes, exec, calls, failing, newCtx };
@@ -257,7 +257,7 @@ describe('executor: ids and ownership', () => {
     const done = await exec(U1, 'concluir_tarefa', { id: other.id }, ctx);
     expect(done).toEqual({ content: 'tarefa não encontrada', isError: true });
     expect(await fakes.tasks.get(U2, other.id)).toEqual(other);
-    expect(ctx.affected.size).toBe(0);
+    expect(ctx.affectedTasks.size).toBe(0);
   });
 
   it('concluir_tarefa updates only { status: concluida }', async () => {
@@ -289,7 +289,7 @@ describe('executor: ids and ownership', () => {
     expect(r).toEqual({ content: 'tarefa já encerrada', isError: true });
   });
 
-  it('affected has no duplicate ids and knownIds gains the id', async () => {
+  it('affectedTasks has no duplicate ids and knownIds gains the id', async () => {
     const { exec, newCtx } = setup();
     const ctx = newCtx();
     const created = parse((await exec(U1, 'criar_tarefa', { title: 'A', dueDate: '2026-10-30' }, ctx)).content);
@@ -297,9 +297,9 @@ describe('executor: ids and ownership', () => {
     expect(ctx.knownIds.has(id)).toBe(true);
     await exec(U1, 'alterar_tarefa', { id, title: 'A2' }, ctx);
     await exec(U1, 'concluir_tarefa', { id }, ctx);
-    expect([...ctx.affected.keys()]).toEqual([id]);
-    expect(ctx.affected.get(id)?.status).toBe('concluida');
-    expect(ctx.affected.get(id)?.title).toBe('A2');
+    expect([...ctx.affectedTasks.keys()]).toEqual([id]);
+    expect(ctx.affectedTasks.get(id)?.status).toBe('concluida');
+    expect(ctx.affectedTasks.get(id)?.title).toBe('A2');
   });
 
   it('criar_tarefa passes the channel source to the use case', async () => {
@@ -362,7 +362,7 @@ describe('executor: listar_tarefas', () => {
 });
 
 describe('executor: error mapping', () => {
-  it('HoraInvalidaError (DST gap) -> DST message', async () => {
+  it('InvalidLocalTimeError (DST gap) -> DST message', async () => {
     const { exec, fakes, newCtx } = setup({ now: new Date('2026-03-01T12:00:00Z') });
     fakes.setProfile(U1, { timezone: 'America/New_York' });
     const r = await exec(U1, 'criar_tarefa', { title: 'A', dueDate: '2026-03-08', dueTime: '02:30' }, newCtx());

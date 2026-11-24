@@ -89,7 +89,7 @@ afterAll(async () => {
 describe('qr_login_requests: acesso', () => {
   it('anon e authenticated não leem, escrevem nem chamam as funções; só a API (service_role) usa', async () => {
     const id = randomUUID();
-    await repo.create({ id, nonceHash: sha(randomUUID()), pollHash: sha(randomUUID()), clientLabel: 'TESTE-acesso', createdAt: now, expiresAt: new Date(now.getTime() + 180_000) });
+    await repo.create({ id, nonceHash: sha(randomUUID()), pollSecretHash: sha(randomUUID()), clientLabel: 'TESTE-acesso', createdAt: now, expiresAt: new Date(now.getTime() + 180_000) });
     const user = await createUser();
     await expect(asAnon((q) => q('select id from public.qr_login_requests'))).rejects.toMatchObject(DENIED);
     await expect(asUser(user, (q) => q('select id from public.qr_login_requests'))).rejects.toMatchObject(DENIED);
@@ -103,9 +103,9 @@ describe('qr_login_requests: acesso', () => {
 
   it('os segredos só entram como hash hex de 64 caracteres, e o rótulo tem limite', async () => {
     const bad = (patch: Partial<Parameters<typeof repo.create>[0]>) =>
-      repo.create({ id: randomUUID(), nonceHash: sha(randomUUID()), pollHash: sha(randomUUID()), clientLabel: 'TESTE-c', createdAt: now, expiresAt: new Date(now.getTime() + 1000), ...patch });
+      repo.create({ id: randomUUID(), nonceHash: sha(randomUUID()), pollSecretHash: sha(randomUUID()), clientLabel: 'TESTE-c', createdAt: now, expiresAt: new Date(now.getTime() + 1000), ...patch });
     await expect(bad({ nonceHash: 'texto-puro' })).rejects.toThrow();
-    await expect(bad({ pollHash: 'abc' })).rejects.toThrow();
+    await expect(bad({ pollSecretHash: 'abc' })).rejects.toThrow();
     await expect(bad({ clientLabel: 'x'.repeat(61) })).rejects.toThrow();
     await expect(bad({ expiresAt: new Date(now.getTime() - 1000) })).rejects.toThrow();
     const nonceHash = sha(randomUUID());
@@ -119,8 +119,8 @@ describe('qr_login_requests: estados atômicos', () => {
     const nonce = randomUUID();
     const poll = randomUUID();
     const id = randomUUID();
-    await repo.create({ id, nonceHash: sha(nonce), pollHash: sha(poll), clientLabel: 'TESTE-estado', createdAt: now, expiresAt: new Date(now.getTime() + ttlMs) });
-    return { id, nonceHash: sha(nonce), pollHash: sha(poll) };
+    await repo.create({ id, nonceHash: sha(nonce), pollSecretHash: sha(poll), clientLabel: 'TESTE-estado', createdAt: now, expiresAt: new Date(now.getTime() + ttlMs) });
+    return { id, nonceHash: sha(nonce), pollSecretHash: sha(poll) };
   }
 
   it('open só vale uma vez, só enquanto aguardando e não vencido', async () => {
@@ -158,10 +158,10 @@ describe('qr_login_requests: estados atômicos', () => {
     const user = await linkedUser(base + 6);
     const r = await fresh();
     await repo.open(r.nonceHash, base + 6, user.id, now);
-    expect(await repo.consume(r.id, r.pollHash, now)).toBeNull(); // ainda não aprovado
+    expect(await repo.consume(r.id, r.pollSecretHash, now)).toBeNull(); // ainda não aprovado
     await repo.decide(r.id, base + 6, user.id, true, now);
     expect(await repo.consume(r.id, sha('segredo errado'), now)).toBeNull();
-    const results = await Promise.all(Array.from({ length: 8 }, () => repo.consume(r.id, r.pollHash, now)));
+    const results = await Promise.all(Array.from({ length: 8 }, () => repo.consume(r.id, r.pollSecretHash, now)));
     expect(results.filter((u) => u === user.id)).toHaveLength(1);
     expect(results.filter((u) => u === null)).toHaveLength(7);
     expect(await repo.get(r.id)).toMatchObject({ status: 'consumido' });
@@ -172,10 +172,10 @@ describe('qr_login_requests: estados atômicos', () => {
     const r = await fresh();
     await repo.open(r.nonceHash, base + 7, user.id, now);
     await repo.decide(r.id, base + 7, user.id, true, now);
-    expect(await repo.consume(r.id, r.pollHash, now)).toBe(user.id);
+    expect(await repo.consume(r.id, r.pollSecretHash, now)).toBe(user.id);
     await repo.release(r.id);
     expect(await repo.get(r.id)).toMatchObject({ status: 'aprovado' });
-    expect(await repo.consume(r.id, r.pollHash, new Date(now.getTime() + 200_000))).toBeNull();
+    expect(await repo.consume(r.id, r.pollSecretHash, new Date(now.getTime() + 200_000))).toBeNull();
   });
 
   it('a limpeza apaga só os vencidos há mais de dez minutos, e apagar a conta apaga o pedido', async () => {

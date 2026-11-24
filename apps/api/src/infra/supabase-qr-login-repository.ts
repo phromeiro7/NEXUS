@@ -20,7 +20,7 @@ export function createSupabaseQrLoginRepository(client: SupabaseClient): QrLogin
       const { error } = await client.from('qr_login_requests').insert({
         id: input.id,
         nonce_hash: input.nonceHash,
-        poll_hash: input.pollHash,
+        poll_hash: input.pollSecretHash,
         client_label: input.clientLabel,
         created_at: input.createdAt.toISOString(),
         expires_at: input.expiresAt.toISOString(),
@@ -40,7 +40,7 @@ export function createSupabaseQrLoginRepository(client: SupabaseClient): QrLogin
       return {
         id: row.id,
         status: row.status,
-        pollHash: row.poll_hash,
+        pollSecretHash: row.poll_hash,
         createdAt: new Date(row.created_at),
         expiresAt: new Date(row.expires_at),
       };
@@ -73,10 +73,10 @@ export function createSupabaseQrLoginRepository(client: SupabaseClient): QrLogin
       return data === 'aprovado' || data === 'negado' ? data : null;
     },
 
-    async consume(id, pollHash, now) {
+    async consume(id, pollSecretHash, now) {
       const { data, error } = await client.rpc('consume_qr_login', {
         p_id: id,
-        p_poll_hash: pollHash,
+        p_poll_hash: pollSecretHash,
         p_now: now.toISOString(),
       });
       if (error) throw new Error(`Falha ao recolher o pedido de login: ${error.message}`);

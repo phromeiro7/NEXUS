@@ -1,5 +1,5 @@
-import { FINANCE_MAX_CENTS, type IsoDate } from '@nexus/shared';
-import { addDays, weekday } from './calendar.js';
+import { FINANCE_MAX_CENTS, type IsoDate, TASK_TITLE_MAX } from '@nexus/shared';
+import { addDays, weekdayOf } from './calendar.js';
 
 /*
  * Interpretador de regras para mensagens de chat em português: "gastei 45 no mercado", "internet 119,90
@@ -29,9 +29,9 @@ export type CaptureProposal =
   | { kind: 'tarefa'; title: string; date: IsoDate | null; time: string | null; vagueTime: boolean };
 
 /** Limite do título de tarefa capturada (o mesmo da API de tarefas). */
-export const TITLE_MAX = 200;
+export const CAPTURE_TITLE_MAX = TASK_TITLE_MAX;
 /** Limite da descrição de lançamento capturado (o mesmo da API de finanças). */
-export const DESCRIPTION_MAX = 120;
+export const CAPTURE_DESCRIPTION_MAX = 120;
 
 /** Minúsculas e sem acentos: "Terça" e "terca" viram a mesma chave. */
 const normalizeForComparison = (text: string): string =>
@@ -153,10 +153,10 @@ function resolveDate(spec: DateSpec, today: IsoDate, direction: DateDirection): 
     case 'weekday': {
       if (direction === 'future') {
         // "sexta" numa sexta é a da semana seguinte (`|| 7` troca o 0 por uma semana inteira).
-        const daysAhead = (spec.weekday - weekday(today) + DAYS_PER_WEEK) % DAYS_PER_WEEK || DAYS_PER_WEEK;
+        const daysAhead = (spec.weekday - weekdayOf(today) + DAYS_PER_WEEK) % DAYS_PER_WEEK || DAYS_PER_WEEK;
         return addDays(today, daysAhead);
       }
-      const daysBack = (weekday(today) - spec.weekday + DAYS_PER_WEEK) % DAYS_PER_WEEK;
+      const daysBack = (weekdayOf(today) - spec.weekday + DAYS_PER_WEEK) % DAYS_PER_WEEK;
       return addDays(today, -daysBack);
     }
     case 'dayAndMonth': {
@@ -370,7 +370,7 @@ export function interpretCapture(text: string, today: IsoDate): CaptureProposal 
     let title = trimEdges(words).join(' ').replace(REMINDER_PREFIX, '');
     // O prefixo "me lembra de" fica no começo das palavras originais; refaz a limpeza se ele estava lá.
     title = trimEdges(title.split(' ').filter((word) => word !== '')).join(' ');
-    if (title === '' || title.length > TITLE_MAX) return null;
+    if (title === '' || title.length > CAPTURE_TITLE_MAX) return null;
     // Sem data, só vira tarefa se começar por um verbo no infinitivo ("ligar pra Ana", "comprar pão"): uma
     // frase qualquer ("oi", "academia", "me explica o prazo") é ambígua demais e fica para o assistente.
     const startsWithInfinitive = INFINITIVE_VERB_PATTERN.test(normalizeForComparison(title.split(' ')[0] ?? ''));
@@ -429,7 +429,7 @@ export function interpretCapture(text: string, today: IsoDate): CaptureProposal 
   const descriptionWords = trimEdges(words.filter((word) => isDescriptionWord(comparisonKey(word))));
   const descriptionKeys = descriptionWords.map(comparisonKey);
   const defaultDescription = kind === 'gasto' ? 'Gasto' : kind === 'entrada' ? 'Entrada' : 'Conta';
-  const description = (descriptionWords.join(' ') || defaultDescription).slice(0, DESCRIPTION_MAX).trim();
+  const description = (descriptionWords.join(' ') || defaultDescription).slice(0, CAPTURE_DESCRIPTION_MAX).trim();
   const category =
     kind === 'entrada'
       ? findCategory(descriptionKeys, INCOME_CATEGORY_WORDS)

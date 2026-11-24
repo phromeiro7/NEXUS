@@ -1,7 +1,5 @@
 import type { IsoDate, TaskDto } from '@nexus/shared';
-import { addDays, daysBetween, todayIn } from './dates';
-
-const DAYS_PER_WEEK = 7;
+import { addDays, DAYS_PER_WEEK, daysBetween, todayIn } from './dates';
 
 /** Seções da tela "Hoje", na ordem em que aparecem. */
 export type DayGroups = {

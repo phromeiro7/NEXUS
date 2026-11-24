@@ -95,8 +95,8 @@ describe('invites: repository', () => {
   });
 
   it('reads the linked Telegram id of an account', async () => {
-    expect(await invites.telegramIdOf(ADMIN_USER)).toBe(ADMIN_TG);
-    expect(await invites.telegramIdOf(randomUUID())).toBeNull();
+    expect(await invites.telegramUserIdOf(ADMIN_USER)).toBe(ADMIN_TG);
+    expect(await invites.telegramUserIdOf(randomUUID())).toBeNull();
   });
 });
 

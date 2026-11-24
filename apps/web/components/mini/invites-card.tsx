@@ -3,14 +3,13 @@
 import { useState } from "react";
 import type { InviteDto, InviteSummaryDto } from "@nexus/shared";
 import { isForbidden, useCreateInvite, useInvites, useDeleteInvite } from "@/hooks/use-invites";
+import { MS_PER_DAY } from "@/lib/dates";
 import { messageFor } from "@/lib/messages";
+import { OUTSIDE_TELEGRAM_PLATFORM } from "@/lib/telegram-init";
 
 const SHARE_TEXT = "Entre no Nexus, meu assistente de tarefas e lembretes:";
-const MS_PER_DAY = 86_400_000;
 /** Limite do apelido opcional do convite. */
 const INVITE_LABEL_MAX_LENGTH = 60;
-/** Valor de `platform` quando o SDK do Telegram carrega num navegador comum. */
-const OUTSIDE_TELEGRAM_PLATFORM = "unknown";
 
 /** "dd/mm" de um instante ISO, no fuso do aparelho. */
 const formatDayMonth = (iso: string) => new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });

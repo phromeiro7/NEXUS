@@ -13,6 +13,7 @@ import {
   type ReactNode,
 } from "react";
 import { createApiClient } from "@/lib/api";
+import { HTTP_TOO_MANY_REQUESTS, HTTP_UNAUTHORIZED } from "@/lib/http";
 import { createSupabase, readApiUrl, type AuthApiError, type AuthClient } from "@/lib/supabase";
 import { isOptedOut, markHandled, optOut, readInitData, wasHandled } from "@/lib/telegram-init";
 import { signInWithTelegram, type TelegramLoginFailure } from "@/lib/telegram-login";
@@ -42,7 +43,7 @@ export type AuthContextValue = {
   /** Sessão aberta pelo link de recuperação de senha (evento PASSWORD_RECOVERY). */
   recovery: boolean;
   signIn(email: string, password: string): Promise<AuthResult>;
-  sendReset(email: string): Promise<AuthResult>;
+  sendPasswordResetEmail(email: string): Promise<AuthResult>;
   /** Define a nova senha da sessão atual (a de recuperação, vinda do link do e-mail). */
   updatePassword(password: string): Promise<AuthResult>;
   /** Como a pessoa quer ser chamada (user_metadata.display_name); null se não definiu. */
@@ -69,9 +70,6 @@ const GENERIC_ERROR_MESSAGE = "Não foi possível concluir. Tente novamente.";
 const NETWORK_ERROR_MESSAGE = "Sem conexão. Verifique sua internet e tente novamente.";
 const RATE_LIMIT_MESSAGE = "Muitas tentativas. Aguarde um pouco e tente novamente.";
 
-const HTTP_UNAUTHORIZED = 401;
-const HTTP_TOO_MANY_REQUESTS = 429;
-
 /** Rotas de acesso: redirecionar para o login a partir delas não guarda `next` (evita voltar para a própria tela). */
 const AUTH_PAGE_PATTERN = /^\/(entrar|recuperar|nova-senha)(\/|$)/;
 
@@ -80,7 +78,7 @@ const AUTH_PAGE_PATTERN = /^\/(entrar|recuperar|nova-senha)(\/|$)/;
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/g;
 
 /** Tamanho máximo do nome de exibição salvo na conta. */
-export const DISPLAY_NAME_MAX = 40;
+export const DISPLAY_NAME_MAX_LENGTH = 40;
 
 /** O pedaço da sessão do Supabase que o provedor lê: id e nome de exibição do usuário. */
 type SessionUser = { user?: { id: string; user_metadata?: { display_name?: unknown } } } | null;
@@ -376,7 +374,7 @@ export function AuthProvider({
     }
   }, []);
 
-  const sendReset = useCallback(async (email: string): Promise<AuthResult> => {
+  const sendPasswordResetEmail = useCallback(async (email: string): Promise<AuthResult> => {
     const client = clientRef.current;
     if (!client) return { error: GENERIC_ERROR_MESSAGE };
     try {
@@ -406,7 +404,7 @@ export function AuthProvider({
   const saveDisplayName = useCallback(async (name: string): Promise<AuthResult> => {
     const client = clientRef.current;
     if (!client) return { error: GENERIC_ERROR_MESSAGE };
-    const cleanName = name.replace(CONTROL_CHARACTERS, "").trim().slice(0, DISPLAY_NAME_MAX);
+    const cleanName = name.replace(CONTROL_CHARACTERS, "").trim().slice(0, DISPLAY_NAME_MAX_LENGTH);
     const nameToSave = cleanName === "" ? null : cleanName;
     try {
       const { error } = await client.auth.updateUser({ data: { display_name: nameToSave } });
@@ -446,7 +444,7 @@ export function AuthProvider({
       telegram,
       recovery,
       signIn,
-      sendReset,
+      sendPasswordResetEmail,
       updatePassword,
       displayName,
       userId,
@@ -459,7 +457,7 @@ export function AuthProvider({
       apiBaseUrl: apiBaseUrl ?? readApiUrl(),
       configError,
     }),
-    [status, telegram, recovery, signIn, sendReset, updatePassword, displayName, userId, saveDisplayName, exchangeToken, signOut, getToken, redirectToLogin, api, apiBaseUrl, configError],
+    [status, telegram, recovery, signIn, sendPasswordResetEmail, updatePassword, displayName, userId, saveDisplayName, exchangeToken, signOut, getToken, redirectToLogin, api, apiBaseUrl, configError],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

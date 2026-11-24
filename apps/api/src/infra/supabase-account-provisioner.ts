@@ -1,9 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { ChatAlreadyLinkedError } from '../application/errors.js';
 import type { AccountProvisioner } from '../application/ports.js';
+import { UNIQUE_VIOLATION } from './mappers.js';
 
-/** SQLSTATE `unique_violation`: o chat já está vinculado a outro perfil. */
-const UNIQUE_VIOLATION = '23505';
 /** Domínio reservado (RFC 2606): nunca entrega e-mail. */
 export const SYNTHETIC_EMAIL_DOMAIN = 'telegram.invalid';
 /** ~100 anos: o Supabase só aceita duração, não "para sempre". */

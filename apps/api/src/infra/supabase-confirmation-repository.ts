@@ -20,7 +20,7 @@ export function createSupabaseConfirmationRepository(client: SupabaseClient): Co
       if (error) throw new Error(`Falha ao gravar confirmação: ${error.message}`);
     },
 
-    async tasksFor(userId, chatId, messageId) {
+    async findConfirmedTasks(userId, chatId, messageId) {
       // `!inner` + filtro em `tasks.user_id`: tarefa de outro usuário nunca entra no resultado.
       const { data, error } = await client
         .from('task_confirmations')
@@ -37,7 +37,7 @@ export function createSupabaseConfirmationRepository(client: SupabaseClient): Co
         if (task?.deleted_at === null) aliveTaskIds.push(row.task_id);
         else deletedCount += 1;
       }
-      return { alive: aliveTaskIds.sort(), deletedCount };
+      return { aliveTaskIds: aliveTaskIds.sort(), deletedCount };
     },
   };
 }
