@@ -31,25 +31,36 @@ import { groupDay, groupHistory } from "@/lib/tasks-view";
 import { CaptureBar } from "./capture-bar";
 import { TaskDialog } from "./task-dialog";
 
-const OPEN = ["pendente", "em_andamento"] as TaskStatus[];
-const DONE = ["concluida"] as TaskStatus[];
+const OPEN_STATUSES = ["pendente", "em_andamento"] as TaskStatus[];
+const DONE_STATUSES = ["concluida"] as TaskStatus[];
 
-function dayHeading(date: IsoDate): string {
-  const [y, m, d] = date.split("-").map(Number) as [number, number, number];
-  const text = new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC", weekday: "long", day: "numeric", month: "long" }).format(new Date(Date.UTC(y, m - 1, d)));
-  return text.charAt(0).toUpperCase() + text.slice(1);
+/** Quantos dias à frente entram em "Próximos dias". */
+const UPCOMING_DAYS = 7;
+/** Janela das concluídas mostradas em "Ver concluídas". */
+const DONE_HISTORY_DAYS = 7;
+/** Sem horário, a tarefa vai para o fim do dia na ordenação ("99" > qualquer "HH:MM"). */
+const NO_TIME_SORT_KEY = "99";
+
+/** "Segunda-feira, 3 de março": a data formatada em UTC para não pular de dia pelo fuso do navegador. */
+function formatDayHeading(date: IsoDate): string {
+  const [year, month, day] = date.split("-").map(Number) as [number, number, number];
+  const formatted = new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC", weekday: "long", day: "numeric", month: "long" }).format(
+    new Date(Date.UTC(year, month - 1, day)),
+  );
+  return formatted.charAt(0).toUpperCase() + formatted.slice(1);
 }
 
 /** "2 tarefas e 2 contas para hoje"; sem nada, "Hoje está em dia." */
-export function daySentence(tasks: number, bills: number): string {
-  const t = tasks === 1 ? "1 tarefa" : `${tasks} tarefas`;
-  const b = bills === 1 ? "1 conta" : `${bills} contas`;
-  if (tasks === 0 && bills === 0) return "Hoje está em dia.";
-  if (bills === 0) return `${t} para hoje.`;
-  if (tasks === 0) return `${b} para hoje.`;
-  return `${t} e ${b} para hoje.`;
+export function daySentence(taskCount: number, billCount: number): string {
+  const taskLabel = taskCount === 1 ? "1 tarefa" : `${taskCount} tarefas`;
+  const billLabel = billCount === 1 ? "1 conta" : `${billCount} contas`;
+  if (taskCount === 0 && billCount === 0) return "Hoje está em dia.";
+  if (billCount === 0) return `${taskLabel} para hoje.`;
+  if (taskCount === 0) return `${billLabel} para hoje.`;
+  return `${taskLabel} e ${billLabel} para hoje.`;
 }
 
+/** Tela "Hoje" do painel: tarefas do dia (atrasadas, de hoje, sem data, próximas) e contas a pagar. */
 export function TodayPanel() {
   const today = useToday();
   return (
@@ -69,8 +80,25 @@ export function TodayPanel() {
   );
 }
 
-function TaskRow({ task, today, kind, onComplete, onPostpone, onOpen }: { task: TaskDto; today: IsoDate; kind: "overdue" | "today" | "later" | "undated"; onComplete: (t: TaskDto) => void; onPostpone: (t: TaskDto, k: PostponeKind) => void; onOpen: (t: TaskDto) => void }) {
-  const sub = kind === "today" ? timeOnlyLabel(task) : kind === "undated" ? "Sem data" : whenLabel(task, today);
+type TaskRowKind = "overdue" | "today" | "later" | "undated";
+
+/** Linha de tarefa: concluir, abrir o detalhe e atalhos de adiar. O subtítulo depende da seção. */
+function TaskRow({
+  task,
+  today,
+  kind,
+  onComplete,
+  onPostpone,
+  onOpen,
+}: {
+  task: TaskDto;
+  today: IsoDate;
+  kind: TaskRowKind;
+  onComplete: (task: TaskDto) => void;
+  onPostpone: (task: TaskDto, postponeKind: PostponeKind) => void;
+  onOpen: (task: TaskDto) => void;
+}) {
+  const subtitle = describeTaskWhen(task, today, kind);
   return (
     <li className="pn-row">
       <button type="button" className="pn-circle" aria-label={`Concluir: ${task.title}`} onClick={() => onComplete(task)}>
@@ -78,26 +106,41 @@ function TaskRow({ task, today, kind, onComplete, onPostpone, onOpen }: { task: 
       </button>
       <button type="button" className="pn-row-main" aria-label={`Abrir: ${task.title}`} onClick={() => onOpen(task)}>
         <span className="pn-row-title">{task.title}</span>
-        <span className={`pn-row-sub${kind === "overdue" ? " late" : ""}`}>{sub}</span>
+        <span className={`pn-row-sub${kind === "overdue" ? " late" : ""}`}>{subtitle}</span>
       </button>
-      {postponeShortcuts(task, today).map((s) => (
-        <button key={s.kind} type="button" className="mini-btn pn-small-btn" aria-label={s.ariaLabel} onClick={() => onPostpone(task, s.kind)}>
-          {s.kind === "segunda" ? "Segunda" : s.label}
+      {postponeShortcuts(task, today).map((shortcut) => (
+        <button key={shortcut.kind} type="button" className="mini-btn pn-small-btn" aria-label={shortcut.ariaLabel} onClick={() => onPostpone(task, shortcut.kind)}>
+          {shortcut.kind === "segunda" ? "Segunda" : shortcut.label}
         </button>
       ))}
     </li>
   );
 }
 
+/** Hoje a hora; sem data, "Sem data"; nos demais, dia e hora relativos a hoje. */
+function describeTaskWhen(task: TaskDto, today: IsoDate, kind: TaskRowKind): string {
+  if (kind === "today") return timeOnlyLabel(task);
+  if (kind === "undated") return "Sem data";
+  return whenLabel(task, today);
+}
+
+/** Ordena por data e, no mesmo dia, por horário (sem horário vai por último). */
+function compareByDueDateAndTime(first: TaskDto, second: TaskDto): number {
+  const firstDate = first.dueDate ?? "";
+  const secondDate = second.dueDate ?? "";
+  if (firstDate === secondDate) return (first.dueTime ?? NO_TIME_SORT_KEY).localeCompare(second.dueTime ?? NO_TIME_SORT_KEY);
+  return firstDate < secondDate ? -1 : 1;
+}
+
 function TodayContent({ today }: { today: IsoDate }) {
-  const overdueQ = useTasks({ status: OPEN, to: addDays(today, -1) });
-  const todayQ = useTasks({ status: OPEN, from: today, to: today });
-  const undatedQ = useTasks({ status: OPEN, withoutDate: true });
-  const laterQ = useTasks({ status: OPEN, from: addDays(today, 1), to: addDays(today, 7) });
-  const doneQ = useTasks({ status: DONE });
+  const overdueQuery = useTasks({ status: OPEN_STATUSES, to: addDays(today, -1) });
+  const todayQuery = useTasks({ status: OPEN_STATUSES, from: today, to: today });
+  const undatedQuery = useTasks({ status: OPEN_STATUSES, withoutDate: true });
+  const upcomingQuery = useTasks({ status: OPEN_STATUSES, from: addDays(today, 1), to: addDays(today, UPCOMING_DAYS) });
+  const doneQuery = useTasks({ status: DONE_STATUSES });
   const settings = useSettings();
   const { error, change } = useStatusChange();
-  const update = useUpdateTask();
+  const updateTask = useUpdateTask();
   const postponer = usePostpone();
   const toast = useToast();
   const finance = useFinance();
@@ -105,52 +148,55 @@ function TodayContent({ today }: { today: IsoDate }) {
   const [openTask, setOpenTask] = useState<TaskDto | null>(null);
   const [showDone, setShowDone] = useState(false);
 
-  const overdue = groupDay(overdueQ.data ?? [], today).overdue;
-  const day = groupDay(todayQ.data ?? [], today);
-  const todayItems = [...day.fatalToday, ...day.timed, ...day.dateOnly];
-  const undated = groupDay(undatedQ.data ?? [], today).undated;
-  const later = [...(laterQ.data ?? [])].sort((a, b) =>
-    (a.dueDate ?? "") === (b.dueDate ?? "") ? (a.dueTime ?? "99").localeCompare(b.dueTime ?? "99") : (a.dueDate ?? "") < (b.dueDate ?? "") ? -1 : 1,
-  );
-  const laterByDate = new Map<IsoDate, TaskDto[]>();
-  for (const t of later) if (t.dueDate) laterByDate.set(t.dueDate, [...(laterByDate.get(t.dueDate) ?? []), t]);
+  const overdue = groupDay(overdueQuery.data ?? [], today).overdue;
+  const todayGroups = groupDay(todayQuery.data ?? [], today);
+  // Ordem de hoje: prazos fatais primeiro, depois os com horário e, por fim, os só com data.
+  const todayItems = [...todayGroups.fatalToday, ...todayGroups.timed, ...todayGroups.dateOnly];
+  const undated = groupDay(undatedQuery.data ?? [], today).undated;
+  const upcoming = [...(upcomingQuery.data ?? [])].sort(compareByDueDateAndTime);
+  const hasUpcomingWithDate = upcoming.some((task) => task.dueDate);
 
-  const loading = overdueQ.isPending || todayQ.isPending || undatedQ.isPending;
-  const failed = overdueQ.isError || todayQ.isError || undatedQ.isError;
+  // "Próximos dias" não entra no carregamento/erro: é complementar e não deve segurar a tela.
+  const loading = overdueQuery.isPending || todayQuery.isPending || undatedQuery.isPending;
+  const failed = overdueQuery.isError || todayQuery.isError || undatedQuery.isError;
   const taskCount = overdue.length + todayItems.length;
-  const next = loading || failed ? null : nextUp(todayItems, clock);
+  const nextTask = loading || failed ? null : nextUp(todayItems, clock);
 
   // Contas: as vencidas (de qualquer mês) e as do mês que ainda faltam pagar.
-  const ym = monthOf(today);
-  const due = dueBills(finance.lancamentos, today);
-  const bills: Lancamento[] = [...due.overdue, ...billsOfMonth(finance.lancamentos, ym).filter((b) => b.data >= today)];
-  const billsToday = due.overdue.length + due.today.length;
-  const hasMonth = hasMonthEntries(finance.lancamentos, ym);
-  const totals = monthTotals(finance.lancamentos, ym);
+  const currentMonth = monthOf(today);
+  const dueBillGroups = dueBills(finance.lancamentos, today);
+  const bills: Lancamento[] = [
+    ...dueBillGroups.overdue,
+    ...billsOfMonth(finance.lancamentos, currentMonth).filter((bill) => bill.data >= today),
+  ];
+  const billsDueToday = dueBillGroups.overdue.length + dueBillGroups.today.length;
+  const hasMonthEntriesForCurrentMonth = hasMonthEntries(finance.lancamentos, currentMonth);
+  const totals = monthTotals(finance.lancamentos, currentMonth);
 
+  // Histórico de concluídas precisa do fuso da conta; sem configurações (ou com fuso inválido), fica vazio.
   let doneGroups: Array<{ day: IsoDate; tasks: TaskDto[] }> = [];
   if (settings.data !== undefined) {
     try {
-      const since = addDays(today, -7);
-      doneGroups = groupHistory(doneQ.data ?? [], { timeZone: settings.data.timezone }).filter((g) => g.day >= since);
+      const since = addDays(today, -DONE_HISTORY_DAYS);
+      doneGroups = groupHistory(doneQuery.data ?? [], { timeZone: settings.data.timezone }).filter((group) => group.day >= since);
     } catch {
       doneGroups = [];
     }
   }
-  const doneCount = doneGroups.reduce((n, g) => n + g.tasks.length, 0);
+  const doneCount = doneGroups.reduce((total, group) => total + group.tasks.length, 0);
 
-  function complete(task: TaskDto) {
+  function completeTask(task: TaskDto) {
     void change(task.id, "concluida");
     toast({ message: `Tarefa concluída: ${task.title}.`, undo: () => void change(task.id, "pendente") });
   }
   function postponeTask(task: TaskDto, kind: PostponeKind) {
     void postponer.postpone(task, postponeInput(task, kind, today), today);
   }
-  function reopen(task: TaskDto) {
-    void update.mutateAsync({ id: task.id, input: { status: "pendente" } });
-    toast({ message: `Tarefa reaberta: ${task.title}.`, undo: () => void update.mutateAsync({ id: task.id, input: { status: "concluida" } }) });
+  function reopenTask(task: TaskDto) {
+    void updateTask.mutateAsync({ id: task.id, input: { status: "pendente" } });
+    toast({ message: `Tarefa reaberta: ${task.title}.`, undo: () => void updateTask.mutateAsync({ id: task.id, input: { status: "concluida" } }) });
   }
-  function pay(bill: Lancamento) {
+  function payBill(bill: Lancamento) {
     finance.marcarPaga(bill.id);
     toast({ message: `Conta paga: ${bill.descricao}.`, undo: () => finance.desmarcarPaga(bill.id) });
   }
@@ -159,12 +205,12 @@ function TodayContent({ today }: { today: IsoDate }) {
     <div className="pn-grid2">
       <section aria-labelledby="pn-h-hoje">
         <h1 id="pn-h-hoje" className="pn-h1">
-          {dayHeading(today)}
+          {formatDayHeading(today)}
         </h1>
-        {!loading && !failed && <p className="pn-lead">{daySentence(taskCount, billsToday)}</p>}
-        {next !== null && (
+        {!loading && !failed && <p className="pn-lead">{daySentence(taskCount, billsDueToday)}</p>}
+        {nextTask !== null && (
           <p className="pn-sub" style={{ margin: "4px 0 0", fontSize: "1rem" }}>
-            Próxima: {next.title}, {spokenTime(next.dueTime ?? "")}
+            Próxima: {nextTask.title}, {spokenTime(nextTask.dueTime ?? "")}
           </p>
         )}
 
@@ -187,8 +233,8 @@ function TodayContent({ today }: { today: IsoDate }) {
               <>
                 <h2 className="pn-h2">Já passaram</h2>
                 <ul className="pn-list">
-                  {overdue.map((t) => (
-                    <TaskRow key={t.id} task={t} today={today} kind="overdue" onComplete={complete} onPostpone={postponeTask} onOpen={setOpenTask} />
+                  {overdue.map((task) => (
+                    <TaskRow key={task.id} task={task} today={today} kind="overdue" onComplete={completeTask} onPostpone={postponeTask} onOpen={setOpenTask} />
                   ))}
                 </ul>
               </>
@@ -197,8 +243,8 @@ function TodayContent({ today }: { today: IsoDate }) {
             <h2 className="pn-h2">Hoje</h2>
             {todayItems.length > 0 ? (
               <ul className="pn-list">
-                {todayItems.map((t) => (
-                  <TaskRow key={t.id} task={t} today={today} kind="today" onComplete={complete} onPostpone={postponeTask} onOpen={setOpenTask} />
+                {todayItems.map((task) => (
+                  <TaskRow key={task.id} task={task} today={today} kind="today" onComplete={completeTask} onPostpone={postponeTask} onOpen={setOpenTask} />
                 ))}
               </ul>
             ) : (
@@ -209,26 +255,26 @@ function TodayContent({ today }: { today: IsoDate }) {
               <>
                 <h2 className="pn-h2">Sem data</h2>
                 <ul className="pn-list">
-                  {undated.map((t) => (
-                    <TaskRow key={t.id} task={t} today={today} kind="undated" onComplete={complete} onPostpone={postponeTask} onOpen={setOpenTask} />
+                  {undated.map((task) => (
+                    <TaskRow key={task.id} task={task} today={today} kind="undated" onComplete={completeTask} onPostpone={postponeTask} onOpen={setOpenTask} />
                   ))}
                 </ul>
               </>
             )}
 
-            {laterByDate.size > 0 && (
+            {hasUpcomingWithDate && (
               <>
                 <h2 className="pn-h2">Próximos dias</h2>
                 <ul className="pn-list">
-                  {later.map((t) => (
-                    <TaskRow key={t.id} task={t} today={today} kind="later" onComplete={complete} onPostpone={postponeTask} onOpen={setOpenTask} />
+                  {upcoming.map((task) => (
+                    <TaskRow key={task.id} task={task} today={today} kind="later" onComplete={completeTask} onPostpone={postponeTask} onOpen={setOpenTask} />
                   ))}
                 </ul>
               </>
             )}
 
             <div style={{ marginTop: 32 }}>
-              <button type="button" className="mini-btn pn-small-btn" aria-expanded={showDone} aria-controls="pn-done" onClick={() => setShowDone((v) => !v)}>
+              <button type="button" className="mini-btn pn-small-btn" aria-expanded={showDone} aria-controls="pn-done" onClick={() => setShowDone((shown) => !shown)}>
                 {showDone ? "Esconder concluídas" : `Ver concluídas (${doneCount})`}
               </button>
             </div>
@@ -237,19 +283,19 @@ function TodayContent({ today }: { today: IsoDate }) {
                 {doneCount === 0 ? (
                   <p className="pn-quiet-text">Nada concluído nos últimos 7 dias.</p>
                 ) : (
-                  doneGroups.map((g) => (
-                    <section key={g.day} aria-label={dayTitle(g.day, today)}>
+                  doneGroups.map((group) => (
+                    <section key={group.day} aria-label={dayTitle(group.day, today)}>
                       <h3 className="pn-sub" style={{ margin: "16px 0 8px", fontWeight: 700 }}>
-                        {dayTitle(g.day, today)}
+                        {dayTitle(group.day, today)}
                       </h3>
                       <ul className="pn-list">
-                        {g.tasks.map((t) => (
-                          <li key={t.id} className="pn-row">
+                        {group.tasks.map((task) => (
+                          <li key={task.id} className="pn-row">
                             <span className="pn-row-main" style={{ cursor: "default" }}>
-                              <span className="pn-row-title">{t.title}</span>
-                              <span className="pn-row-sub">{settings.data ? (closedLabel(t, settings.data.timezone) ?? "Concluída") : "Concluída"}</span>
+                              <span className="pn-row-title">{task.title}</span>
+                              <span className="pn-row-sub">{settings.data ? (closedLabel(task, settings.data.timezone) ?? "Concluída") : "Concluída"}</span>
                             </span>
-                            <button type="button" className="mini-btn pn-small-btn" aria-label={`Reabrir: ${t.title}`} onClick={() => reopen(t)}>
+                            <button type="button" className="mini-btn pn-small-btn" aria-label={`Reabrir: ${task.title}`} onClick={() => reopenTask(task)}>
                               Reabrir
                             </button>
                           </li>
@@ -272,14 +318,14 @@ function TodayContent({ today }: { today: IsoDate }) {
           <div role="status" aria-label="Carregando contas" className="mini-skeleton" />
         ) : bills.length > 0 ? (
           <ul className="pn-list">
-            {bills.map((b) => (
-              <li key={b.id} className="pn-row">
+            {bills.map((bill) => (
+              <li key={bill.id} className="pn-row">
                 <span className="pn-row-main" style={{ cursor: "default" }}>
-                  <span className="pn-row-title">{b.descricao}</span>
-                  <span className={`pn-row-sub${isOverdue(b, today) ? " late" : ""}`}>{dueLabel(b, today)}</span>
+                  <span className="pn-row-title">{bill.descricao}</span>
+                  <span className={`pn-row-sub${isOverdue(bill, today) ? " late" : ""}`}>{dueLabel(bill, today)}</span>
                 </span>
-                <span className="pn-amount">{formatBRL(b.valorCentavos)}</span>
-                <button type="button" className="mini-btn pn-small-btn" aria-label={`Paguei: ${b.descricao}`} onClick={() => pay(b)}>
+                <span className="pn-amount">{formatBRL(bill.valorCentavos)}</span>
+                <button type="button" className="mini-btn pn-small-btn" aria-label={`Paguei: ${bill.descricao}`} onClick={() => payBill(bill)}>
                   Paguei
                 </button>
               </li>
@@ -289,10 +335,10 @@ function TodayContent({ today }: { today: IsoDate }) {
           <p className="pn-quiet-text">Nenhuma conta em aberto neste mês.</p>
         )}
 
-        {hasMonth && (
+        {hasMonthEntriesForCurrentMonth && (
           <>
             <p style={{ margin: "28px 0 4px", fontSize: "1.125rem", lineHeight: 1.4 }}>
-              {monthName(ym)}:{" "}
+              {monthName(currentMonth)}:{" "}
               {totals.sobra >= 0 ? `sobram ${formatBRLShort(totals.sobra)} depois das contas` : `faltam ${formatBRLShort(-totals.sobra)} para fechar as contas`}.
             </p>
             <p className="pn-sub" style={{ margin: "0 0 12px" }}>

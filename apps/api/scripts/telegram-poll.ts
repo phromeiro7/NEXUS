@@ -11,8 +11,19 @@ import { pathToFileURL } from 'node:url';
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 /** Espera do `getUpdates`: o Telegram segura a resposta até esse tempo se não houver mensagem. */
 const LONG_POLL_SECONDS = 30;
+/** Pausa antes de tentar de novo depois de uma falha (Telegram ou API local). */
 const BACKOFF_MS = 5_000;
+/** Folga além do long poll antes de desistir da requisição ao `getUpdates`. */
+const GET_UPDATES_GRACE_SECONDS = 15;
+const MS_PER_SECOND = 1000;
+/** A API local pode chamar o modelo: dá tempo de sobra para responder. */
+const DELIVER_TIMEOUT_MS = 60_000;
+const DELETE_WEBHOOK_TIMEOUT_MS = 15_000;
+const DEFAULT_PORT = '3001';
+const TELEGRAM_API_BASE_URL = 'https://api.telegram.org';
+const INVALID_URL_MESSAGE = 'TELEGRAM_POLL_URL inválida: esperada uma URL http(s) absoluta';
 
+/** Configuração do polling já validada (token e segredo nunca são impressos). */
 export type PollConfig = { token: string; secret: string; webhookUrl: string };
 
 /** Lê o ambiente; os erros nomeiam a variável e nunca incluem valores. */
@@ -21,22 +32,26 @@ export function buildPollConfig(env: Record<string, string | undefined>): PollCo
   if (!token) throw new Error('Variável de ambiente ausente: TELEGRAM_BOT_TOKEN');
   const secret = env.TELEGRAM_WEBHOOK_SECRET?.trim();
   if (!secret) throw new Error('Variável de ambiente ausente: TELEGRAM_WEBHOOK_SECRET');
-  const base = (env.TELEGRAM_POLL_URL?.trim() || `http://localhost:${env.PORT?.trim() || '3001'}`).replace(/\/+$/, '');
-  let parsed: URL;
+  // Sem barras finais, para não gerar `//telegram` ao concatenar o caminho.
+  const defaultUrl = `http://localhost:${env.PORT?.trim() || DEFAULT_PORT}`;
+  const baseUrl = (env.TELEGRAM_POLL_URL?.trim() || defaultUrl).replace(/\/+$/, '');
+  let parsedUrl: URL;
   try {
-    parsed = new URL(base);
+    parsedUrl = new URL(baseUrl);
   } catch {
-    throw new Error('TELEGRAM_POLL_URL inválida: esperada uma URL http(s) absoluta');
+    throw new Error(INVALID_URL_MESSAGE);
   }
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    throw new Error('TELEGRAM_POLL_URL inválida: esperada uma URL http(s) absoluta');
+  if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+    throw new Error(INVALID_URL_MESSAGE);
   }
-  if (parsed.protocol === 'http:' && !LOOPBACK_HOSTS.has(parsed.hostname)) {
+  // `http:` só em localhost: o segredo do webhook não pode trafegar sem TLS pela rede.
+  if (parsedUrl.protocol === 'http:' && !LOOPBACK_HOSTS.has(parsedUrl.hostname)) {
     throw new Error('TELEGRAM_POLL_URL inválida: fora de localhost use https');
   }
-  return { token, secret, webhookUrl: `${base}/telegram/webhook` };
+  return { token, secret, webhookUrl: `${baseUrl}/telegram/webhook` };
 }
 
+/** Dependências do laço de polling, injetáveis nos testes. */
 export type PollDeps = {
   config: PollConfig;
   fetch: typeof fetch;
@@ -46,17 +61,19 @@ export type PollDeps = {
   log: (line: string) => void;
 };
 
+/** Atualização do Telegram: só o `update_id` interessa aqui (o resto é repassado intacto). */
 type Update = { update_id: number };
 
 const isUpdate = (value: unknown): value is Update =>
   value !== null && typeof value === 'object' && typeof (value as { update_id?: unknown }).update_id === 'number';
 
-const telegramUrl = (token: string, method: string) => `https://api.telegram.org/bot${token}/${method}`;
+const telegramUrl = (token: string, method: string) => `${TELEGRAM_API_BASE_URL}/bot${token}/${method}`;
 
 /** Busca um lote. `undefined` = falha (rede, 409 de webhook ativo, corpo inesperado). */
 async function fetchUpdates(deps: PollDeps, offset: number | undefined): Promise<unknown[] | undefined> {
   try {
-    const res = await deps.fetch(telegramUrl(deps.config.token, 'getUpdates'), {
+    // `offset` confirma ao Telegram tudo antes dele; sem ele, vêm as pendentes desde a última confirmação.
+    const response = await deps.fetch(telegramUrl(deps.config.token, 'getUpdates'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -64,11 +81,15 @@ async function fetchUpdates(deps: PollDeps, offset: number | undefined): Promise
         timeout: LONG_POLL_SECONDS,
         allowed_updates: ['message', 'callback_query'],
       }),
-      signal: AbortSignal.any([deps.signal, AbortSignal.timeout((LONG_POLL_SECONDS + 15) * 1000)]),
+      signal: AbortSignal.any([
+        deps.signal,
+        AbortSignal.timeout((LONG_POLL_SECONDS + GET_UPDATES_GRACE_SECONDS) * MS_PER_SECOND),
+      ]),
     });
-    const body: unknown = await res.json().catch(() => null);
+    const body: unknown = await response.json().catch(() => null);
     const result = (body as { ok?: unknown; result?: unknown } | null)?.result;
-    return res.ok && (body as { ok?: unknown }).ok === true && Array.isArray(result) ? result : undefined;
+    const isSuccess = response.ok && (body as { ok?: unknown }).ok === true && Array.isArray(result);
+    return isSuccess ? result : undefined;
   } catch {
     return undefined;
   }
@@ -77,15 +98,15 @@ async function fetchUpdates(deps: PollDeps, offset: number | undefined): Promise
 /** Entrega uma atualização à API. `true` = 200 (pode avançar); qualquer outra coisa repete. */
 async function deliver(deps: PollDeps, update: unknown): Promise<boolean> {
   try {
-    const res = await deps.fetch(deps.config.webhookUrl, {
+    const response = await deps.fetch(deps.config.webhookUrl, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'X-Telegram-Bot-Api-Secret-Token': deps.config.secret },
       body: JSON.stringify(update),
       redirect: 'error',
-      signal: AbortSignal.any([deps.signal, AbortSignal.timeout(60_000)]),
+      signal: AbortSignal.any([deps.signal, AbortSignal.timeout(DELIVER_TIMEOUT_MS)]),
     });
-    if (res.status !== 200) deps.log(`API respondeu HTTP ${res.status}; a atualização será repetida`);
-    return res.status === 200;
+    if (response.status !== 200) deps.log(`API respondeu HTTP ${response.status}; a atualização será repetida`);
+    return response.status === 200;
   } catch {
     deps.log('Falha ao chamar a API local (está no ar?); a atualização será repetida');
     return false;
@@ -95,13 +116,13 @@ async function deliver(deps: PollDeps, update: unknown): Promise<boolean> {
 /** Remove o webhook (o `getUpdates` falha com 409 enquanto ele existir). Mantém as atualizações pendentes. */
 async function deleteWebhook(deps: PollDeps): Promise<boolean> {
   try {
-    const res = await deps.fetch(telegramUrl(deps.config.token, 'deleteWebhook'), {
+    const response = await deps.fetch(telegramUrl(deps.config.token, 'deleteWebhook'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ drop_pending_updates: false }),
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(DELETE_WEBHOOK_TIMEOUT_MS),
     });
-    return res.ok;
+    return response.ok;
   } catch {
     return false;
   }
@@ -116,14 +137,17 @@ export async function pollLoop(deps: PollDeps): Promise<number> {
     if (updates === undefined) {
       if (deps.signal.aborted) break;
       deps.log('getUpdates falhou (rede ou webhook ativo); nova tentativa em instantes');
-      if (!(await deps.sleep(BACKOFF_MS))) break;
+      const shouldContinue = await deps.sleep(BACKOFF_MS);
+      if (!shouldContinue) break;
       continue;
     }
     for (const update of updates) {
       if (!isUpdate(update)) continue;
-      if (!(await deliver(deps, update))) {
+      const wasDelivered = await deliver(deps, update);
+      if (!wasDelivered) {
         // Não avança: o mesmo lote volta no próximo getUpdates (a API é idempotente por update_id).
-        if (!(await deps.sleep(BACKOFF_MS))) return delivered;
+        const shouldContinue = await deps.sleep(BACKOFF_MS);
+        if (!shouldContinue) return delivered;
         break;
       }
       offset = update.update_id + 1;
@@ -133,6 +157,7 @@ export async function pollLoop(deps: PollDeps): Promise<number> {
   return delivered;
 }
 
+/** `sleep` que acorda na hora (com `false`) quando o sinal é abortado (Ctrl+C), sem esperar o intervalo. */
 function abortableSleep(signal: AbortSignal): (ms: number) => Promise<boolean> {
   return (ms) =>
     new Promise((resolve) => {
@@ -149,12 +174,13 @@ function abortableSleep(signal: AbortSignal): (ms: number) => Promise<boolean> {
     });
 }
 
+/** Entrada do script: apaga o webhook do bot e faz long polling até SIGINT/SIGTERM. Devolve o código de saída. */
 export async function main(env: Record<string, string | undefined> = process.env): Promise<number> {
   let config: PollConfig;
   try {
     config = buildPollConfig(env);
-  } catch (err) {
-    console.error(err instanceof Error ? err.message : 'Configuração inválida');
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : 'Configuração inválida');
     return 1;
   }
   const controller = new AbortController();

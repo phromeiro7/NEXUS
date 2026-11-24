@@ -7,7 +7,7 @@ import type { TelegramLoginFailure } from "@/lib/telegram-login";
 import { NexusMark } from "./icons";
 
 /** O que dizer (e o que oferecer) para cada motivo de a entrada pelo Telegram não ter dado certo. */
-function problemOf(error: TelegramLoginFailure | null): { title: string; text: string; retry: boolean } {
+function describeLoginFailure(error: TelegramLoginFailure | null): { title: string; text: string; retry: boolean } {
   switch (error) {
     case "telegram_nao_vinculado":
       return {
@@ -31,6 +31,9 @@ function problemOf(error: TelegramLoginFailure | null): { title: string; text: s
   }
 }
 
+const EMAIL_LOGIN_HREF = "/entrar?next=%2Fmini";
+
+/** Moldura das telas da porta; `busy` anuncia o conteúdo como status para leitores de tela. */
 function Screen({ children, busy }: { children: ReactNode; busy?: boolean }) {
   return (
     <div className="mini">
@@ -49,11 +52,13 @@ function Screen({ children, busy }: { children: ReactNode; busy?: boolean }) {
  */
 export function MiniGate({ children }: { children: ReactNode }) {
   const { status, redirectToLogin, configError, telegram } = useAuth();
-  const held = telegram.available && (telegram.phase === "failed" || telegram.signedOut);
+  // Dentro do Telegram, depois de falha ou de sair da conta, a pessoa fica nesta tela em vez de ir para /entrar.
+  const staysOnGate = telegram.available && (telegram.phase === "failed" || telegram.signedOut);
 
+  // Sem sessão e sem motivo para segurar a pessoa aqui: segue para o login comum.
   useEffect(() => {
-    if (status === "signedOut" && configError === null && !held) redirectToLogin();
-  }, [status, configError, held, redirectToLogin]);
+    if (status === "signedOut" && configError === null && !staysOnGate) redirectToLogin();
+  }, [status, configError, staysOnGate, redirectToLogin]);
 
   if (configError !== null) {
     return (
@@ -64,21 +69,20 @@ export function MiniGate({ children }: { children: ReactNode }) {
   }
   if (status === "signedIn") return <>{children}</>;
 
-  if (status === "signedOut" && held) {
-    const email = "/entrar?next=%2Fmini";
+  if (status === "signedOut" && staysOnGate) {
     if (telegram.phase === "failed") {
-      const p = problemOf(telegram.error);
+      const problem = describeLoginFailure(telegram.error);
       return (
         <Screen>
-          <h1>{p.title}</h1>
-          <p role="alert">{p.text}</p>
+          <h1>{problem.title}</h1>
+          <p role="alert">{problem.text}</p>
           <div className="mini-gate-actions">
-            {p.retry ? (
+            {problem.retry ? (
               <button type="button" className="mini-btn primary" onClick={telegram.retry}>
                 Tentar de novo
               </button>
             ) : null}
-            <Link href={email} className={p.retry ? "mini-btn" : "mini-btn primary"}>
+            <Link href={EMAIL_LOGIN_HREF} className={problem.retry ? "mini-btn" : "mini-btn primary"}>
               Entrar com e-mail
             </Link>
           </div>
@@ -90,7 +94,7 @@ export function MiniGate({ children }: { children: ReactNode }) {
         <h1>Você saiu do Nexus</h1>
         <p>Para entrar de novo pelo Telegram, feche o Nexus e abra pelo botão do bot.</p>
         <div className="mini-gate-actions">
-          <Link href={email} className="mini-btn primary">
+          <Link href={EMAIL_LOGIN_HREF} className="mini-btn primary">
             Entrar com e-mail
           </Link>
         </div>

@@ -7,15 +7,19 @@ import { useApi } from "@/components/auth-provider";
 import { queryKeys } from "@/hooks/queries";
 import { messageFor } from "@/lib/messages";
 
+/** Só links do próprio Telegram viram botão: qualquer outra coisa vinda da API é ignorada. */
 const TELEGRAM_PREFIX = "https://t.me/";
-const POLL_MS = 5000;
-const TICK_MS = 1000;
+/** Com o código válido, consulta as configurações nesse intervalo para perceber o vínculo feito no bot. */
+const SETTINGS_POLL_MS = 5000;
+/** Atualiza a contagem regressiva a cada segundo. */
+const COUNTDOWN_TICK_MS = 1000;
 
+/** Tempo restante em "m:ss" (ex.: 125000 ms → "2:05"); nunca negativo. */
 export function formatRemaining(ms: number): string {
-  const total = Math.max(0, Math.ceil(ms / 1000));
-  const m = Math.floor(total / 60);
-  const s = total % 60;
-  return `${m}:${String(s).padStart(2, "0")}`;
+  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
 /**
@@ -24,8 +28,10 @@ export function formatRemaining(ms: number): string {
  */
 export function useTelegramLink({ linked, paused }: { linked: boolean; paused: boolean }) {
   const api = useApi();
-  const client = useQueryClient();
+  const queryClient = useQueryClient();
 
+  // Refs (e não estado) porque precisam valer na hora, sem esperar novo render: evitam atualizar
+  // estado depois de desmontar e pedidos duplicados por duplo clique.
   const mounted = useRef(true);
   const generating = useRef(false);
   const unlinking = useRef(false);
@@ -35,7 +41,7 @@ export function useTelegramLink({ linked, paused }: { linked: boolean; paused: b
   const [expired, setExpired] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copyMsg, setCopyMsg] = useState<string | null>(null);
+  const [copyMessage, setCopyMessage] = useState<string | null>(null);
   const [unlinkPending, setUnlinkPending] = useState(false);
 
   useEffect(() => {
@@ -47,51 +53,53 @@ export function useTelegramLink({ linked, paused }: { linked: boolean; paused: b
 
   // Vinculado e sem pausa (detectado pelo polling): o código não vale mais.
   // Vinculado e pausado ainda precisa de um código novo para retomar.
-  const settled = linked && !paused;
+  const isLinkActive = linked && !paused;
   useEffect(() => {
-    if (settled) {
+    if (isLinkActive) {
       setCode(null);
       setExpired(false);
-      setCopyMsg(null);
+      setCopyMessage(null);
     }
-  }, [settled]);
+  }, [isLinkActive]);
 
-  const activeCode = settled ? null : code;
+  const activeCode = isLinkActive ? null : code;
   const expiresAtMs = activeCode ? Date.parse(activeCode.expiresAt) : null;
 
   useEffect(() => {
     if (activeCode === null || expiresAtMs === null) return;
     setNow(Date.now());
-    const tick = setInterval(() => {
-      const t = Date.now();
-      if (t >= expiresAtMs) {
+    const countdownTimer = setInterval(() => {
+      const currentTime = Date.now();
+      if (currentTime >= expiresAtMs) {
         setCode(null);
         setExpired(true);
-        setCopyMsg(null);
+        setCopyMessage(null);
         return;
       }
-      setNow(t);
-    }, TICK_MS);
-    const poll = setInterval(() => {
-      void client.invalidateQueries({ queryKey: queryKeys.settings });
-    }, POLL_MS);
+      setNow(currentTime);
+    }, COUNTDOWN_TICK_MS);
+    // Invalidar as configurações faz `linked` mudar quando o bot confirmar o vínculo.
+    const settingsPoll = setInterval(() => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings });
+    }, SETTINGS_POLL_MS);
     return () => {
-      clearInterval(tick);
-      clearInterval(poll);
+      clearInterval(countdownTimer);
+      clearInterval(settingsPoll);
     };
-  }, [activeCode, expiresAtMs, client]);
+  }, [activeCode, expiresAtMs, queryClient]);
 
+  /** Gera um código novo de vínculo; ignora cliques enquanto um pedido já está em andamento. */
   async function generate() {
     if (generating.current) return;
     generating.current = true;
     setPending(true);
     setError(null);
     try {
-      const next = await api.createLinkCode();
+      const newCode = await api.createLinkCode();
       if (!mounted.current) return;
-      setCode(next);
+      setCode(newCode);
       setExpired(false);
-      setCopyMsg(null);
+      setCopyMessage(null);
       setNow(Date.now());
     } catch (err) {
       if (mounted.current) setError(messageFor(err));
@@ -101,13 +109,14 @@ export function useTelegramLink({ linked, paused }: { linked: boolean; paused: b
     }
   }
 
+  /** Copia o código ativo para a área de transferência e mostra o resultado em `copyMsg`. */
   async function copy() {
     if (activeCode === null) return;
     try {
       await navigator.clipboard.writeText(activeCode.code);
-      if (mounted.current) setCopyMsg("Código copiado.");
+      if (mounted.current) setCopyMessage("Código copiado.");
     } catch {
-      if (mounted.current) setCopyMsg("Não foi possível copiar.");
+      if (mounted.current) setCopyMessage("Não foi possível copiar.");
     }
   }
 
@@ -119,7 +128,7 @@ export function useTelegramLink({ linked, paused }: { linked: boolean; paused: b
     setError(null);
     try {
       await api.unlinkTelegram();
-      await client.invalidateQueries({ queryKey: queryKeys.settings });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.settings });
     } catch (err) {
       if (mounted.current) setError(messageFor(err));
     } finally {
@@ -135,7 +144,7 @@ export function useTelegramLink({ linked, paused }: { linked: boolean; paused: b
     pending,
     error,
     clearError: () => setError(null),
-    copyMsg,
+    copyMsg: copyMessage,
     unlinkPending,
     hasClipboard: typeof navigator !== "undefined" && !!navigator.clipboard,
     link: activeCode && activeCode.deepLink.startsWith(TELEGRAM_PREFIX) ? activeCode.deepLink : null,

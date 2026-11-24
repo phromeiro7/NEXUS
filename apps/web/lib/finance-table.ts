@@ -8,29 +8,40 @@ export type SortKey = "data" | "valor" | "descricao";
 export type SortDir = "asc" | "desc";
 export type Sort = { key: SortKey; dir: SortDir };
 
-const fold = (s: string) => s.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
+/** Minúsculas e sem acentos: a busca "saude" encontra "Saúde". */
+const normalizeForComparison = (text: string) => text.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
 
 /** Lançamentos do mês que passam pelo filtro de tipo e pela busca (nome ou categoria). */
-export function monthRows(list: readonly Lancamento[], ym: YearMonth, opts: { filter: TableFilter; query: string }): Lancamento[] {
-  const q = fold(opts.query.trim());
-  return list.filter((l) => {
-    if (monthOf(l.data) !== ym) return false;
-    if (opts.filter === "gastos" && l.tipo !== "gasto") return false;
-    if (opts.filter === "entradas" && l.tipo !== "entrada") return false;
-    if (opts.filter === "contas" && l.tipo !== "conta") return false;
-    return q === "" || fold(l.descricao).includes(q) || fold(l.categoria ?? "").includes(q);
+export function monthRows(
+  list: readonly Lancamento[],
+  yearMonth: YearMonth,
+  options: { filter: TableFilter; query: string },
+): Lancamento[] {
+  const normalizedQuery = normalizeForComparison(options.query.trim());
+  return list.filter((entry) => {
+    if (monthOf(entry.data) !== yearMonth) return false;
+    if (options.filter === "gastos" && entry.tipo !== "gasto") return false;
+    if (options.filter === "entradas" && entry.tipo !== "entrada") return false;
+    if (options.filter === "contas" && entry.tipo !== "conta") return false;
+    return (
+      normalizedQuery === "" ||
+      normalizeForComparison(entry.descricao).includes(normalizedQuery) ||
+      normalizeForComparison(entry.categoria ?? "").includes(normalizedQuery)
+    );
   });
 }
 
 /** Ordena sem alterar a lista; empate de data ou valor desempata pelo último criado primeiro. */
 export function sortRows(rows: readonly Lancamento[], key: SortKey, dir: SortDir): Lancamento[] {
   const sign = dir === "asc" ? 1 : -1;
-  const compare = (a: Lancamento, b: Lancamento): number => {
-    if (key === "valor") return a.valorCentavos - b.valorCentavos;
-    if (key === "descricao") return a.descricao.localeCompare(b.descricao, "pt-BR");
-    return a.data < b.data ? -1 : a.data > b.data ? 1 : 0;
+  const compareAscending = (first: Lancamento, second: Lancamento): number => {
+    if (key === "valor") return first.valorCentavos - second.valorCentavos;
+    if (key === "descricao") return first.descricao.localeCompare(second.descricao, "pt-BR");
+    return first.data < second.data ? -1 : first.data > second.data ? 1 : 0;
   };
-  return [...rows].sort((a, b) => compare(a, b) * sign || b.criadoEm.localeCompare(a.criadoEm));
+  return [...rows].sort(
+    (first, second) => compareAscending(first, second) * sign || second.criadoEm.localeCompare(first.criadoEm),
+  );
 }
 
 /** Clicar na coluna ativa inverte o sentido; numa coluna nova, começa pelo natural (texto A→Z, data e valor do maior). */
@@ -43,18 +54,22 @@ export function nextSort(current: Sort, key: SortKey): Sort {
 export const tableTotal = (rows: readonly Lancamento[]): number => netOf(rows);
 
 /** Estado do lançamento em poucas palavras, sem bronca. */
-export function situationLabel(l: Lancamento, today: IsoDate): string {
-  if (l.situacao === "paga") return l.tipo === "entrada" ? "Recebido" : "Pago";
-  const diff = daysBetween(today, l.data);
-  if (l.tipo === "entrada") return diff === 0 ? "A receber hoje" : diff === 1 ? "A receber amanhã" : `A receber em ${formatShort(l.data)}`;
-  if (diff === 0) return "Vence hoje";
-  if (diff === 1) return "Vence amanhã";
-  if (diff === -1) return "Venceu ontem";
-  return diff < 0 ? `Venceu em ${formatShort(l.data)}` : `Vence em ${formatShort(l.data)}`;
+export function situationLabel(entry: Lancamento, today: IsoDate): string {
+  if (entry.situacao === "paga") return entry.tipo === "entrada" ? "Recebido" : "Pago";
+  const daysFromToday = daysBetween(today, entry.data);
+  if (entry.tipo === "entrada") {
+    if (daysFromToday === 0) return "A receber hoje";
+    if (daysFromToday === 1) return "A receber amanhã";
+    return `A receber em ${formatShort(entry.data)}`;
+  }
+  if (daysFromToday === 0) return "Vence hoje";
+  if (daysFromToday === 1) return "Vence amanhã";
+  if (daysFromToday === -1) return "Venceu ontem";
+  return daysFromToday < 0 ? `Venceu em ${formatShort(entry.data)}` : `Vence em ${formatShort(entry.data)}`;
 }
 
 /** Texto do botão de dar baixa; `null` quando já foi pago ou recebido. */
-export function rowActionLabel(l: Lancamento): "Paguei" | "Recebi" | null {
-  if (l.situacao !== "a_pagar") return null;
-  return l.tipo === "entrada" ? "Recebi" : "Paguei";
+export function rowActionLabel(entry: Lancamento): "Paguei" | "Recebi" | null {
+  if (entry.situacao !== "a_pagar") return null;
+  return entry.tipo === "entrada" ? "Recebi" : "Paguei";
 }

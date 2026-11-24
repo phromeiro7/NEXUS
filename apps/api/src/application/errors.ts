@@ -1,5 +1,6 @@
 import type { TaskDto } from '@nexus/shared';
 
+/** O recurso não existe para este usuário (→ 404); não distingue "de outro usuário" de "inexistente". */
 export class NotFoundError extends Error {
   constructor(readonly resource: 'tarefa' | 'lancamento' | 'convite' | 'login') {
     super(`Não encontrado: ${resource}`);
@@ -7,6 +8,7 @@ export class NotFoundError extends Error {
   }
 }
 
+/** A operação contradiz o estado atual do recurso (→ 409). */
 export class ConflictError extends Error {
   constructor(readonly code: 'tarefa_encerrada' | 'lancamento_ja_cadastrado' | 'convite_de_administrador') {
     super(`Conflito: ${code}`);
@@ -61,6 +63,7 @@ export class AssistantUnavailableError extends Error {
   }
 }
 
+/** Entrada válida no formato, mas incoerente pelas regras de negócio (→ 400). */
 export class InvalidInputError extends Error {
   constructor(readonly code: 'hora_sem_data' | 'lancamento_inconsistente' | 'mensagem_vazia') {
     super(`Entrada inválida: ${code}`);

@@ -2,18 +2,23 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { NewTask, TaskPatch, TaskRepository } from '../application/ports.js';
 import { INVALID_TEXT_REPRESENTATION, TASK_COLUMNS, definedOnly, isUuid, taskFromRow } from './mappers.js';
 
-function columnsOf(p: TaskPatch) {
+/** Campos da tarefa -> colunas de `tasks`, sem os ausentes (`undefined` não sobrescreve). */
+function columnsOf(patch: TaskPatch) {
   return definedOnly({
-    title: p.title,
-    type: p.type,
-    status: p.status,
-    due_date: p.dueDate,
-    due_time: p.dueTime,
-    fatal: p.fatal,
-    completed_at: p.completedAt,
+    title: patch.title,
+    type: patch.type,
+    status: patch.status,
+    due_date: patch.dueDate,
+    due_time: patch.dueTime,
+    fatal: patch.fatal,
+    completed_at: patch.completedAt,
   });
 }
 
+/**
+ * Tarefas. Toda consulta filtra por `user_id` (o cliente usa a service role, que ignora RLS) e ignora
+ * as apagadas (`deleted_at` preenchido: exclusão lógica). Id malformado vira "não encontrado".
+ */
 export function createSupabaseTaskRepository(client: SupabaseClient): TaskRepository {
   const get: TaskRepository['get'] = async (userId, id) => {
     if (!isUuid(id)) return null;
@@ -48,12 +53,13 @@ export function createSupabaseTaskRepository(client: SupabaseClient): TaskReposi
     get,
 
     async list(userId, query) {
-      let q = client.from('tasks').select(TASK_COLUMNS).eq('user_id', userId).is('deleted_at', null);
-      if (query.from !== undefined) q = q.gte('due_date', query.from);
-      if (query.to !== undefined) q = q.lte('due_date', query.to);
-      if (query.status && query.status.length > 0) q = q.in('status', query.status);
-      if (query.withoutDate === true) q = q.is('due_date', null);
-      const { data, error } = await q
+      let request = client.from('tasks').select(TASK_COLUMNS).eq('user_id', userId).is('deleted_at', null);
+      if (query.from !== undefined) request = request.gte('due_date', query.from);
+      if (query.to !== undefined) request = request.lte('due_date', query.to);
+      if (query.status && query.status.length > 0) request = request.in('status', query.status);
+      if (query.withoutDate === true) request = request.is('due_date', null);
+      // Com data primeiro (as sem data no fim); `id` desempata para a ordem ser estável.
+      const { data, error } = await request
         .order('due_date', { ascending: true, nullsFirst: false })
         .order('due_time', { ascending: true, nullsFirst: false })
         .order('created_at', { ascending: true })
@@ -64,11 +70,12 @@ export function createSupabaseTaskRepository(client: SupabaseClient): TaskReposi
 
     async update(userId, id, patch) {
       if (!isUuid(id)) return null;
-      const values = columnsOf(patch);
-      if (Object.keys(values).length === 0) return get(userId, id);
+      const changedColumns = columnsOf(patch);
+      // Nada para mudar: devolve a tarefa atual sem escrever.
+      if (Object.keys(changedColumns).length === 0) return get(userId, id);
       const { data, error } = await client
         .from('tasks')
-        .update(values)
+        .update(changedColumns)
         .eq('user_id', userId)
         .eq('id', id)
         .is('deleted_at', null)

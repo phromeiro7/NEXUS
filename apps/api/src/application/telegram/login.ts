@@ -3,6 +3,8 @@ import type { Clock, LinkCodeRepository, SessionIssuer, TelegramAuthReplayReposi
 import { verifyInitData } from '../../domain/telegram-init-data.js';
 import type { RateLimiter } from './rate-limit.js';
 
+const MS_PER_SECOND = 1000;
+
 export type TelegramLoginDeps = {
   /** Ausente = login pelo Telegram desligado ('login_desabilitado'). Nunca logar. */
   botToken?: string;
@@ -28,23 +30,24 @@ export function makeTelegramLogin(deps: TelegramLoginDeps) {
   return async (input: { initData: string; ip: string }): Promise<{ tokenHash: string }> => {
     if (deps.botToken === undefined || deps.botToken === '') throw new TelegramAuthError('login_desabilitado');
 
-    const ipWait = deps.ipLimiter.hit(`ip:${input.ip}`);
-    if (ipWait !== null) throw new TelegramAuthError('muitas_tentativas', ipWait);
+    const ipRetryAfterSeconds = deps.ipLimiter.hit(`ip:${input.ip}`);
+    if (ipRetryAfterSeconds !== null) throw new TelegramAuthError('muitas_tentativas', ipRetryAfterSeconds);
 
     const now = deps.clock.now();
-    const checked = verifyInitData(input.initData, deps.botToken, Math.floor(now.getTime() / 1000), deps.maxAgeSeconds);
-    if (!checked.ok) {
-      throw new TelegramAuthError(checked.reason === 'expirado' ? 'sessao_expirada' : 'assinatura_invalida');
+    const nowSeconds = Math.floor(now.getTime() / MS_PER_SECOND);
+    const verified = verifyInitData(input.initData, deps.botToken, nowSeconds, deps.maxAgeSeconds);
+    if (!verified.ok) {
+      throw new TelegramAuthError(verified.reason === 'expirado' ? 'sessao_expirada' : 'assinatura_invalida');
     }
 
-    const userWait = deps.userLimiter.hit(`tg:${checked.user.id}`);
-    if (userWait !== null) throw new TelegramAuthError('muitas_tentativas', userWait);
+    const userRetryAfterSeconds = deps.userLimiter.hit(`tg:${verified.user.id}`);
+    if (userRetryAfterSeconds !== null) throw new TelegramAuthError('muitas_tentativas', userRetryAfterSeconds);
 
     // Num chat privado o id do chat é o id do usuário do Telegram: é o vínculo que já existe.
-    const userId = await deps.links.userForChat(checked.user.id);
+    const userId = await deps.links.userForChat(verified.user.id);
     if (userId === null) throw new TelegramAuthError('telegram_nao_vinculado');
 
-    if (!(await deps.replays.claim(checked.hash, now))) throw new TelegramAuthError('ja_utilizado');
+    if (!(await deps.replays.claim(verified.hash, now))) throw new TelegramAuthError('ja_utilizado');
 
     const session = await deps.sessions.issue(userId);
     // Conta sem como receber sessão: tratada como não vinculada (nada mais é revelado).

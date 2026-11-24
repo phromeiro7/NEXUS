@@ -3,8 +3,11 @@ import { isoDateSchema, type IsoDate } from './primitives.js';
 import { taskStatusSchema, taskTypeSchema, type TaskStatus, type TaskType } from './task.js';
 import { timeOfDaySchema } from './time-of-day.js';
 
-const titleSchema = z.string().trim().min(1).max(200);
+const TASK_TITLE_MAX = 200;
 
+const titleSchema = z.string().trim().min(1).max(TASK_TITLE_MAX);
+
+/** Corpo de `POST /tasks`. Hora sem data não faz sentido e é recusada. */
 export const createTaskInputSchema = z
   .object({
     title: titleSchema,
@@ -13,12 +16,13 @@ export const createTaskInputSchema = z
     dueTime: timeOfDaySchema.nullable().optional(),
     fatal: z.boolean().default(false),
   })
-  .refine((v) => v.dueTime == null || v.dueDate != null, {
+  .refine((input) => input.dueTime == null || input.dueDate != null, {
     message: 'dueTime requires dueDate',
     path: ['dueTime'],
   });
 export type CreateTaskInput = z.infer<typeof createTaskInputSchema>;
 
+/** Corpo de `PATCH /tasks/:id`: só os campos enviados mudam; pelo menos um é obrigatório. */
 export const updateTaskInputSchema = z
   .object({
     title: titleSchema.optional(),
@@ -28,27 +32,29 @@ export const updateTaskInputSchema = z
     fatal: z.boolean().optional(),
     status: taskStatusSchema.optional(),
   })
-  .refine((v) => Object.values(v).some((x) => x !== undefined), {
+  .refine((input) => Object.values(input).some((value) => value !== undefined), {
     message: 'At least one field is required',
   });
 export type UpdateTaskInput = z.infer<typeof updateTaskInputSchema>;
 
-/** Query-string `status`: comma-separated string or repeated parameter. */
+/** Query-string `status`: texto separado por vírgulas ou parâmetro repetido. */
 const statusListSchema = z.preprocess(
-  (v) => {
-    const parts = Array.isArray(v) ? v : [v];
-    if (!parts.every((p) => typeof p === 'string')) return v;
-    return parts.flatMap((p: string) => p.split(',')).filter((p) => p !== '');
+  (rawValue) => {
+    const values = Array.isArray(rawValue) ? rawValue : [rawValue];
+    // Algo que não é texto segue intacto para o `z.array` recusar com a mensagem certa.
+    if (!values.every((value) => typeof value === 'string')) return rawValue;
+    return values.flatMap((value: string) => value.split(',')).filter((status) => status !== '');
   },
   z.array(taskStatusSchema),
 );
 
-/** Query-string boolean: only the strings 'true' / 'false'. */
+/** Booleano de query-string: só os textos 'true' / 'false'. */
 const queryBooleanSchema = z.preprocess(
-  (v) => (v === 'true' ? true : v === 'false' ? false : v),
+  (rawValue) => (rawValue === 'true' ? true : rawValue === 'false' ? false : rawValue),
   z.boolean(),
 );
 
+/** Query-string de `GET /tasks`. */
 export const listTasksQuerySchema = z
   .object({
     from: isoDateSchema.optional(),
@@ -56,12 +62,13 @@ export const listTasksQuerySchema = z
     status: statusListSchema.optional(),
     withoutDate: queryBooleanSchema.optional(),
   })
-  .refine((v) => v.from === undefined || v.to === undefined || v.from <= v.to, {
+  .refine((query) => query.from === undefined || query.to === undefined || query.from <= query.to, {
     message: 'from must be on or before to',
     path: ['from'],
   });
 export type ListTasksQuery = z.infer<typeof listTasksQuerySchema>;
 
+/** Tarefa como a API devolve. */
 export type TaskDto = {
   id: string;
   title: string;

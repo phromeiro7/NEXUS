@@ -9,7 +9,27 @@ import { captureSummary } from "@/lib/mini-tasks";
 import { PlusIcon } from "./icons";
 import { useToast } from "./toast";
 
-type Quick = "hoje" | "amanha" | "outro" | null;
+/** Atalho de dia escolhido na captura; `null` = sem data. */
+type QuickDay = "hoje" | "amanha" | "outro" | null;
+
+/** Mesmo limite do schema de criação de tarefa (o erro de validação cita "até 200 caracteres"). */
+const TITLE_MAX_LENGTH = 200;
+/** Espera antes de recolher no blur, para o toque num atalho (sem foco no Safari) chegar primeiro. */
+const COLLAPSE_DELAY_MS = 250;
+
+/** Dia escolhido na captura: hoje, amanhã, a data digitada em "Outro dia" ou nenhum. */
+function resolveDate(quickDay: QuickDay, otherDate: string, today: IsoDate): IsoDate | null {
+  switch (quickDay) {
+    case "hoje":
+      return today;
+    case "amanha":
+      return addDays(today, 1);
+    case "outro":
+      return otherDate !== "" ? (otherDate as IsoDate) : null;
+    default:
+      return null;
+  }
+}
 
 /**
  * Captura em três passos: O quê, Quando e Horário. Digitar e Enter já anota; os passos de
@@ -18,53 +38,54 @@ type Quick = "hoje" | "amanha" | "outro" | null;
  */
 export function Capture({ today }: { today: IsoDate }) {
   const create = useCreateTask();
-  const del = useDeleteTask();
+  const deleteTask = useDeleteTask();
   const toast = useToast();
-  const ids = useId();
+  const idPrefix = useId();
   const inputRef = useRef<HTMLInputElement>(null);
-  const busy = useRef(false);
+  // Trava síncrona contra duplo envio (Enter repetido antes do próximo render).
+  const submitting = useRef(false);
   const [title, setTitle] = useState("");
-  const [quick, setQuick] = useState<Quick>(null);
-  const [other, setOther] = useState("");
+  const [quickDay, setQuickDay] = useState<QuickDay>(null);
+  const [otherDate, setOtherDate] = useState("");
   const [time, setTime] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [focused, setFocused] = useState(false);
 
-  const date: IsoDate | null =
-    quick === "outro" ? (other !== "" ? (other as IsoDate) : null) : quick === "hoje" ? today : quick === "amanha" ? addDays(today, 1) : null;
-  const dirty = title !== "" || quick !== null || time !== "";
+  const date = resolveDate(quickDay, otherDate, today);
+  const dirty = title !== "" || quickDay !== null || time !== "";
   const expanded = focused || dirty;
   const summary = captureSummary(date, time, today);
 
   // Safari não dá foco a botões: espera o toque nos atalhos chegar antes de recolher.
-  function onBlur(e: FocusEvent<HTMLFormElement>) {
-    const form = e.currentTarget;
-    if (form.contains(e.relatedTarget)) return;
+  function handleBlur(event: FocusEvent<HTMLFormElement>) {
+    const form = event.currentTarget;
+    if (form.contains(event.relatedTarget)) return;
     setTimeout(() => {
       if (!form.contains(document.activeElement)) setFocused(false);
-    }, 250);
+    }, COLLAPSE_DELAY_MS);
   }
 
-  function pick(next: Exclude<Quick, null>) {
-    if (quick === next) {
-      setQuick(null);
+  /** Tocar no atalho já escolhido desmarca o dia (e limpa o horário, que depende dele). */
+  function pickDay(nextDay: Exclude<QuickDay, null>) {
+    if (quickDay === nextDay) {
+      setQuickDay(null);
       setTime("");
       return;
     }
-    setQuick(next);
-    if (next !== "outro") setOther("");
+    setQuickDay(nextDay);
+    if (nextDay !== "outro") setOtherDate("");
   }
 
   function reset() {
     setTitle("");
-    setQuick(null);
-    setOther("");
+    setQuickDay(null);
+    setOtherDate("");
     setTime("");
   }
 
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    if (busy.current) return;
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (submitting.current) return;
     const trimmed = title.trim();
     if (trimmed === "") {
       setError("Escreva o que você precisa lembrar.");
@@ -85,26 +106,28 @@ export function Capture({ today }: { today: IsoDate }) {
       setError("Confira o texto (até 200 caracteres), o dia e o horário.");
       return;
     }
-    busy.current = true;
+    submitting.current = true;
     setError(null);
     try {
       const task = await create.mutateAsync(parsed.data);
+      // "Desfazer" exclui a tarefa recém-criada.
       toast({
         message: `Anotado: ${trimmed}. ${summary.scheduled ? `${summary.when}.` : "Sem data: defina quando para receber o lembrete."}`,
-        undo: () => void del.mutateAsync(task.id).catch(() => toast({ message: "Não foi possível desfazer. Abra a tarefa para excluir." })),
+        undo: () => void deleteTask.mutateAsync(task.id).catch(() => toast({ message: "Não foi possível desfazer. Abra a tarefa para excluir." })),
       });
       reset();
       inputRef.current?.focus();
-    } catch (err) {
-      setError(messageFor(err));
+    } catch (createError) {
+      setError(messageFor(createError));
     } finally {
-      busy.current = false;
+      submitting.current = false;
     }
   }
 
-  const dayId = `${ids}-dia`;
-  const timeId = `${ids}-hora`;
-  const hintId = `${ids}-dica`;
+  const titleId = `${idPrefix}-titulo`;
+  const dayId = `${idPrefix}-dia`;
+  const timeId = `${idPrefix}-hora`;
+  const hintId = `${idPrefix}-dica`;
 
   return (
     <form
@@ -112,27 +135,27 @@ export function Capture({ today }: { today: IsoDate }) {
       data-expanded={expanded}
       onSubmit={submit}
       // O "+" some ao expandir: focá-lo não expande, senão o toque se perde antes do clique.
-      onFocus={(e) => {
-        if (!(e.target instanceof HTMLButtonElement && e.target.classList.contains("mini-add"))) setFocused(true);
+      onFocus={(event) => {
+        if (!(event.target instanceof HTMLButtonElement && event.target.classList.contains("mini-add"))) setFocused(true);
       }}
-      onBlur={onBlur}
+      onBlur={handleBlur}
       noValidate
       aria-label="Nova tarefa"
     >
       <div className="mini-step">
-        <label htmlFor={`${ids}-titulo`} className="mini-step-label">
+        <label htmlFor={titleId} className="mini-step-label">
           O quê
         </label>
         <div className="mini-capture-line">
           <input
             ref={inputRef}
-            id={`${ids}-titulo`}
+            id={titleId}
             data-capture-title
             className="mini-field"
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={(event) => setTitle(event.target.value)}
             placeholder="Ex.: buscar encomenda"
-            maxLength={200}
+            maxLength={TITLE_MAX_LENGTH}
             enterKeyHint="done"
             autoComplete="off"
           />
@@ -149,20 +172,20 @@ export function Capture({ today }: { today: IsoDate }) {
           <fieldset className="mini-step">
             <legend>Quando</legend>
             <div className="mini-chips">
-              <button type="button" className="mini-chip" aria-pressed={quick === "hoje"} onClick={() => pick("hoje")}>
+              <button type="button" className="mini-chip" aria-pressed={quickDay === "hoje"} onClick={() => pickDay("hoje")}>
                 Hoje
               </button>
-              <button type="button" className="mini-chip" aria-pressed={quick === "amanha"} onClick={() => pick("amanha")}>
+              <button type="button" className="mini-chip" aria-pressed={quickDay === "amanha"} onClick={() => pickDay("amanha")}>
                 Amanhã
               </button>
-              <button type="button" className="mini-chip" aria-pressed={quick === "outro"} onClick={() => pick("outro")}>
+              <button type="button" className="mini-chip" aria-pressed={quickDay === "outro"} onClick={() => pickDay("outro")}>
                 Outro dia
               </button>
             </div>
-            {quick === "outro" && (
+            {quickDay === "outro" && (
               <label className="mini-label" htmlFor={dayId}>
                 <span className="mini-sr">Dia</span>
-                <input id={dayId} type="date" className="mini-field" value={other} onChange={(e) => setOther(e.target.value)} />
+                <input id={dayId} type="date" className="mini-field" value={otherDate} onChange={(event) => setOtherDate(event.target.value)} />
               </label>
             )}
           </fieldset>
@@ -176,7 +199,7 @@ export function Capture({ today }: { today: IsoDate }) {
               type="time"
               className="mini-field"
               value={time}
-              onChange={(e) => setTime(e.target.value)}
+              onChange={(event) => setTime(event.target.value)}
               disabled={date === null}
               aria-describedby={hintId}
             />

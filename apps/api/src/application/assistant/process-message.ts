@@ -24,13 +24,22 @@ import { buildContextBlock, buildSystemBlocks } from './prompt.js';
 import { ASSISTANT_TOOLS, type makeToolExecutor, type ToolContext } from './tools.js';
 
 const HOUR_MS = 60 * 60 * 1000;
+/** Sugestão de espera devolvida quando o limite por hora é atingido. */
 const RETRY_AFTER_SECONDS = 60;
+
+/** Padrões de `ProcessMessageDeps.limits`. */
+const DEFAULT_MAX_CHARS = 1000;
+const DEFAULT_MAX_MESSAGES_PER_HOUR = 30;
+const DEFAULT_MAX_MODEL_STEPS = 4;
+const DEFAULT_BUDGET_MS = 20_000;
+const DEFAULT_CONTEXT_MESSAGES = 12;
 
 const FALLBACK_REPLY = 'Não consegui gerar uma resposta. Tente de novo.';
 const REFUSAL_REPLY = 'Não posso ajudar com isso.';
 const MAX_STEPS_REPLY = 'Fiz o que consegui neste pedido. Confira abaixo e envie de novo o que faltou.';
 
 type LogFields = Record<string, string | number | boolean | null>;
+/** Logger estruturado do assistente: só nomes de evento e campos sem texto do usuário. */
 export type AssistantLogger = {
   info(event: string, fields: LogFields): void;
   error(event: string, fields: LogFields): void;
@@ -63,32 +72,36 @@ class Passthrough {
   constructor(readonly cause: unknown) {}
 }
 
+/** A resposta gravada no evento tem o formato esperado? (vem do banco como JSON sem tipo). */
 function isStoredReply(value: unknown): value is AssistantReplyDto {
   if (typeof value !== 'object' || value === null) return false;
-  const v = value as Record<string, unknown>;
-  return typeof v.reply === 'string' && Array.isArray(v.affectedTasks);
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate.reply === 'string' && Array.isArray(candidate.affectedTasks);
 }
 
 /** Histórico como texto simples: sem mensagens vazias e sem assistente na frente (a API exige `user` primeiro). */
 function toModelMessages(history: Array<{ role: ChatRole; content: string }>): ModelMessage[] {
   const messages: ModelMessage[] = history
-    .filter((m) => m.content.trim() !== '')
-    .map((m) => ({ role: m.role, content: m.content }));  while (messages[0]?.role === 'assistant') messages.shift();
+    .filter((message) => message.content.trim() !== '')
+    .map((message) => ({ role: message.role, content: message.content }));
+  while (messages[0]?.role === 'assistant') messages.shift();
   return messages;
 }
 
-function describeTargets(tasks: TaskDto[]): string {
+/** Bloco que apresenta ao modelo as tarefas-alvo de uma resposta (reply) do usuário. */
+function describeTargetTasks(tasks: TaskDto[]): string {
   const lines = tasks.map(
-    (t) =>
-      `- id ${t.id} | título: ${t.title} | data: ${t.dueDate ?? 'sem data'} | hora: ${t.dueTime ?? 'sem hora'} | ` +
-      `tipo: ${t.type} | status: ${t.status}`,
+    (task) =>
+      `- id ${task.id} | título: ${task.title} | data: ${task.dueDate ?? 'sem data'} | hora: ${task.dueTime ?? 'sem hora'} | ` +
+      `tipo: ${task.type} | status: ${task.status}`,
   );
   return ['Tarefa(s)-alvo da resposta do usuário (ids válidos neste pedido):', ...lines].join('\n');
 }
 
-const errorName = (e: unknown) => (e instanceof Error ? e.name : 'desconhecido');
+const errorNameOf = (error: unknown) => (error instanceof Error ? error.name : 'desconhecido');
 
-const WHY: Record<AssistantUnavailableReason, string> = {
+/** Motivo da indisponibilidade, em texto para o usuário. */
+const UNAVAILABLE_REASON_TEXT: Record<AssistantUnavailableReason, string> = {
   timeout: 'o tempo esgotou',
   rede: 'houve falha de conexão com o assistente',
   limite: 'o assistente atingiu um limite de uso',
@@ -97,96 +110,106 @@ const WHY: Record<AssistantUnavailableReason, string> = {
 };
 
 /** Resposta terminal verdadeira quando o pedido falhou DEPOIS de gravar: só o que de fato foi gravado. */
-function partialReplyText(reason: AssistantUnavailableReason, done: TaskDto[]): string {
-  const lines = done.map((t) => {
+function partialReplyText(reason: AssistantUnavailableReason, completedTasks: TaskDto[]): string {
+  const lines = completedTasks.map((task) => {
+    // `dueDate` é YYYY-MM-DD: mostra DD/MM.
     const when =
-      t.dueDate === null
+      task.dueDate === null
         ? 'sem data'
-        : `${t.dueDate.slice(8, 10)}/${t.dueDate.slice(5, 7)}${t.dueTime === null ? '' : ` ${t.dueTime}`}`;
-    return `- ${t.title} (${when})${t.status === 'concluida' ? ' [concluída]' : ''}`;
+        : `${task.dueDate.slice(8, 10)}/${task.dueDate.slice(5, 7)}${task.dueTime === null ? '' : ` ${task.dueTime}`}`;
+    return `- ${task.title} (${when})${task.status === 'concluida' ? ' [concluída]' : ''}`;
   });
-  return [`Não consegui concluir tudo (${WHY[reason]}). Já fiz:`, ...lines, 'Envie de novo só o que faltou.'].join('\n');
+  return [`Não consegui concluir tudo (${UNAVAILABLE_REASON_TEXT[reason]}). Já fiz:`, ...lines, 'Envie de novo só o que faltou.'].join('\n');
 }
 
-function replyText(step: ModelStep): string {
+/** Junta os blocos de texto do passo final; vazio vira a resposta padrão. */
+function extractReplyText(step: ModelStep): string {
   const text = step.blocks
-    .map((b) => (b.type === 'text' ? b.text : ''))
+    .map((block) => (block.type === 'text' ? block.text : ''))
     .join('')
     .trim();
   return text === '' ? FALLBACK_REPLY : text;
 }
 
+/**
+ * Cria o caso de uso que processa uma mensagem do usuário com o assistente de IA: valida, aplica o limite
+ * por hora, garante idempotência pelo `externalId` (reenvio reproduz a resposta gravada) e roda o ciclo de
+ * ferramentas dentro de um orçamento de tempo. Se algo falhar depois de gravar tarefas, a resposta diz só o
+ * que de fato foi feito.
+ */
 export function makeProcessMessage(deps: ProcessMessageDeps) {
   const limits = {
-    maxChars: deps.limits?.maxChars ?? 1000,
-    perHour: deps.limits?.perHour ?? 30,
-    maxSteps: deps.limits?.maxSteps ?? 4,
-    budgetMs: deps.limits?.budgetMs ?? 20_000,
-    contextMessages: deps.limits?.contextMessages ?? 12,
+    maxChars: deps.limits?.maxChars ?? DEFAULT_MAX_CHARS,
+    perHour: deps.limits?.perHour ?? DEFAULT_MAX_MESSAGES_PER_HOUR,
+    maxSteps: deps.limits?.maxSteps ?? DEFAULT_MAX_MODEL_STEPS,
+    budgetMs: deps.limits?.budgetMs ?? DEFAULT_BUDGET_MS,
+    contextMessages: deps.limits?.contextMessages ?? DEFAULT_CONTEXT_MESSAGES,
   };
   // Só nomes de eventos, ids, contagens e códigos: nunca texto do usuário, de tarefas ou da resposta.
-  const info = (event: string, fields: LogFields) => deps.logger?.info(event, fields);
+  const logInfo = (event: string, fields: LogFields) => deps.logger?.info(event, fields);
   const logError = (event: string, fields: LogFields) => deps.logger?.error(event, fields);
 
   /** Ciclo de ferramentas. Devolve o texto final; lança `AssistantUnavailableError` ou `Passthrough`. */
-  async function runCycle(args: {
+  async function runToolLoop(args: {
     userId: string;
     source: 'painel' | 'telegram';
     messages: ModelMessage[];
-    ctx: ToolContext;
-    start: number;
+    toolContext: ToolContext;
+    startedAt: number;
   }): Promise<string> {
-    const { userId, messages, ctx, start } = args;
-    for (let step = 1; step <= limits.maxSteps; step += 1) {
-      const t0 = deps.clock.now().getTime();
-      const remaining = limits.budgetMs - (t0 - start);
-      if (t0 - start > limits.budgetMs) throw new AssistantUnavailableError('timeout');
-      let result: ModelStep;
+    const { userId, messages, toolContext, startedAt } = args;
+    for (let stepNumber = 1; stepNumber <= limits.maxSteps; stepNumber += 1) {
+      const stepStartedAt = deps.clock.now().getTime();
+      const elapsedMs = stepStartedAt - startedAt;
+      const remainingBudgetMs = limits.budgetMs - elapsedMs;
+      if (elapsedMs > limits.budgetMs) throw new AssistantUnavailableError('timeout');
+      let modelStep: ModelStep;
       try {
-        result = await deps.model.step({
+        modelStep = await deps.model.step({
           system: buildSystemBlocks(),
           messages: [...messages],
           tools: ASSISTANT_TOOLS,
-          signal: AbortSignal.timeout(Math.max(1, remaining)),
+          signal: AbortSignal.timeout(Math.max(1, remainingBudgetMs)),
         });
       } catch (error) {
         if (error instanceof AssistantUnavailableError) throw error;
         throw new Passthrough(error);
       }
-      info('assistant.step', {
-        step,
-        stopReason: result.stopReason,
-        ms: deps.clock.now().getTime() - t0,
-        inputTokens: result.usage.inputTokens,
-        outputTokens: result.usage.outputTokens,
+      logInfo('assistant.step', {
+        step: stepNumber,
+        stopReason: modelStep.stopReason,
+        ms: deps.clock.now().getTime() - stepStartedAt,
+        inputTokens: modelStep.usage.inputTokens,
+        outputTokens: modelStep.usage.outputTokens,
       });
-      if (result.stopReason === 'end_turn') return replyText(result);
-      if (result.stopReason === 'refusal') return REFUSAL_REPLY;
-      if (result.stopReason === 'max_tokens') throw new AssistantUnavailableError('servico');
+      if (modelStep.stopReason === 'end_turn') return extractReplyText(modelStep);
+      if (modelStep.stopReason === 'refusal') return REFUSAL_REPLY;
+      if (modelStep.stopReason === 'max_tokens') throw new AssistantUnavailableError('servico');
 
-      const uses = result.blocks.filter((b) => b.type === 'tool_use');
-      if (uses.length === 0) throw new AssistantUnavailableError('servico');
+      const toolUses = modelStep.blocks.filter((block) => block.type === 'tool_use');
+      if (toolUses.length === 0) throw new AssistantUnavailableError('servico');
       // O turno do assistente volta EXATAMENTE como veio (thinking, texto e tool_use, na mesma ordem).
-      messages.push({ role: 'assistant', content: result.blocks as ContentBlock[] });
-      const results: ContentBlock[] = [];
-      for (const use of uses) {
+      messages.push({ role: 'assistant', content: modelStep.blocks as ContentBlock[] });
+      const toolResults: ContentBlock[] = [];
+      for (const toolUse of toolUses) {
         try {
-          const r = await deps.executor(userId, use.name, use.input, ctx);
-          results.push({ type: 'tool_result', tool_use_id: use.id, content: r.content, is_error: r.isError });
+          const toolResult = await deps.executor(userId, toolUse.name, toolUse.input, toolContext);
+          toolResults.push({ type: 'tool_result', tool_use_id: toolUse.id, content: toolResult.content, is_error: toolResult.isError });
         } catch {
           throw new AssistantUnavailableError('servico');
         }
       }
-      messages.push({ role: 'user', content: results });
+      messages.push({ role: 'user', content: toolResults });
     }
     return MAX_STEPS_REPLY;
   }
 
-  async function loadTargets(input: ProcessMessageInput): Promise<TaskDto[]> {
+  /** Tarefas-alvo ainda vivas. Se todas sumiram, o pedido não faz mais sentido: `TargetTasksGoneError`. */
+  async function loadTargetTasks(input: ProcessMessageInput): Promise<TaskDto[]> {
     const ids = [...new Set(input.targetTaskIds ?? [])];
     if (ids.length === 0 || !deps.tasksByIds) return [];
-    const wanted = new Set(ids);
-    const alive = (await deps.tasksByIds(input.userId, ids)).filter((t) => wanted.has(t.id));
+    const requestedIds = new Set(ids);
+    const alive = (await deps.tasksByIds(input.userId, ids)).filter((task) => requestedIds.has(task.id));
     if (alive.length === 0) throw new TargetTasksGoneError();
     return alive;
   }
@@ -198,61 +221,64 @@ export function makeProcessMessage(deps: ProcessMessageDeps) {
     if (text.length > limits.maxChars) throw new MessageTooLongError(limits.maxChars);
 
     const now = deps.clock.now();
-    const start = now.getTime();
+    const startedAt = now.getTime();
     const { timezone } = await deps.profiles.get(userId);
 
-    const registered = await deps.events.register(userId, channel, externalId, now);
-    if (!registered.firstTime) {
-      if (registered.status === 'processado' && isStoredReply(registered.reply)) {
-        info('assistant.replayed', { channel });
-        return registered.reply;
+    // Idempotência: o mesmo `externalId` nunca chama o modelo duas vezes; já processado = reproduz a resposta.
+    const registration = await deps.events.register(userId, channel, externalId, now);
+    if (!registration.firstTime) {
+      if (registration.status === 'processado' && isStoredReply(registration.reply)) {
+        logInfo('assistant.replayed', { channel });
+        return registration.reply;
       }
       // 'recebido'/'processando': evento concorrente ou preso por uma queda (recuperação é do Plano 5).
       throw new EventInProgressError();
     }
 
-    const ctx: ToolContext = { source: input.source, affected: new Map(), knownIds: new Set() };
-    let begun = false;
+    const toolContext: ToolContext = { source: input.source, affected: new Map(), knownIds: new Set() };
+    let modelCallStarted = false;
     try {
-      const used = await deps.events.countSince(userId, new Date(start - HOUR_MS));
-      if (used >= limits.perHour) throw new RateLimitedError(RETRY_AFTER_SECONDS);
+      // Limite por hora: conta os eventos do usuário registrados na última hora.
+      const eventsInLastHour = await deps.events.countSince(userId, new Date(startedAt - HOUR_MS));
+      if (eventsInLastHour >= limits.perHour) throw new RateLimitedError(RETRY_AFTER_SECONDS);
 
       const messages = toModelMessages(await deps.chat.recent(userId, channel, limits.contextMessages, now));
-      const targets = await loadTargets(input);
-      for (const t of targets) ctx.knownIds.add(t.id);
-      const parts = [buildContextBlock(now, timezone)];
-      if (targets.length > 0) parts.push(describeTargets(targets));
-      parts.push(text);
-      messages.push({ role: 'user', content: parts.join('\n\n') });
+      const targetTasks = await loadTargetTasks(input);
+      for (const task of targetTasks) toolContext.knownIds.add(task.id);
+      const userMessageParts = [buildContextBlock(now, timezone)];
+      if (targetTasks.length > 0) userMessageParts.push(describeTargetTasks(targetTasks));
+      userMessageParts.push(text);
+      messages.push({ role: 'user', content: userMessageParts.join('\n\n') });
 
       await deps.events.beginModelCall(userId, channel, externalId, now);
-      begun = true;
-      info('assistant.start', { channel, historyMessages: messages.length - 1, targets: targets.length });
+      modelCallStarted = true;
+      logInfo('assistant.start', { channel, historyMessages: messages.length - 1, targets: targetTasks.length });
 
-      const replyTextFinal = await runCycle({ userId, source: input.source, messages, ctx, start });
-      const reply: AssistantReplyDto = { reply: replyTextFinal, affectedTasks: [...ctx.affected.values()] };
+      const finalReplyText = await runToolLoop({ userId, source: input.source, messages, toolContext, startedAt });
+      const reply: AssistantReplyDto = { reply: finalReplyText, affectedTasks: [...toolContext.affected.values()] };
 
       await finish(reply);
-      info('assistant.done', { affected: reply.affectedTasks.length, ms: deps.clock.now().getTime() - start });
+      logInfo('assistant.done', { affected: reply.affectedTasks.length, ms: deps.clock.now().getTime() - startedAt });
       return reply;
     } catch (error) {
-      const original = error instanceof Passthrough ? error.cause : error;
+      const originalError = error instanceof Passthrough ? error.cause : error;
       const reason = error instanceof AssistantUnavailableError ? error.reason : 'servico';
       logError('assistant.failed', {
-        begun,
-        affected: ctx.affected.size,
-        errorName: errorName(original),
-        reason: begun ? reason : null,
-        ms: deps.clock.now().getTime() - start,
+        begun: modelCallStarted,
+        affected: toolContext.affected.size,
+        errorName: errorNameOf(originalError),
+        reason: modelCallStarted ? reason : null,
+        ms: deps.clock.now().getTime() - startedAt,
       });
-      if (ctx.affected.size > 0) {
+      if (toolContext.affected.size > 0) {
         // Já houve escrita: o evento termina com uma resposta verdadeira (reenviar a reproduz, sem recriar nada).
-        const reply = { reply: partialReplyText(reason, [...ctx.affected.values()]), affectedTasks: [...ctx.affected.values()] };
+        const affectedTasks = [...toolContext.affected.values()];
+        const reply = { reply: partialReplyText(reason, affectedTasks), affectedTasks };
         await finish(reply);
         return reply;
       }
       await failEvent();
-      if (!begun || error instanceof Passthrough) throw original;
+      if (!modelCallStarted || error instanceof Passthrough) throw originalError;
       throw new AssistantUnavailableError(reason, []);
     }
 
@@ -260,24 +286,26 @@ export function makeProcessMessage(deps: ProcessMessageDeps) {
     async function finish(reply: AssistantReplyDto): Promise<void> {
       try {
         await deps.chat.append(userId, channel, 'user', text, now);
-        await deps.chat.append(userId, channel, 'assistant', reply.reply, new Date(start + 1));
-      } catch (e) {
-        logError('assistant.chat_append_error', { errorName: errorName(e) });
+        // +1 ms: a resposta fica sempre depois da pergunta na ordem do histórico.
+        await deps.chat.append(userId, channel, 'assistant', reply.reply, new Date(startedAt + 1));
+      } catch (error) {
+        logError('assistant.chat_append_error', { errorName: errorNameOf(error) });
       }
       try {
         await deps.events.markProcessed(userId, channel, externalId, reply, now);
-      } catch (e) {
-        logError('assistant.mark_processed_error', { errorName: errorName(e) });
+      } catch (error) {
+        logError('assistant.mark_processed_error', { errorName: errorNameOf(error) });
         // Sem escrita nenhuma, reabrir o evento é seguro; com escrita ele fica 'processando' (nunca 'falhou').
         if (reply.affectedTasks.length === 0) await failEvent();
       }
     }
 
+    /** Marca o evento como falho (o usuário pode reenviar); falha aqui só é registrada. */
     async function failEvent(): Promise<void> {
       try {
         await deps.events.markFailed(userId, channel, externalId, now);
-      } catch (e) {
-        logError('assistant.mark_failed_error', { errorName: errorName(e) });
+      } catch (error) {
+        logError('assistant.mark_failed_error', { errorName: errorNameOf(error) });
       }
     }
   };

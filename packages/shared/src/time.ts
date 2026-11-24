@@ -1,6 +1,6 @@
 import type { IsoDate } from './primitives.js';
 
-/** Calendar date of `now` in the given IANA time zone. */
+/** Data de calendário de `now` no fuso IANA dado (nunca o fuso do servidor). */
 export function todayIn(timeZone: string, now: Date): IsoDate {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone,
@@ -8,6 +8,6 @@ export function todayIn(timeZone: string, now: Date): IsoDate {
     month: '2-digit',
     day: '2-digit',
   }).formatToParts(now);
-  const get = (type: string): string => parts.find((p) => p.type === type)?.value ?? '';
-  return `${get('year')}-${get('month')}-${get('day')}`;
+  const readPart = (type: string): string => parts.find((part) => part.type === type)?.value ?? '';
+  return `${readPart('year')}-${readPart('month')}-${readPart('day')}`;
 }

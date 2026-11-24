@@ -12,6 +12,7 @@ import { TelegramCard } from "./telegram-card";
 import { telegramFirstName } from "./telegram-bridge";
 import { useToast } from "./toast";
 
+/** Fusos do Brasil, listados primeiro no seletor. */
 const BRAZIL_ZONES = [
   "America/Sao_Paulo",
   "America/Manaus",
@@ -26,6 +27,7 @@ const BRAZIL_ZONES = [
   "America/Noronha",
 ];
 
+/** Nomes amigáveis para fusos cujo identificador não se lê bem; os demais usam o próprio identificador. */
 const ZONE_LABEL: Record<string, string> = {
   "America/Sao_Paulo": "São Paulo (Brasília)",
   "America/Belem": "Belém",
@@ -37,6 +39,7 @@ const ZONE_LABEL: Record<string, string> = {
   "America/Rio_Branco": "Rio Branco",
 };
 
+/** Opções de antecedência do lembrete: [minutos, rótulo]. */
 const LEAD_PRESETS: Array<[number, string]> = [
   [0, "No horário da tarefa"],
   [5, "5 minutos antes"],
@@ -48,44 +51,54 @@ const LEAD_PRESETS: Array<[number, string]> = [
   [1440, "1 dia antes"],
 ];
 
+/**
+ * Fusos fora do Brasil, em ordem alfabética. Inclui sempre o fuso atual da pessoa, mesmo que o
+ * navegador não tenha `Intl.supportedValuesOf` (ou ele falhe), para o seletor nunca perdê-lo.
+ */
 function otherZones(current: string): string[] {
-  let all: string[] = [];
+  let supportedZones: string[] = [];
   try {
-    all = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf?.("timeZone") ?? [];
+    supportedZones =
+      (Intl as unknown as { supportedValuesOf?: (key: string) => string[] }).supportedValuesOf?.("timeZone") ?? [];
   } catch {
-    all = [];
+    supportedZones = [];
   }
-  return [...new Set([current, ...all])].filter((z) => !BRAZIL_ZONES.includes(z)).sort((a, b) => a.localeCompare(b));
+  return [...new Set([current, ...supportedZones])]
+    .filter((zone) => !BRAZIL_ZONES.includes(zone))
+    .sort((first, second) => first.localeCompare(second));
 }
 
+/** Tela "Configurações" do Mini App (/mini/configuracoes), aberta pelo menu do cabeçalho. */
 export function SettingsScreen() {
-  const q = useSettings();
-  const back = (
+  const settingsQuery = useSettings();
+  const backLink = (
     <Link href="/mini" className="mini-back">
       <BackIcon /> Hoje
     </Link>
   );
-  if (q.isError) {
+  if (settingsQuery.isError) {
     return (
       <main>
-        {back}
+        {backLink}
         <p role="alert" className="mini-alert">
           Não foi possível carregar as configurações. Tente de novo em instantes.
         </p>
       </main>
     );
   }
-  if (q.isPending) {
+  if (settingsQuery.isPending) {
     return (
       <main role="status" aria-label="Carregando configurações">
-        {back}
+        {backLink}
         <div className="mini-skeleton" style={{ marginTop: 16, height: 220 }} />
       </main>
     );
   }
-  return <SettingsForm key={JSON.stringify(q.data)} settings={q.data} back={back} />;
+  // A key recria o formulário quando as configurações mudam no servidor, reiniciando os campos.
+  return <SettingsForm key={JSON.stringify(settingsQuery.data)} settings={settingsQuery.data} back={backLink} />;
 }
 
+/** Campo "Como você quer ser chamado?", com sugestão do primeiro nome do Telegram. Usado no Mini App e no painel. */
 export function NameForm() {
   const { displayName, saveDisplayName } = useAuth();
   const toast = useToast();
@@ -95,14 +108,14 @@ export function NameForm() {
   const suggestion = telegramFirstName();
   const changed = name.trim() !== (displayName ?? "");
 
-  async function submit(e: FormEvent) {
-    e.preventDefault();
+  async function submit(event: FormEvent) {
+    event.preventDefault();
     if (!changed || saving) return;
     setSaving(true);
     setError(null);
-    const { error: err } = await saveDisplayName(name);
+    const { error: saveError } = await saveDisplayName(name);
     setSaving(false);
-    if (err) setError(err);
+    if (saveError) setError(saveError);
     else toast({ message: name.trim() === "" ? "Nome removido." : `Combinado, vou te chamar de ${name.trim()}.` });
   }
 
@@ -116,7 +129,7 @@ export function NameForm() {
           maxLength={DISPLAY_NAME_MAX}
           autoComplete="given-name"
           placeholder="Seu nome ou apelido"
-          onChange={(e) => setName(e.target.value)}
+          onChange={(event) => setName(event.target.value)}
         />
       </label>
       {suggestion !== "" && name.trim() === "" && (
@@ -140,42 +153,51 @@ export function NameForm() {
 export function SettingsFields({ settings }: { settings: SettingsDto }) {
   const update = useUpdateSettings();
   const toast = useToast();
-  const busy = useRef(false);
+  // Trava síncrona contra duplo envio (o isPending da mutation só muda no próximo render).
+  const submitting = useRef(false);
   const [timezone, setTimezone] = useState(settings.timezone);
-  const [lead, setLead] = useState(String(settings.earlyReminderMinutes));
-  const [briefing, setBriefing] = useState(settings.briefingTime);
+  const [leadMinutes, setLeadMinutes] = useState(String(settings.earlyReminderMinutes));
+  const [briefingTime, setBriefingTime] = useState(settings.briefingTime);
   const [error, setError] = useState<string | null>(null);
-  const [warning, setWarning] = useState<string[]>([]);
+  const [skippedTaskTitles, setSkippedTaskTitles] = useState<string[]>([]);
 
-  const leadOptions = LEAD_PRESETS.some(([m]) => String(m) === lead)
+  // Uma antecedência fora das opções (definida em outro lugar) entra na lista para não sumir do seletor.
+  const isPresetLead = LEAD_PRESETS.some(([minutes]) => String(minutes) === leadMinutes);
+  const leadOptions = isPresetLead
     ? LEAD_PRESETS
-    : ([...LEAD_PRESETS, [Number(lead), `${lead} minutos antes`]] as Array<[number, string]>).sort((a, b) => a[0] - b[0]);
+    : ([...LEAD_PRESETS, [Number(leadMinutes), `${leadMinutes} minutos antes`]] as Array<[number, string]>).sort(
+        (first, second) => first[0] - second[0],
+      );
   const changed =
-    timezone !== settings.timezone || lead !== String(settings.earlyReminderMinutes) || briefing !== settings.briefingTime;
+    timezone !== settings.timezone ||
+    leadMinutes !== String(settings.earlyReminderMinutes) ||
+    briefingTime !== settings.briefingTime;
 
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    if (busy.current || !changed) return;
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (submitting.current || !changed) return;
+    // Envia só o que mudou.
     const patch: Record<string, unknown> = {};
     if (timezone !== settings.timezone) patch.timezone = timezone;
-    if (lead !== String(settings.earlyReminderMinutes)) patch.earlyReminderMinutes = Number(lead);
-    if (briefing !== settings.briefingTime) patch.briefingTime = briefing;
+    if (leadMinutes !== String(settings.earlyReminderMinutes)) patch.earlyReminderMinutes = Number(leadMinutes);
+    if (briefingTime !== settings.briefingTime) patch.briefingTime = briefingTime;
     const parsed = updateSettingsInputSchema.safeParse(patch);
     if (!parsed.success) {
       setError("Confira o fuso e o horário do resumo (use HH:mm).");
       return;
     }
-    busy.current = true;
+    submitting.current = true;
     setError(null);
-    setWarning([]);
+    setSkippedTaskTitles([]);
     try {
       const saved = await update.mutateAsync(parsed.data);
-      if (saved.skipped.length > 0) setWarning(saved.skipped.map((s) => s.title));
+      // Lembretes que o servidor não conseguiu reagendar com as novas configurações.
+      if (saved.skipped.length > 0) setSkippedTaskTitles(saved.skipped.map((skippedTask) => skippedTask.title));
       else toast({ message: "Configurações salvas." });
-    } catch (err) {
-      setError(messageFor(err));
+    } catch (saveError) {
+      setError(messageFor(saveError));
     } finally {
-      busy.current = false;
+      submitting.current = false;
     }
   }
 
@@ -184,18 +206,18 @@ export function SettingsFields({ settings }: { settings: SettingsDto }) {
       <form className="mini-card mini-sheet" onSubmit={submit} noValidate aria-label="Configurações">
         <label className="mini-label">
           Fuso horário
-          <select className="mini-field" value={timezone} onChange={(e) => setTimezone(e.target.value)}>
+          <select className="mini-field" value={timezone} onChange={(event) => setTimezone(event.target.value)}>
             <optgroup label="Brasil">
-              {BRAZIL_ZONES.map((z) => (
-                <option key={z} value={z}>
-                  {ZONE_LABEL[z] ?? z.replace("America/", "").replace(/_/g, " ")}
+              {BRAZIL_ZONES.map((zone) => (
+                <option key={zone} value={zone}>
+                  {ZONE_LABEL[zone] ?? zone.replace("America/", "").replace(/_/g, " ")}
                 </option>
               ))}
             </optgroup>
             <optgroup label="Outros">
-              {otherZones(settings.timezone).map((z) => (
-                <option key={z} value={z}>
-                  {z.replace(/_/g, " ")}
+              {otherZones(settings.timezone).map((zone) => (
+                <option key={zone} value={zone}>
+                  {zone.replace(/_/g, " ")}
                 </option>
               ))}
             </optgroup>
@@ -203,9 +225,9 @@ export function SettingsFields({ settings }: { settings: SettingsDto }) {
         </label>
         <label className="mini-label">
           Avisar com antecedência
-          <select className="mini-field" value={lead} onChange={(e) => setLead(e.target.value)}>
-            {leadOptions.map(([m, label]) => (
-              <option key={m} value={String(m)}>
+          <select className="mini-field" value={leadMinutes} onChange={(event) => setLeadMinutes(event.target.value)}>
+            {leadOptions.map(([minutes, label]) => (
+              <option key={minutes} value={String(minutes)}>
                 {label}
               </option>
             ))}
@@ -213,7 +235,7 @@ export function SettingsFields({ settings }: { settings: SettingsDto }) {
         </label>
         <label className="mini-label">
           Horário do resumo do dia
-          <input type="time" className="mini-field" value={briefing} onChange={(e) => setBriefing(e.target.value)} />
+          <input type="time" className="mini-field" value={briefingTime} onChange={(event) => setBriefingTime(event.target.value)} />
         </label>
         {error !== null && (
           <p role="alert" className="mini-fielderr">
@@ -225,15 +247,16 @@ export function SettingsFields({ settings }: { settings: SettingsDto }) {
         </button>
       </form>
 
-      {warning.length > 0 && (
+      {skippedTaskTitles.length > 0 && (
         <p role="alert" className="mini-alert">
-          Salvo, mas não foi possível refazer o lembrete de: {warning.join(", ")}. Abra a tarefa e revise o horário.
+          Salvo, mas não foi possível refazer o lembrete de: {skippedTaskTitles.join(", ")}. Abra a tarefa e revise o horário.
         </p>
       )}
     </>
   );
 }
 
+/** Conteúdo da tela de Configurações depois que as configurações carregaram. */
 function SettingsForm({ settings, back }: { settings: SettingsDto; back: React.ReactNode }) {
   return (
     <main>

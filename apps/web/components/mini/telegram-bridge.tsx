@@ -3,6 +3,7 @@
 import Script from "next/script";
 import { useCallback, useEffect } from "react";
 
+/** Parte da API `window.Telegram.WebApp` que o Mini App usa. */
 type WebApp = {
   ready(): void;
   expand(): void;
@@ -25,43 +26,49 @@ declare global {
   }
 }
 
-const BG = { light: "#f5f6f2", dark: "#0e1f28" } as const;
+/** Cor de fundo do app em cada tema; o cabeçalho e o fundo do Telegram usam a mesma para não haver emenda. */
+const BACKGROUND_COLOR = { light: "#f5f6f2", dark: "#0e1f28" } as const;
+/** Valor de `platform` quando o SDK carrega num navegador comum, fora do Telegram. */
+const OUTSIDE_TELEGRAM_PLATFORM = "unknown";
 
 /**
  * Carrega o SDK do Telegram quando o app abre dentro dele e informa só o esquema claro/escuro.
  * Fora do Telegram nada acontece e vale prefers-color-scheme.
  */
 export function TelegramBridge({ onScheme }: { onScheme: (scheme: "light" | "dark") => void }) {
-  const attach = useCallback(() => {
-    const app = window.Telegram?.WebApp;
+  /** Avisa o Telegram que o app está pronto, abre em tela cheia e acompanha o tema. Devolve a limpeza. */
+  const attachToTelegram = useCallback(() => {
+    const webApp = window.Telegram?.WebApp;
     // Fora do Telegram o SDK carrega mesmo assim (platform "unknown"): vale prefers-color-scheme.
-    if (!app || app.platform === "unknown") return () => {};
-    const apply = () => {
-      onScheme(app.colorScheme);
-      app.setHeaderColor?.(BG[app.colorScheme]);
-      app.setBackgroundColor?.(BG[app.colorScheme]);
+    if (!webApp || webApp.platform === OUTSIDE_TELEGRAM_PLATFORM) return () => {};
+    const applyColorScheme = () => {
+      onScheme(webApp.colorScheme);
+      webApp.setHeaderColor?.(BACKGROUND_COLOR[webApp.colorScheme]);
+      webApp.setBackgroundColor?.(BACKGROUND_COLOR[webApp.colorScheme]);
     };
-    app.ready();
-    app.expand();
-    apply();
-    app.onEvent?.("themeChanged", apply);
-    return () => app.offEvent?.("themeChanged", apply);
+    webApp.ready();
+    webApp.expand();
+    applyColorScheme();
+    webApp.onEvent?.("themeChanged", applyColorScheme);
+    return () => webApp.offEvent?.("themeChanged", applyColorScheme);
   }, [onScheme]);
 
-  useEffect(() => attach(), [attach]);
+  // Cobre o caso de o SDK já estar carregado (navegação no cliente); o onReady do Script cobre a primeira carga.
+  useEffect(() => attachToTelegram(), [attachToTelegram]);
 
   return (
     <Script
       src="https://telegram.org/js/telegram-web-app.js"
       strategy="afterInteractive"
-      onReady={() => void attach()}
+      onReady={() => void attachToTelegram()}
     />
   );
 }
 
 /** Primeiro nome da pessoa no Telegram, só para sugerir; vazio fora do Telegram. */
 export function telegramFirstName(): string {
-  const app = typeof window === "undefined" ? undefined : window.Telegram?.WebApp;
-  if (!app || app.platform === "unknown") return "";
-  return app.initDataUnsafe?.user?.first_name?.trim() ?? "";
+  const webApp = typeof window === "undefined" ? undefined : window.Telegram?.WebApp;
+  if (!webApp || webApp.platform === OUTSIDE_TELEGRAM_PLATFORM) return "";
+  // initDataUnsafe não é verificado: serve só para sugerir o nome, nunca para autenticar.
+  return webApp.initDataUnsafe?.user?.first_name?.trim() ?? "";
 }

@@ -7,6 +7,7 @@ export const metadata: Metadata = {
   title: "Nexus",
 };
 
+/** Layout raiz: idioma pt-BR e provedores globais. */
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="pt-BR">

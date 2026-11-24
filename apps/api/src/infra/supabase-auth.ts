@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { AuthVerifier } from '../auth.js';
 
+/** Valida o JWT do Supabase Auth e devolve o usuário; token inválido ou conta bloqueada viram `null` (401). */
 export function createSupabaseAuthVerifier(client: SupabaseClient): AuthVerifier {
   return async (token) => {
     const { data, error } = await client.auth.getUser(token);

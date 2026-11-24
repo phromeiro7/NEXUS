@@ -3,35 +3,39 @@ import { AssistantUnavailableError, type AssistantUnavailableReason } from '../a
 import type { AssistantModel, ContentBlock, ModelMessage, ModelStep, ToolDefinition } from '../application/ports.js';
 
 const MAX_TOKENS = 4096;
+/** Cada passo precisa caber no orçamento da requisição do usuário; acima disso vira 'timeout'. */
 const CALL_TIMEOUT_MS = 12_000;
+/** Um retry do próprio SDK (só erros transitórios); mais que isso estouraria o orçamento de tempo. */
 const MAX_RETRIES = 1;
+/** Esforço baixo: as ferramentas são simples e a resposta precisa ser rápida e barata. */
+const REASONING_EFFORT = 'low';
+const HTTP_TOO_MANY_REQUESTS = 429;
 
 /** Palavras-chave que o modo `strict` não aceita; o Zod continua validando tudo no servidor. */
 const STRICT_UNSUPPORTED = new Set(['minLength', 'maxLength', 'minimum', 'maximum', 'pattern']);
+/** Trecho do `pattern` de uuid gerado pelo Zod: quando o `pattern` é removido, vira `format: 'uuid'`. */
 const UUID_PATTERN_HINT = '[0-9a-fA-F]{8}-';
 
 /** Cópia do JSON Schema sem as palavras-chave não suportadas pelo modo `strict`. */
 function sanitizeSchema(node: unknown, insideProperties = false): unknown {
-  if (Array.isArray(node)) return node.map((x) => sanitizeSchema(x));
+  if (Array.isArray(node)) return node.map((item) => sanitizeSchema(item));
   if (node === null || typeof node !== 'object') return node;
   const source = node as Record<string, unknown>;
-  const out: Record<string, unknown> = {};
+  const sanitized: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(source)) {
     // Dentro de `properties` as chaves são nomes de campos, não palavras-chave.
     if (!insideProperties && STRICT_UNSUPPORTED.has(key)) continue;
-    out[key] = sanitizeSchema(value, !insideProperties && key === 'properties');
+    sanitized[key] = sanitizeSchema(value, !insideProperties && key === 'properties');
   }
-  if (
-    !insideProperties &&
-    typeof source.pattern === 'string' &&
-    source.pattern.includes(UUID_PATTERN_HINT) &&
-    out.format === undefined
-  ) {
-    out.format = 'uuid';
+  const isUuidPattern =
+    !insideProperties && typeof source.pattern === 'string' && source.pattern.includes(UUID_PATTERN_HINT);
+  if (isUuidPattern && sanitized.format === undefined) {
+    sanitized.format = 'uuid';
   }
-  return out;
+  return sanitized;
 }
 
+/** Ferramenta da aplicação -> ferramenta da API, em modo `strict` (a entrada sempre segue o schema). */
 function toTool(tool: ToolDefinition): Anthropic.Tool {
   return {
     name: tool.name,
@@ -41,6 +45,7 @@ function toTool(tool: ToolDefinition): Anthropic.Tool {
   };
 }
 
+/** Bloco de conteúdo da aplicação -> bloco de requisição da API. */
 function toBlockParam(block: ContentBlock): Anthropic.ContentBlockParam {
   switch (block.type) {
     case 'thinking':
@@ -62,16 +67,17 @@ function toBlockParam(block: ContentBlock): Anthropic.ContentBlockParam {
 }
 
 function toMessages(messages: ModelMessage[]): Anthropic.MessageParam[] {
-  return messages.map((m) => ({
-    role: m.role,
+  return messages.map((message) => ({
+    role: message.role,
     content:
-      typeof m.content === 'string'
-        ? m.content
+      typeof message.content === 'string'
+        ? message.content
         // Bloco de texto vazio dá 400 na API; blocos de pensamento passam intactos.
-        : m.content.filter((b) => b.type !== 'text' || b.text !== '').map(toBlockParam),
+        : message.content.filter((block) => block.type !== 'text' || block.text !== '').map(toBlockParam),
   }));
 }
 
+/** Reduz os motivos de parada da API aos que o laço do assistente trata. */
 function toStopReason(reason: Anthropic.StopReason | null): ModelStep['stopReason'] {
   switch (reason) {
     case 'tool_use':
@@ -86,6 +92,7 @@ function toStopReason(reason: Anthropic.StopReason | null): ModelStep['stopReaso
   }
 }
 
+/** Resposta da API -> passo do modelo; blocos de pensamento guardam o original para serem devolvidos intactos. */
 function toStep(message: Anthropic.Message): ModelStep {
   const blocks: ModelStep['blocks'] = [];
   for (const block of message.content) {
@@ -104,8 +111,11 @@ function toStep(message: Anthropic.Message): ModelStep {
   };
 }
 
-/** Por classe do SDK (mais específica primeiro), nunca pelo texto da mensagem. */
-function reasonOf(error: unknown, signal: AbortSignal): AssistantUnavailableReason | null {
+/**
+ * Motivo de indisponibilidade a partir do erro do SDK, ou `null` se não for erro da API (bug nosso: relançado).
+ * Por classe do SDK (mais específica primeiro), nunca pelo texto da mensagem.
+ */
+function unavailableReasonOf(error: unknown, signal: AbortSignal): AssistantUnavailableReason | null {
   if (signal.aborted || error instanceof Anthropic.APIUserAbortError) return 'timeout';
   if (error instanceof Anthropic.APIConnectionTimeoutError) return 'timeout';
   if (error instanceof Anthropic.APIConnectionError) return 'rede';
@@ -116,7 +126,7 @@ function reasonOf(error: unknown, signal: AbortSignal): AssistantUnavailableReas
   if (error instanceof Anthropic.InternalServerError) return 'servico';
   if (error instanceof Anthropic.APIError) {
     const status = error.status;
-    if (status === 429) return 'limite';
+    if (status === HTTP_TOO_MANY_REQUESTS) return 'limite';
     if (status !== undefined && status >= 400 && status < 500) return 'configuracao';
     return 'servico';
   }
@@ -128,11 +138,13 @@ export function createSdkClient(apiKey: string): Anthropic {
   return new Anthropic({ apiKey, logLevel: 'off' });
 }
 
+/** Modelo do assistente sobre a API da Anthropic; erros da API viram `AssistantUnavailableError` com motivo fixo. */
 export function createAnthropicAssistantModel(opts: { apiKey: string; model: string; client?: Anthropic }): AssistantModel {
   const client = opts.client ?? createSdkClient(opts.apiKey);
 
   return {
     async step({ system, messages, tools, signal }) {
+      // A API trataria a última mensagem do assistente como prefill; o laço nunca deve chegar aqui assim.
       if (messages.at(-1)?.role === 'assistant') {
         throw new Error('A última mensagem não pode ser do assistente (prefill não é suportado)');
       }
@@ -142,11 +154,12 @@ export function createAnthropicAssistantModel(opts: { apiKey: string; model: str
           {
             model: opts.model,
             max_tokens: MAX_TOKENS,
-            output_config: { effort: 'low' },
-            system: system.map((b) => ({
+            output_config: { effort: REASONING_EFFORT },
+            // Blocos marcados com `cache` encerram o prefixo estável do prompt (prompt caching).
+            system: system.map((systemBlock) => ({
               type: 'text' as const,
-              text: b.text,
-              ...(b.cache ? { cache_control: { type: 'ephemeral' as const } } : {}),
+              text: systemBlock.text,
+              ...(systemBlock.cache ? { cache_control: { type: 'ephemeral' as const } } : {}),
             })),
             tools: tools.map(toTool),
             tool_choice: { type: 'auto' },
@@ -156,7 +169,7 @@ export function createAnthropicAssistantModel(opts: { apiKey: string; model: str
         );
         return toStep(response);
       } catch (error) {
-        const reason = reasonOf(error, signal);
+        const reason = unavailableReasonOf(error, signal);
         if (reason === null) throw error;
         // Mensagem fixa: nada do SDK (pode conter trechos da requisição) nem do usuário.
         throw new AssistantUnavailableError(reason);

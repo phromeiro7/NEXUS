@@ -1,8 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ChatRepository, ChatRole } from '../application/ports.js';
 
-const TTL_MS = 24 * 60 * 60 * 1000;
+/** Histórico de conversa é efêmero: cada mensagem expira em 24 horas. */
+const MESSAGE_TTL_MS = 24 * 60 * 60 * 1000;
 
+/** Histórico curto da conversa com o assistente, por usuário e canal. */
 export function createSupabaseChatRepository(client: SupabaseClient): ChatRepository {
   return {
     async append(userId, channel, role, content, now) {
@@ -12,7 +14,7 @@ export function createSupabaseChatRepository(client: SupabaseClient): ChatReposi
         role,
         content,
         created_at: now.toISOString(),
-        expires_at: new Date(now.getTime() + TTL_MS).toISOString(),
+        expires_at: new Date(now.getTime() + MESSAGE_TTL_MS).toISOString(),
       });
       if (error) throw new Error(`Falha ao gravar mensagem: ${error.message}`);
     },

@@ -9,8 +9,13 @@ import {
   isUuid,
 } from './mappers.js';
 
+/** SQLSTATE `unique_violation`: o id informado (idempotência) já foi usado. */
 const UNIQUE_VIOLATION = '23505';
 
+/**
+ * Lançamentos financeiros. Toda consulta filtra por `user_id` (o cliente usa a service role, que ignora RLS);
+ * id malformado vira "não encontrado" antes de chegar ao banco.
+ */
 export function createSupabaseFinanceRepository(client: SupabaseClient): FinanceEntryRepository {
   return {
     async create(userId, entry) {
@@ -51,11 +56,11 @@ export function createSupabaseFinanceRepository(client: SupabaseClient): Finance
     },
 
     async list(userId, query) {
-      let q = client.from('finance_entries').select(FINANCE_COLUMNS).eq('user_id', userId);
-      if (query.from !== undefined) q = q.gte('due_date', query.from);
-      if (query.to !== undefined) q = q.lte('due_date', query.to);
-      if (query.status !== undefined) q = q.eq('status', query.status);
-      const { data, error } = await q
+      let request = client.from('finance_entries').select(FINANCE_COLUMNS).eq('user_id', userId);
+      if (query.from !== undefined) request = request.gte('due_date', query.from);
+      if (query.to !== undefined) request = request.lte('due_date', query.to);
+      if (query.status !== undefined) request = request.eq('status', query.status);
+      const { data, error } = await request
         .order('due_date', { ascending: false })
         .order('created_at', { ascending: false })
         .limit(FINANCE_LIST_LIMIT);

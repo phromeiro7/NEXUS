@@ -44,6 +44,17 @@ import { createSupabaseProfileRepository } from './infra/supabase-profile-reposi
 import { createSupabaseReminderRepository } from './infra/supabase-reminder-repository.js';
 import { createSupabaseTaskRepository } from './infra/supabase-task-repository.js';
 
+const TEN_MINUTES_MS = 10 * 60_000;
+const ONE_MINUTE_MS = 60_000;
+/** Janela padrão do `auth_date` no login pelo Mini App, quando TELEGRAM_LOGIN_MAX_AGE_SECONDS não vem. */
+const DEFAULT_TELEGRAM_LOGIN_MAX_AGE_SECONDS = 3600;
+// Login por QR. Por IP: abrir e recarregar a tela de login. Por pedido: a consulta do navegador a cada ~2 s.
+const QR_LOGIN_IP_LIMIT = { max: 20, windowMs: TEN_MINUTES_MS };
+const QR_LOGIN_POLL_LIMIT = { max: 120, windowMs: ONE_MINUTE_MS };
+// Login do Mini App. Por IP é folgado (vários aparelhos atrás do mesmo NAT); por usuário do Telegram é curto.
+const TELEGRAM_LOGIN_IP_LIMIT = { max: 30, windowMs: TEN_MINUTES_MS };
+const TELEGRAM_LOGIN_USER_LIMIT = { max: 10, windowMs: TEN_MINUTES_MS };
+
 /**
  * Monta a API real (Supabase, repositórios e casos de uso). `clock`, `assistantModel` e
  * `telegramClient` só são sobrescritos em testes. Sem `assistantModel` nem `config.anthropicApiKey` o assistente fica
@@ -53,43 +64,46 @@ export function buildApp(
   config: Config,
   overrides?: { clock?: Clock; assistantModel?: AssistantModel; telegramClient?: TelegramClient },
 ): ReturnType<typeof createApp> {
-  const client = createClient(config.supabaseUrl, config.serviceRoleKey, {
+  // Cliente com a service role (ignora RLS): cada repositório filtra por `user_id` explicitamente.
+  // Sem sessão persistida nem refresh: o servidor não tem usuário logado próprio.
+  const supabase = createClient(config.supabaseUrl, config.serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const finance = createSupabaseFinanceRepository(client);
-  const profiles = createSupabaseProfileRepository(client);
-  const reminders = createSupabaseReminderRepository(client);
-  const tasks = createSupabaseTaskRepository(client);
+  const finance = createSupabaseFinanceRepository(supabase);
+  const profiles = createSupabaseProfileRepository(supabase);
+  const reminders = createSupabaseReminderRepository(supabase);
+  const tasks = createSupabaseTaskRepository(supabase);
   const clock: Clock = overrides?.clock ?? { now: () => new Date() };
   const taskUseCases = makeTaskUseCases({ tasks, profiles, reminders, clock });
 
-  const events = createSupabaseInboundEventRepository(client);
-  const model: AssistantModel | undefined =
+  const inboundEvents = createSupabaseInboundEventRepository(supabase);
+  const assistantModel: AssistantModel | undefined =
     overrides?.assistantModel ??
     (config.anthropicApiKey !== undefined
       ? createAnthropicAssistantModel({ apiKey: config.anthropicApiKey, model: config.assistantModel })
       : undefined);
   const processMessage =
-    model === undefined
+    assistantModel === undefined
       ? undefined
       : makeProcessMessage({
-          model,
+          model: assistantModel,
           executor: makeToolExecutor({ tasks: taskUseCases, profiles, clock }),
-          chat: createSupabaseChatRepository(client),
-          events,
+          chat: createSupabaseChatRepository(supabase),
+          events: inboundEvents,
           profiles,
           clock,
+          // Tarefas citadas pela conversa: as que sumiram (apagadas) são ignoradas, não viram erro.
           tasksByIds: async (userId, ids) => {
-            const found: TaskDto[] = [];
-            for (const id of ids) {
+            const foundTasks: TaskDto[] = [];
+            for (const taskId of ids) {
               try {
-                found.push(await taskUseCases.get(userId, id));
+                foundTasks.push(await taskUseCases.get(userId, taskId));
               } catch (error) {
                 if (!(error instanceof NotFoundError)) throw error;
               }
             }
-            return found;
+            return foundTasks;
           },
           logger: createJsonLogger(),
         });
@@ -100,11 +114,11 @@ export function buildApp(
     overrides?.telegramClient ??
     (config.telegramBotToken !== undefined ? createTelegramClient({ token: config.telegramBotToken }) : undefined);
   const logger = createJsonLogger();
-  const queue = createSupabaseReminderQueue(client);
+  const reminderQueue = createSupabaseReminderQueue(supabase);
   const syncReminders = makeSyncReminders({ reminders, clock });
   const getBriefing = makeGetBriefing({ tasks, profiles, clock });
   const runReminders = makeRunReminders({
-    queue,
+    queue: reminderQueue,
     ...(telegram !== undefined ? { telegram } : {}),
     tasks,
     profiles,
@@ -113,19 +127,19 @@ export function buildApp(
     logger,
   });
   const sendDailyBriefings = makeSendDailyBriefings({
-    briefings: createSupabaseBriefingRepository(client, { logger }),
+    briefings: createSupabaseBriefingRepository(supabase, { logger }),
     getBriefing,
     ...(telegram !== undefined ? { telegram } : {}),
-    queue,
+    queue: reminderQueue,
     clock,
     logger,
     budgetMs: SCHEDULER_BUDGETS_MS.briefings,
   });
-  const captures = createSupabaseCaptureRepository(client);
+  const captures = createSupabaseCaptureRepository(supabase);
   const financeUseCases = makeFinanceUseCases({ finance, clock });
-  const telegramAuth = createSupabaseTelegramAuthRepository(client);
-  const qrRequests = createSupabaseQrLoginRepository(client);
-  const sessionIssuer = createSupabaseSessionIssuer(client);
+  const telegramAuth = createSupabaseTelegramAuthRepository(supabase);
+  const qrRequests = createSupabaseQrLoginRepository(supabase);
+  const sessionIssuer = createSupabaseSessionIssuer(supabase);
   // Login do painel por QR: precisa do bot recebendo mensagens (webhook) e do nome do bot para o link.
   const qrLogin =
     telegram !== undefined && config.telegramWebhookSecret !== undefined && config.telegramBotUsername !== undefined
@@ -134,17 +148,16 @@ export function buildApp(
           sessions: sessionIssuer,
           botUsername: config.telegramBotUsername,
           profiles,
-          // Por IP: abrir e recarregar a tela de login. Por pedido: a consulta do navegador a cada ~2 s.
-          ipLimiter: makeRateLimiter({ max: 20, windowMs: 10 * 60_000, clock }),
-          pollLimiter: makeRateLimiter({ max: 120, windowMs: 60_000, clock }),
+          ipLimiter: makeRateLimiter({ ...QR_LOGIN_IP_LIMIT, clock }),
+          pollLimiter: makeRateLimiter({ ...QR_LOGIN_POLL_LIMIT, clock }),
           clock,
         })
       : undefined;
   const scheduler = makeRunScheduler({
-    maintenance: createSupabaseMaintenanceRepository(client),
-    purgeCaptures: (at) => captures.purgeExpired(at),
-    purgeTelegramAuth: (at) => telegramAuth.purgeExpired(at),
-    ...(qrLogin !== undefined ? { purgeQrLogin: (at: Date) => qrLogin.purgeExpired(at) } : {}),
+    maintenance: createSupabaseMaintenanceRepository(supabase),
+    purgeCaptures: (now) => captures.purgeExpired(now),
+    purgeTelegramAuth: (now) => telegramAuth.purgeExpired(now),
+    ...(qrLogin !== undefined ? { purgeQrLogin: (now: Date) => qrLogin.purgeExpired(now) } : {}),
     runReminders: () => runReminders({ budgetMs: SCHEDULER_BUDGETS_MS.reminders }),
     sendDailyBriefings,
     clock,
@@ -153,19 +166,19 @@ export function buildApp(
 
   // Vínculo e webhook do Telegram. O webhook só existe com cliente do Telegram E segredo configurados;
   // sem eles a rota responde 503 'webhook_desabilitado' e o resto da API funciona.
-  const links = createSupabaseLinkRepository(client);
+  const links = createSupabaseLinkRepository(supabase);
   // Convites: administradores vêm de ADMIN_TELEGRAM_USER_IDS; sem token do bot não há link para compartilhar.
   const inviteUseCases = makeInviteUseCases({
-    invites: createSupabaseInviteRepository(client),
-    accounts: createSupabaseAccountProvisioner(client),
+    invites: createSupabaseInviteRepository(supabase),
+    accounts: createSupabaseAccountProvisioner(supabase),
     adminTelegramIds: new Set(config.adminTelegramUserIds ?? []),
     botUsername: config.telegramBotUsername,
     ...(config.inviteTtlDays !== undefined ? { ttlDays: config.inviteTtlDays } : {}),
     clock,
   });
   const acceptInvite = makeAcceptInvite({
-    invites: createSupabaseInviteRepository(client),
-    accounts: createSupabaseAccountProvisioner(client),
+    invites: createSupabaseInviteRepository(supabase),
+    accounts: createSupabaseAccountProvisioner(supabase),
     links,
     clock,
   });
@@ -174,8 +187,8 @@ export function buildApp(
     telegram !== undefined && config.telegramWebhookSecret !== undefined
       ? makeHandleTelegramUpdate({
           links,
-          events,
-          confirmations: createSupabaseConfirmationRepository(client),
+          events: inboundEvents,
+          confirmations: createSupabaseConfirmationRepository(supabase),
           // Sem modelo (sem chave): o usuário recebe o aviso de indisponibilidade e nada é gravado.
           processMessage:
             processMessage ??
@@ -206,18 +219,17 @@ export function buildApp(
         })
       : undefined;
 
-  // Login do Mini App pelo initData: só liga com o token do bot. O limite por IP é folgado (vários
-  // aparelhos atrás do mesmo NAT); o por usuário do Telegram é curto.
+  // Login do Mini App pelo initData: só liga com o token do bot.
   const telegramLogin =
     config.telegramBotToken !== undefined
       ? makeTelegramLogin({
           botToken: config.telegramBotToken,
-          maxAgeSeconds: config.telegramLoginMaxAgeSeconds ?? 3600,
+          maxAgeSeconds: config.telegramLoginMaxAgeSeconds ?? DEFAULT_TELEGRAM_LOGIN_MAX_AGE_SECONDS,
           replays: telegramAuth,
           links,
           sessions: sessionIssuer,
-          ipLimiter: makeRateLimiter({ max: 30, windowMs: 10 * 60_000, clock }),
-          userLimiter: makeRateLimiter({ max: 10, windowMs: 10 * 60_000, clock }),
+          ipLimiter: makeRateLimiter({ ...TELEGRAM_LOGIN_IP_LIMIT, clock }),
+          userLimiter: makeRateLimiter({ ...TELEGRAM_LOGIN_USER_LIMIT, clock }),
           clock,
         })
       : undefined;
@@ -231,7 +243,7 @@ export function buildApp(
     ...(config.telegramWebhookSecret !== undefined ? { telegramWebhookSecret: config.telegramWebhookSecret } : {}),
     scheduler,
     ...(config.internalSecret !== undefined ? { internalSecret: config.internalSecret } : {}),
-    verifyToken: createSupabaseAuthVerifier(client),
+    verifyToken: createSupabaseAuthVerifier(supabase),
     tasks: taskUseCases,
     finance: financeUseCases,
     capture: makeCaptureInterpretUseCases({ profiles, clock }),

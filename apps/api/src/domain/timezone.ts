@@ -1,21 +1,32 @@
 import type { IsoDate } from '@nexus/shared';
 
+/** Resultado de `localToUtc`: o instante, ou o motivo pelo qual a hora local não tem instante único. */
 export type LocalToUtcResult =
   | { ok: true; utc: Date }
   | { ok: false; reason: 'hora_inexistente' | 'hora_ambigua' };
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const TIME_RE =/^([01]\d|2[0-3]):([0-5]\d)$/;
+const MS_PER_SECOND = 1000;
+const MS_PER_DAY = 24 * 60 * 60 * MS_PER_SECOND;
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 /** Deslocamento (ms) do fuso em relação a UTC no instante dado: hora local - UTC. */
-function offsetAt(formatter: Intl.DateTimeFormat, instantMs: number): number {
-  const p: Record<string, number> = {};
+function utcOffsetMsAt(formatter: Intl.DateTimeFormat, instantMs: number): number {
+  const localFields: Record<string, number> = {};
   for (const part of formatter.formatToParts(new Date(instantMs))) {
-    if (part.type !== 'literal') p[part.type] = Number(part.value);
+    if (part.type !== 'literal') localFields[part.type] = Number(part.value);
   }
-  const localAsUtc = Date.UTC(p.year!, p.month! - 1, p.day, p.hour, p.minute, p.second);
-  return localAsUtc - Math.floor(instantMs / 1000) * 1000;
+  const localAsUtc = Date.UTC(
+    localFields.year!,
+    localFields.month! - 1,
+    localFields.day,
+    localFields.hour,
+    localFields.minute,
+    localFields.second,
+  );
+  // O formatador só vai até segundos: descarta os milissegundos do instante para comparar igual com igual.
+  const instantWholeSecondsMs = Math.floor(instantMs / MS_PER_SECOND) * MS_PER_SECOND;
+  return localAsUtc - instantWholeSecondsMs;
 }
 
 /**
@@ -24,15 +35,17 @@ function offsetAt(formatter: Intl.DateTimeFormat, instantMs: number): number {
  * hora repetida = `hora_ambigua`. Entrada inválida lança `RangeError`.
  */
 export function localToUtc(date: IsoDate, time: string, timeZone: string): LocalToUtcResult {
-  const match = TIME_RE.exec(time);
-  if (!match) throw new RangeError(`Invalid time (expected HH:mm): ${time}`);
-  if (!DATE_RE.test(date)) throw new RangeError(`Invalid date (expected YYYY-MM-DD): ${date}`);
-  const [y, m, day] = date.split('-').map(Number) as [number, number, number];
-  const localMs = Date.UTC(y, m - 1, day, Number(match[1]), Number(match[2]));
-  const check = new Date(localMs);
-  if (check.getUTCFullYear() !== y || check.getUTCMonth() !== m - 1 || check.getUTCDate() !== day) {
-    throw new RangeError(`Invalid calendar date: ${date}`);
-  }
+  const timeMatch = TIME_PATTERN.exec(time);
+  if (!timeMatch) throw new RangeError(`Invalid time (expected HH:mm): ${time}`);
+  if (!ISO_DATE_PATTERN.test(date)) throw new RangeError(`Invalid date (expected YYYY-MM-DD): ${date}`);
+  const [year, month, day] = date.split('-').map(Number) as [number, number, number];
+  // A hora de parede tratada como se fosse UTC; o deslocamento real é subtraído depois.
+  const localAsUtcMs = Date.UTC(year, month - 1, day, Number(timeMatch[1]), Number(timeMatch[2]));
+  // `Date.UTC` normaliza datas inexistentes (31/02 vira 03/03): se a volta não bate, a data é inválida.
+  const normalized = new Date(localAsUtcMs);
+  const isRealCalendarDate =
+    normalized.getUTCFullYear() === year && normalized.getUTCMonth() === month - 1 && normalized.getUTCDate() === day;
+  if (!isRealCalendarDate) throw new RangeError(`Invalid calendar date: ${date}`);
 
   // Lança RangeError se o fuso for desconhecido.
   const formatter = new Intl.DateTimeFormat('en-US', {
@@ -48,17 +61,18 @@ export function localToUtc(date: IsoDate, time: string, timeZone: string): Local
 
   // Deslocamentos possíveis perto da hora local: um dia antes e um dia depois.
   // Basta: em zonas IANA reais há no máximo uma transição em +-24h (inclusive Apia 2011).
-  const offsets = new Set([
-    offsetAt(formatter, localMs - DAY_MS),
-    offsetAt(formatter, localMs + DAY_MS),
+  const candidateOffsets = new Set([
+    utcOffsetMsAt(formatter, localAsUtcMs - MS_PER_DAY),
+    utcOffsetMsAt(formatter, localAsUtcMs + MS_PER_DAY),
   ]);
-  const valid = new Set<number>();
-  for (const offset of offsets) {
-    const candidate = localMs - offset;
-    if (offsetAt(formatter, candidate) === offset) valid.add(candidate);
+  // Um candidato só vale se, naquele instante, o fuso realmente usa o deslocamento que o gerou.
+  const matchingInstants = new Set<number>();
+  for (const offset of candidateOffsets) {
+    const candidateMs = localAsUtcMs - offset;
+    if (utcOffsetMsAt(formatter, candidateMs) === offset) matchingInstants.add(candidateMs);
   }
 
-  if (valid.size === 0) return { ok: false, reason: 'hora_inexistente' };
-  if (valid.size > 1) return { ok: false, reason: 'hora_ambigua' };
-  return { ok: true, utc: new Date([...valid][0]!) };
+  if (matchingInstants.size === 0) return { ok: false, reason: 'hora_inexistente' };
+  if (matchingInstants.size > 1) return { ok: false, reason: 'hora_ambigua' };
+  return { ok: true, utc: new Date([...matchingInstants][0]!) };
 }

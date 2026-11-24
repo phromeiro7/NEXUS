@@ -1,7 +1,17 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { QrLoginRecord, QrLoginRepository } from '../application/ports.js';
 
+/** Linha devolvida pela RPC `open_qr_login`. */
 type OpenRow = { id: string; outcome: 'confirmar' | 'recusado'; client_label: string; created_at: string };
+
+/** Linha de `qr_login_requests` lida por `get`. */
+type QrLoginRow = {
+  id: string;
+  status: QrLoginRecord['status'];
+  poll_hash: string;
+  created_at: string;
+  expires_at: string;
+};
 
 /** Pedidos de login por QR (qr_login_requests). Nunca registra segredos, nem os hashes. */
 export function createSupabaseQrLoginRepository(client: SupabaseClient): QrLoginRepository {
@@ -26,7 +36,7 @@ export function createSupabaseQrLoginRepository(client: SupabaseClient): QrLogin
         .maybeSingle();
       if (error) throw new Error(`Falha ao ler o pedido de login: ${error.message}`);
       if (data === null) return null;
-      const row = data as { id: string; status: QrLoginRecord['status']; poll_hash: string; created_at: string; expires_at: string };
+      const row = data as QrLoginRow;
       return {
         id: row.id,
         status: row.status,
@@ -36,6 +46,8 @@ export function createSupabaseQrLoginRepository(client: SupabaseClient): QrLogin
       };
     },
 
+    // As transições (abrir, decidir, recolher, devolver) são RPCs atômicas: o pedido muda de estado
+    // uma única vez, mesmo com o navegador consultando e o bot respondendo ao mesmo tempo.
     async open(nonceHash, chatId, userId, now) {
       const { data, error } = await client.rpc('open_qr_login', {
         p_nonce_hash: nonceHash,

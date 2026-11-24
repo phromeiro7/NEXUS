@@ -22,25 +22,26 @@ export function AuthCard({ title, lead, children }: { title: string; lead?: stri
   );
 }
 
+/** Campo de formulário das telas de acesso; senha ganha o botão de mostrar/ocultar. */
 export function Field(props: {
   id: string;
   label: string;
   type: string;
   value: string;
-  onChange: (v: string) => void;
+  onChange: (value: string) => void;
   autoComplete: string;
   minLength?: number;
 }) {
-  const [shown, setShown] = useState(false);
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const isPassword = props.type === "password";
   const isEmail = props.type === "email";
   const input = (
     <input
       id={props.id}
       name={props.id}
-      type={isPassword && shown ? "text" : props.type}
+      type={isPassword && passwordVisible ? "text" : props.type}
       value={props.value}
-      onChange={(e) => props.onChange(e.target.value)}
+      onChange={(event) => props.onChange(event.target.value)}
       autoComplete={props.autoComplete}
       {...(isEmail ? { inputMode: "email" as const, autoCapitalize: "none", spellCheck: false } : {})}
       {...(isPassword ? { autoCapitalize: "none", spellCheck: false } : {})}
@@ -57,12 +58,12 @@ export function Field(props: {
           <button
             type="button"
             className="nx-toggle"
-            aria-label={`${shown ? "Ocultar" : "Mostrar"} ${props.id === "confirm" ? "confirmação" : "senha"}`}
-            aria-pressed={shown}
+            aria-label={`${passwordVisible ? "Ocultar" : "Mostrar"} ${props.id === "confirm" ? "confirmação" : "senha"}`}
+            aria-pressed={passwordVisible}
             aria-controls={props.id}
-            onClick={() => setShown((v) => !v)}
+            onClick={() => setPasswordVisible((visible) => !visible)}
           >
-            {shown ? <EyeOffIcon /> : <EyeIcon />}
+            {passwordVisible ? <EyeOffIcon /> : <EyeIcon />}
           </button>
         </div>
       ) : (
@@ -72,6 +73,7 @@ export function Field(props: {
   );
 }
 
+/** Formulário das telas de acesso: erro anunciado (role="alert") e envio bloqueado enquanto em curso. */
 export function AuthForm(props: {
   onSubmit: () => void;
   error: string | null;
@@ -81,12 +83,13 @@ export function AuthForm(props: {
   children: ReactNode;
 }) {
   const errorId = useId();
-  const submit = (e: FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = (event: FormEvent) => {
+    event.preventDefault();
+    // Evita envio duplo (Enter repetido) enquanto o anterior não terminou.
     if (!props.submitting) props.onSubmit();
   };
   return (
-    <form onSubmit={submit} noValidate className="nx-form" aria-describedby={props.error !== null ? errorId : undefined}>
+    <form onSubmit={handleSubmit} noValidate className="nx-form" aria-describedby={props.error !== null ? errorId : undefined}>
       {props.children}
       {props.error !== null && (
         <p id={errorId} role="alert" className="nx-error">

@@ -3,6 +3,7 @@ import { HoraInvalidaError } from '../domain/reminders.js';
 import type { ProfileRepository, TaskRepository } from './ports.js';
 import type { makeSyncReminders } from './sync-reminders.js';
 
+/** Configurações do usuário; mudar fuso ou antecedência reconstrói os lembretes das tarefas abertas. */
 export function makeSettingsUseCases(deps: {
   profiles: ProfileRepository;
   tasks: TaskRepository;
@@ -24,8 +25,8 @@ export function makeSettingsUseCases(deps: {
 
       let remindersRebuilt = 0;
       const skipped: SkippedReminderTaskDto[] = [];
-      const open = await deps.tasks.list(userId, { status: ['pendente', 'em_andamento'] });
-      for (const task of open) {
+      const openTasks = await deps.tasks.list(userId, { status: ['pendente', 'em_andamento'] });
+      for (const task of openTasks) {
         if (task.dueDate === null) continue;
         try {
           await deps.syncReminders(userId, task, settings);

@@ -5,6 +5,7 @@ import { useState } from "react";
 import { AuthCard, AuthForm, Field } from "@/components/auth-form";
 import { useAuth } from "@/components/auth-provider";
 
+/** Pedido do link de recuperação de senha; a resposta é neutra para não revelar se a conta existe. */
 export default function RecuperarPage() {
   const { sendReset } = useAuth();
   const [email, setEmail] = useState("");
@@ -12,7 +13,7 @@ export default function RecuperarPage() {
   const [sent, setSent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  async function onSubmit() {
+  async function submitResetRequest() {
     setError(null);
     setSent(false);
     setSubmitting(true);
@@ -28,7 +29,7 @@ export default function RecuperarPage() {
   return (
     <AuthCard title="Recuperar senha" lead="Informe o e-mail da conta. Enviamos um link para criar uma nova senha.">
       <AuthForm
-        onSubmit={() => void onSubmit()}
+        onSubmit={() => void submitResetRequest()}
         error={error}
         submitting={submitting}
         submitLabel="Enviar link"

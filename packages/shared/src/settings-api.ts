@@ -1,17 +1,22 @@
 import { z } from 'zod';
 import { isValidTimeZone, timeOfDaySchema } from './time-of-day.js';
 
+/** Antecedência máxima do lembrete antecipado: um dia. */
+const MAX_EARLY_REMINDER_MINUTES = 24 * 60;
+
+/** Corpo de `PATCH /settings`: só os campos enviados mudam; pelo menos um é obrigatório. */
 export const updateSettingsInputSchema = z
   .object({
     timezone: z.string().refine(isValidTimeZone, { message: 'Invalid time zone' }).optional(),
-    earlyReminderMinutes: z.number().int().min(0).max(1440).optional(),
+    earlyReminderMinutes: z.number().int().min(0).max(MAX_EARLY_REMINDER_MINUTES).optional(),
     briefingTime: timeOfDaySchema.optional(),
   })
-  .refine((v) => Object.values(v).some((x) => x !== undefined), {
+  .refine((input) => Object.values(input).some((value) => value !== undefined), {
     message: 'At least one field is required',
   });
 export type UpdateSettingsInput = z.infer<typeof updateSettingsInputSchema>;
 
+/** Configurações da pessoa como a API devolve. */
 export type SettingsDto = {
   timezone: string;
   earlyReminderMinutes: number;

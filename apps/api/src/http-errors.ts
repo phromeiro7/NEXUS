@@ -15,6 +15,9 @@ import {
 import { HoraInvalidaError } from './domain/reminders.js';
 import { InvalidTransitionError } from './domain/task-status.js';
 
+/** Espera sugerida quando o erro de limite não informa quanto tempo falta. */
+const DEFAULT_RETRY_AFTER_SECONDS = 60;
+
 /** Entrada da requisição inválida (corpo, query). */
 export class ValidationError extends Error {
   constructor(readonly issues: unknown) {
@@ -23,6 +26,7 @@ export class ValidationError extends Error {
   }
 }
 
+/** Resposta HTTP de erro: status, corpo JSON e cabeçalhos extras (ex.: `Retry-After`). */
 export type ErrorResponse = {
   status: 400 | 401 | 403 | 404 | 409 | 422 | 429 | 500 | 503;
   body: unknown;
@@ -30,45 +34,49 @@ export type ErrorResponse = {
 };
 
 /** Mapeia erros conhecidos para a resposta HTTP. Nunca expõe mensagens internas nem texto do usuário. */
-export function errorResponse(err: unknown): ErrorResponse {
-  if (err instanceof ValidationError) return { status: 400, body: { error: 'entrada_invalida', issues: err.issues } };
-  if (err instanceof InvalidInputError) return { status: 400, body: { error: 'entrada_invalida', code: err.code } };
-  if (err instanceof MessageTooLongError) {
+export function errorResponse(error: unknown): ErrorResponse {
+  if (error instanceof ValidationError) return { status: 400, body: { error: 'entrada_invalida', issues: error.issues } };
+  if (error instanceof InvalidInputError) return { status: 400, body: { error: 'entrada_invalida', code: error.code } };
+  if (error instanceof MessageTooLongError) {
     return { status: 400, body: { error: 'entrada_invalida', code: 'mensagem_longa_demais' } };
   }
   // Não revela qual recurso nem se pertence a outro usuário.
-  if (err instanceof NotFoundError || err instanceof TargetTasksGoneError) {
+  if (error instanceof NotFoundError || error instanceof TargetTasksGoneError) {
     return { status: 404, body: { error: 'nao_encontrado' } };
   }
-  if (err instanceof ForbiddenError) return { status: 403, body: { error: 'proibido' } };
-  if (err instanceof ConflictError) return { status: 409, body: { error: err.code } };
-  if (err instanceof EventInProgressError) return { status: 409, body: { error: 'em_processamento' } };
+  if (error instanceof ForbiddenError) return { status: 403, body: { error: 'proibido' } };
+  if (error instanceof ConflictError) return { status: 409, body: { error: error.code } };
+  if (error instanceof EventInProgressError) return { status: 409, body: { error: 'em_processamento' } };
   // Nunca revela de quem é o evento.
-  if (err instanceof ForeignEventError) return { status: 409, body: { error: 'conflito_de_evento' } };
-  if (err instanceof InvalidTransitionError) {
-    return { status: 409, body: { error: 'transicao_invalida', from: err.from, to: err.to } };
+  if (error instanceof ForeignEventError) return { status: 409, body: { error: 'conflito_de_evento' } };
+  if (error instanceof InvalidTransitionError) {
+    return { status: 409, body: { error: 'transicao_invalida', from: error.from, to: error.to } };
   }
-  if (err instanceof HoraInvalidaError) return { status: 422, body: { error: 'hora_invalida', reason: err.reason } };
-  if (err instanceof RateLimitedError) {
+  if (error instanceof HoraInvalidaError) return { status: 422, body: { error: 'hora_invalida', reason: error.reason } };
+  if (error instanceof RateLimitedError) {
     return {
       status: 429,
-      body: { error: 'limite_de_mensagens', retryAfterSeconds: err.retryAfterSeconds },
-      headers: { 'Retry-After': String(err.retryAfterSeconds) },
+      body: { error: 'limite_de_mensagens', retryAfterSeconds: error.retryAfterSeconds },
+      headers: { 'Retry-After': String(error.retryAfterSeconds) },
     };
   }
   // O que já foi gravado vira resposta 200 (parcial) no caso de uso; aqui só falhas sem escrita.
-  if (err instanceof AssistantUnavailableError) {
-    return { status: 503, body: { error: 'assistente_indisponivel', reason: err.reason } };
+  if (error instanceof AssistantUnavailableError) {
+    return { status: 503, body: { error: 'assistente_indisponivel', reason: error.reason } };
   }
-  if (err instanceof TelegramAuthError) {
-    if (err.code === 'login_desabilitado') return { status: 503, body: { error: err.code } };
-    if (err.code === 'telegram_nao_vinculado') return { status: 403, body: { error: err.code } };
-    if (err.code === 'muitas_tentativas') {
-      const wait = err.retryAfterSeconds ?? 60;
-      return { status: 429, body: { error: err.code, retryAfterSeconds: wait }, headers: { 'Retry-After': String(wait) } };
+  if (error instanceof TelegramAuthError) {
+    if (error.code === 'login_desabilitado') return { status: 503, body: { error: error.code } };
+    if (error.code === 'telegram_nao_vinculado') return { status: 403, body: { error: error.code } };
+    if (error.code === 'muitas_tentativas') {
+      const retryAfterSeconds = error.retryAfterSeconds ?? DEFAULT_RETRY_AFTER_SECONDS;
+      return {
+        status: 429,
+        body: { error: error.code, retryAfterSeconds },
+        headers: { 'Retry-After': String(retryAfterSeconds) },
+      };
     }
-    return { status: 401, body: { error: err.code } };
+    return { status: 401, body: { error: error.code } };
   }
-  if (err instanceof TelegramNotConfiguredError) return { status: 503, body: { error: 'telegram_nao_configurado' } };
+  if (error instanceof TelegramNotConfiguredError) return { status: 503, body: { error: 'telegram_nao_configurado' } };
   return { status: 500, body: { error: 'erro_interno' } };
 }

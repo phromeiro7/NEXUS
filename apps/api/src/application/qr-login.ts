@@ -8,12 +8,14 @@ import type { RateLimiter } from './telegram/rate-limit.js';
 /** O código vale poucos minutos: o QR está na tela de quem está sentado ali. */
 export const QR_LOGIN_TTL_MS = 3 * 60_000;
 const NONCE_BYTES = 20; // 160 bits
-const POLL_BYTES = 32; // 256 bits
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const POLL_SECRET_BYTES = 32; // 256 bits
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** O que o Telegram aceita em `start`, sem o prefixo. */
-const NONCE_RE = /^[A-Za-z0-9_-]{16,64}$/;
+const NONCE_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
 /** Só se confia no `X-Poll-Secret` com o formato que a API gera (43 caracteres base64url). */
-const POLL_SECRET_RE = /^[A-Za-z0-9_-]{16,128}$/;
+const POLL_SECRET_PATTERN = /^[A-Za-z0-9_-]{16,128}$/;
+/** Fuso usado quando o perfil não pode ser lido ou guarda um fuso inválido. */
+const DEFAULT_TIME_ZONE = 'America/Sao_Paulo';
 
 const sha256Hex = (text: string): string => createHash('sha256').update(text).digest('hex');
 
@@ -41,13 +43,14 @@ export type QrStartResult =
 
 export type QrDecision = 'aprovado' | 'negado' | 'expirado';
 
-function clockIn(date: Date, timeZone: string): string {
-  const fmt = (tz: string) =>
-    new Intl.DateTimeFormat('pt-BR', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(date);
+/** Hora local `HH:mm` de `date` no fuso dado; um fuso inválido cai no padrão em vez de lançar. */
+function formatLocalTime(date: Date, timeZone: string): string {
+  const formatIn = (zone: string) =>
+    new Intl.DateTimeFormat('pt-BR', { timeZone: zone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(date);
   try {
-    return fmt(timeZone);
+    return formatIn(timeZone);
   } catch {
-    return fmt('America/Sao_Paulo');
+    return formatIn(DEFAULT_TIME_ZONE);
   }
 }
 
@@ -58,19 +61,20 @@ function clockIn(date: Date, timeZone: string): string {
  * revela nenhum deles. Tudo que decide é um UPDATE atômico no repositório.
  */
 export function makeQrLogin(deps: QrLoginDeps) {
-  const randomBytes = deps.randomBytes ?? ((n: number) => nodeRandomBytes(n));
+  const randomBytes = deps.randomBytes ?? ((byteCount: number) => nodeRandomBytes(byteCount));
   const newId = deps.newId ?? randomUUID;
   const ttlMs = deps.ttlMs ?? QR_LOGIN_TTL_MS;
-  const b64url = (bytes: Uint8Array) => Buffer.from(bytes).toString('base64url');
+  const toBase64Url = (bytes: Uint8Array) => Buffer.from(bytes).toString('base64url');
 
   return {
+    /** O navegador pede um QR: devolve o deep link do bot e o `pollSecret`, que só ele conhece. Limitado por IP. */
     async create(input: { ip: string; userAgent: string | undefined }): Promise<QrLoginCreateResultDto> {
       if (deps.botUsername === undefined) throw new TelegramAuthError('login_desabilitado');
-      const wait = deps.ipLimiter.hit(`qr:${input.ip}`);
-      if (wait !== null) throw new TelegramAuthError('muitas_tentativas', wait);
+      const retryAfterSeconds = deps.ipLimiter.hit(`qr:${input.ip}`);
+      if (retryAfterSeconds !== null) throw new TelegramAuthError('muitas_tentativas', retryAfterSeconds);
       const now = deps.clock.now();
-      const nonce = b64url(randomBytes(NONCE_BYTES));
-      const pollSecret = b64url(randomBytes(POLL_BYTES));
+      const nonce = toBase64Url(randomBytes(NONCE_BYTES));
+      const pollSecret = toBase64Url(randomBytes(POLL_SECRET_BYTES));
       const id = newId();
       const expiresAt = new Date(now.getTime() + ttlMs);
       await deps.requests.create({
@@ -95,15 +99,17 @@ export function makeQrLogin(deps: QrLoginDeps) {
      */
     async status(input: { id: string; pollSecret: string | undefined }): Promise<QrLoginStatusDto> {
       if (deps.botUsername === undefined) throw new TelegramAuthError('login_desabilitado');
-      if (!UUID_RE.test(input.id) || input.pollSecret === undefined || !POLL_SECRET_RE.test(input.pollSecret)) {
+      // Formato inválido responde como pedido inexistente, antes de gastar o limite ou consultar o banco.
+      if (!UUID_PATTERN.test(input.id) || input.pollSecret === undefined || !POLL_SECRET_PATTERN.test(input.pollSecret)) {
         throw new NotFoundError('login');
       }
-      const wait = deps.pollLimiter.hit(`qr-poll:${input.id}`);
-      if (wait !== null) throw new TelegramAuthError('muitas_tentativas', wait);
+      const retryAfterSeconds = deps.pollLimiter.hit(`qr-poll:${input.id}`);
+      if (retryAfterSeconds !== null) throw new TelegramAuthError('muitas_tentativas', retryAfterSeconds);
 
       const now = deps.clock.now();
       const record = await deps.requests.get(input.id);
       const pollHash = sha256Hex(input.pollSecret);
+      // Comparação em tempo constante: não vaza, pelo tempo de resposta, quanto do segredo acertou.
       if (
         record === null ||
         !timingSafeEqual(Buffer.from(record.pollHash, 'hex'), Buffer.from(pollHash, 'hex'))
@@ -135,27 +141,28 @@ export function makeQrLogin(deps: QrLoginDeps) {
 
     /** O bot recebeu `/start login_<nonce>`; `userId` é o dono do chat, ou `null` se nenhum. */
     async start(input: { nonce: string; chatId: number; userId: string | null }): Promise<QrStartResult> {
-      if (!NONCE_RE.test(input.nonce)) return { kind: 'invalido' };
+      if (!NONCE_PATTERN.test(input.nonce)) return { kind: 'invalido' };
       const now = deps.clock.now();
       const opened = await deps.requests.open(sha256Hex(input.nonce), input.chatId, input.userId, now);
       if (opened === null) return { kind: 'invalido' };
       if (opened.outcome === 'recusado' || input.userId === null) return { kind: 'recusado' };
-      let timeZone = 'America/Sao_Paulo';
+      let timeZone = DEFAULT_TIME_ZONE;
       try {
         timeZone = (await deps.profiles.get(input.userId)).timezone;
       } catch {
         // sem perfil legível: cai no fuso padrão, a pergunta continua valendo
       }
-      return { kind: 'perguntar', requestId: opened.id, label: opened.clientLabel, time: clockIn(opened.createdAt, timeZone) };
+      return { kind: 'perguntar', requestId: opened.id, label: opened.clientLabel, time: formatLocalTime(opened.createdAt, timeZone) };
     },
 
     /** A pessoa tocou em Confirmar ou "Não fui eu". `expirado` = já decidido, de outro chat ou vencido. */
     async decide(input: { requestId: string; chatId: number; userId: string; approve: boolean }): Promise<QrDecision> {
-      if (!UUID_RE.test(input.requestId)) return 'expirado';
+      if (!UUID_PATTERN.test(input.requestId)) return 'expirado';
       const result = await deps.requests.decide(input.requestId, input.chatId, input.userId, input.approve, deps.clock.now());
       return result ?? 'expirado';
     },
 
+    /** Limpeza periódica (agendador) dos pedidos vencidos. */
     purgeExpired: (now: Date) => deps.requests.purgeExpired(now),
   };
 }

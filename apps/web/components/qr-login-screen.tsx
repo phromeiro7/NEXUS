@@ -6,7 +6,7 @@ import { QrCode } from "./qr-code";
 import { NexusMark } from "./mini/icons";
 
 /** O que dizer em cada estado. `title` é o que importa; `text`, o apoio. */
-function messageOf(state: QrLoginState): { title: string; text: string } {
+function describeQrLoginState(state: QrLoginState): { title: string; text: string } {
   switch (state.phase) {
     case "creating":
       return { title: "Preparando o código…", text: "Só um instante." };
@@ -39,7 +39,8 @@ function messageOf(state: QrLoginState): { title: string; text: string } {
   }
 }
 
-const OVERLAY: Partial<Record<QrLoginState["phase"], string>> = {
+/** Selo sobre o QR nas fases em que ele não vale mais (ou já foi usado). */
+const OVERLAY_LABELS: Partial<Record<QrLoginState["phase"], string>> = {
   expired: "Código expirado",
   denied: "Acesso negado",
   refused: "Sem acesso",
@@ -52,18 +53,20 @@ const OVERLAY: Partial<Record<QrLoginState["phase"], string>> = {
  * o código com o mesmo aparelho não faz sentido; o botão "Abrir no Telegram" faz o papel dele.
  */
 export function QrLoginScreen({ state, emailForm, note }: { state: QrLoginState; emailForm: ReactNode; note?: ReactNode }) {
-  const mailId = useId();
+  const emailSectionId = useId();
   const { phase, deepLink, error } = state;
-  const unavailable = phase === "error" && error === "login_desabilitado";
-  const [mailOpened, setMailOpened] = useState(false);
+  const telegramLoginDisabled = phase === "error" && error === "login_desabilitado";
+  const [emailToggledOpen, setEmailToggledOpen] = useState(false);
   // Sem o login por Telegram, o e-mail é o único caminho: já aberto.
-  const mailOpen = mailOpened || unavailable;
-  const { title, text } = messageOf(state);
+  const emailOpen = emailToggledOpen || telegramLoginDisabled;
+  const { title, text } = describeQrLoginState(state);
   const retryLabel = phase === "expired" ? "Gerar novo código" : "Tentar de novo";
-  const showRetry = phase === "expired" || phase === "denied" || phase === "refused" || (phase === "error" && !unavailable);
-  const showOpen = deepLink !== null && (phase === "waiting" || phase === "confirm");
-  const dimmed = phase !== "waiting" && phase !== "confirm";
-  const overlay = OVERLAY[phase];
+  const showRetry =
+    phase === "expired" || phase === "denied" || phase === "refused" || (phase === "error" && !telegramLoginDisabled);
+  const isCodeActive = phase === "waiting" || phase === "confirm";
+  const showOpenInTelegram = deepLink !== null && isCodeActive;
+  const dimmed = !isCodeActive;
+  const overlayLabel = OVERLAY_LABELS[phase];
 
   return (
     <div className="mini nx-auth">
@@ -104,9 +107,9 @@ export function QrLoginScreen({ state, emailForm, note }: { state: QrLoginState;
               ) : (
                 <div className="nx-qr-placeholder" aria-hidden="true" />
               )}
-              {overlay !== undefined && (
+              {overlayLabel !== undefined && (
                 <div className="nx-qr-overlay" aria-hidden="true">
-                  <span>{overlay}</span>
+                  <span>{overlayLabel}</span>
                 </div>
               )}
             </div>
@@ -116,7 +119,7 @@ export function QrLoginScreen({ state, emailForm, note }: { state: QrLoginState;
             </p>
 
             <div className="nx-qr-actions">
-              {showOpen && (
+              {showOpenInTelegram && (
                 <a className="mini-btn primary" href={deepLink} target="_blank" rel="noopener noreferrer">
                   Abrir no Telegram
                 </a>
@@ -131,19 +134,19 @@ export function QrLoginScreen({ state, emailForm, note }: { state: QrLoginState;
         </div>
 
         <section className="nx-mail" aria-label="Entrar com e-mail">
-          {!unavailable && (
+          {!telegramLoginDisabled && (
             <button
               type="button"
               className="nx-link nx-mail-toggle"
-              aria-expanded={mailOpen}
-              aria-controls={mailId}
-              onClick={() => setMailOpened((v) => !v)}
+              aria-expanded={emailOpen}
+              aria-controls={emailSectionId}
+              onClick={() => setEmailToggledOpen((open) => !open)}
             >
-              {mailOpen ? "Voltar para o código" : "Entrar com e-mail e senha"}
+              {emailOpen ? "Voltar para o código" : "Entrar com e-mail e senha"}
             </button>
           )}
-          <div id={mailId} className="nx-card nx-mail-card" hidden={!mailOpen}>
-            {mailOpen && emailForm}
+          <div id={emailSectionId} className="nx-card nx-mail-card" hidden={!emailOpen}>
+            {emailOpen && emailForm}
           </div>
         </section>
       </main>

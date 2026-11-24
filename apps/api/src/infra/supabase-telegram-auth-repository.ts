@@ -1,8 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { SessionIssuer, TelegramAuthReplayRepository } from '../application/ports.js';
 
+/** SQLSTATE `unique_violation`: este `initData` já foi usado. */
 const UNIQUE_VIOLATION = '23505';
 
+/** Anti-replay do login pelo Mini App: cada hash de `initData` só pode ser usado uma vez. */
 export function createSupabaseTelegramAuthRepository(client: SupabaseClient): TelegramAuthReplayRepository {
   return {
     async claim(hash, now) {
@@ -27,9 +29,9 @@ export function createSupabaseTelegramAuthRepository(client: SupabaseClient): Te
 export function createSupabaseSessionIssuer(client: SupabaseClient): SessionIssuer {
   return {
     async issue(userId) {
-      const found = await client.auth.admin.getUserById(userId);
-      const email = found.data.user?.email;
-      if (found.error || !email) return null;
+      const lookup = await client.auth.admin.getUserById(userId);
+      const email = lookup.data.user?.email;
+      if (lookup.error || !email) return null;
       const { data, error } = await client.auth.admin.generateLink({ type: 'magiclink', email });
       const tokenHash = data?.properties?.hashed_token;
       if (error || !tokenHash) throw new Error('Falha ao gerar a sessão do Telegram');

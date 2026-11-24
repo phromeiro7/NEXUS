@@ -3,7 +3,13 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+/** Limite de execução da função na Vercel, em segundos (o agendador pode levar ~45 s). */
+const FUNCTION_MAX_DURATION_SECONDS = 60;
+/** Região da função (gru1 = São Paulo). */
+const FUNCTION_REGIONS = ['gru1'];
+const NODE_RUNTIME = 'nodejs22.x';
+
+const appRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 /**
  * Gera `.vercel/output` (Build Output API v3) com uma única função Node em `functions/api.func`, atendendo a
@@ -11,16 +17,16 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
  * não há TypeScript nem resolução de workspace em tempo de execução. Devolve o caminho do bundle.
  */
 export async function buildVercelOutput(): Promise<string> {
-  const output = resolve(root, '.vercel/output');
-  const func = resolve(output, 'functions/api.func');
-  rmSync(output, { recursive: true, force: true });
-  mkdirSync(func, { recursive: true });
-  mkdirSync(resolve(output, 'static'), { recursive: true });
+  const outputDir = resolve(appRoot, '.vercel/output');
+  const functionDir = resolve(outputDir, 'functions/api.func');
+  rmSync(outputDir, { recursive: true, force: true });
+  mkdirSync(functionDir, { recursive: true });
+  mkdirSync(resolve(outputDir, 'static'), { recursive: true });
 
-  const bundle = resolve(func, 'index.js');
+  const bundlePath = resolve(functionDir, 'index.js');
   await build({
-    entryPoints: [resolve(root, 'src/vercel.ts')],
-    outfile: bundle,
+    entryPoints: [resolve(appRoot, 'src/vercel.ts')],
+    outfile: bundlePath,
     bundle: true,
     platform: 'node',
     target: 'node22',
@@ -32,33 +38,34 @@ export async function buildVercelOutput(): Promise<string> {
   });
 
   writeFileSync(
-    resolve(func, '.vc-config.json'),
+    resolve(functionDir, '.vc-config.json'),
     `${JSON.stringify(
       {
-        runtime: 'nodejs22.x',
+        runtime: NODE_RUNTIME,
         handler: 'index.js',
         launcherType: 'Nodejs',
-        maxDuration: 60,
-        regions: ['gru1'],
+        maxDuration: FUNCTION_MAX_DURATION_SECONDS,
+        regions: FUNCTION_REGIONS,
       },
       null,
       2,
     )}\n`,
   );
   // Marca o bundle como CommonJS (o package.json do app é "type": "module").
-  writeFileSync(resolve(func, 'package.json'), '{ "type": "commonjs" }\n');
+  writeFileSync(resolve(functionDir, 'package.json'), '{ "type": "commonjs" }\n');
+  // Rotas: arquivos estáticos primeiro; todo o resto cai na função `/api`.
   writeFileSync(
-    resolve(output, 'config.json'),
+    resolve(outputDir, 'config.json'),
     `${JSON.stringify(
       { version: 3, routes: [{ handle: 'filesystem' }, { src: '/(.*)', dest: '/api' }] },
       null,
       2,
     )}\n`,
   );
-  return bundle;
+  return bundlePath;
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const out = await buildVercelOutput();
-  console.log(`saída gerada: ${out}`);
+  const bundlePath = await buildVercelOutput();
+  console.log(`saída gerada: ${bundlePath}`);
 }

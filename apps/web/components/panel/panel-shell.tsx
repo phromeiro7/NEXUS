@@ -9,18 +9,19 @@ import { ToastProvider } from "@/components/mini/toast";
 import { useIsAdmin } from "@/hooks/use-is-admin";
 import { ShortcutsProvider } from "./shortcuts";
 
-type Item = { href: string; label: string; Icon: ComponentType<SVGProps<SVGSVGElement>> };
+type NavItem = { href: string; label: string; Icon: ComponentType<SVGProps<SVGSVGElement>> };
 
-const MAIN: Item[] = [
+const MAIN_NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Hoje", Icon: TodayIcon },
   { href: "/financas", label: "Finanças", Icon: WalletIcon },
   { href: "/configuracoes", label: "Configurações", Icon: SettingsIcon },
 ];
-const ADMIN: Item[] = [{ href: "/convites", label: "Convites", Icon: InviteIcon }];
+const ADMIN_NAV_ITEMS: NavItem[] = [{ href: "/convites", label: "Convites", Icon: InviteIcon }];
 
+/** "/" só casa exatamente; as demais seções também valem para as sub-rotas (ex.: /financas/x). */
 const isActive = (pathname: string, href: string) => (href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`));
 
-function NavItems({ items, pathname }: { items: Item[]; pathname: string }) {
+function NavItems({ items, pathname }: { items: NavItem[]; pathname: string }) {
   return (
     <>
       {items.map(({ href, label, Icon }) => (
@@ -41,7 +42,7 @@ export function PanelShell({ children }: { children: ReactNode }) {
   const pathname = usePathname() ?? "/";
   const { displayName, signOut } = useAuth();
   const isAdmin = useIsAdmin();
-  const name = displayName ?? "Você";
+  const shownName = displayName ?? "Você";
 
   return (
     <div className="mini pn">
@@ -53,13 +54,14 @@ export function PanelShell({ children }: { children: ReactNode }) {
               <span className="pn-lbl">nexus</span>
             </Link>
             <nav className="pn-nav" aria-label="Seções">
-              <NavItems items={MAIN} pathname={pathname} />
+              <NavItems items={MAIN_NAV_ITEMS} pathname={pathname} />
             </nav>
+            {/* useIsAdmin é undefined enquanto carrega: só mostra com confirmação explícita. */}
             {isAdmin === true && (
               <>
                 <div className="pn-sep" role="presentation" />
                 <nav className="pn-nav" aria-label="Administração">
-                  <NavItems items={ADMIN} pathname={pathname} />
+                  <NavItems items={ADMIN_NAV_ITEMS} pathname={pathname} />
                 </nav>
               </>
             )}
@@ -81,9 +83,9 @@ export function PanelShell({ children }: { children: ReactNode }) {
               </div>
               <div className="pn-user">
                 <span className="pn-avatar" aria-hidden="true">
-                  {name.charAt(0).toUpperCase()}
+                  {shownName.charAt(0).toUpperCase()}
                 </span>
-                <span className="pn-user-name">{name}</span>
+                <span className="pn-user-name">{shownName}</span>
                 <button type="button" className="pn-signout" onClick={() => void signOut()}>
                   Sair
                 </button>

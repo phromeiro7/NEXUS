@@ -13,7 +13,7 @@ export function EmailLoginForm({ onSignedIn }: { onSignedIn(): void }) {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  async function onSubmit() {
+  async function submitLogin() {
     setError(null);
     setSubmitting(true);
     const result = await signIn(email.trim(), password);
@@ -28,7 +28,7 @@ export function EmailLoginForm({ onSignedIn }: { onSignedIn(): void }) {
   return (
     <>
       <AuthForm
-        onSubmit={() => void onSubmit()}
+        onSubmit={() => void submitLogin()}
         error={error}
         submitting={submitting}
         submitLabel="Entrar"

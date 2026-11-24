@@ -13,18 +13,22 @@ export type FinanceStatus = z.infer<typeof financeStatusSchema>;
 /** R$ 999.999.999,99: dinheiro é sempre inteiro em centavos, nunca ponto flutuante. */
 export const FINANCE_MAX_CENTS = 99_999_999_999;
 
-const descriptionSchema = z.string().trim().min(1).max(120);
-const categorySchema = z.string().trim().min(1).max(40);
+const DESCRIPTION_MAX = 120;
+const CATEGORY_MAX = 40;
+
+const descriptionSchema = z.string().trim().min(1).max(DESCRIPTION_MAX);
+const categorySchema = z.string().trim().min(1).max(CATEGORY_MAX);
 const amountSchema = z.number().int().min(1).max(FINANCE_MAX_CENTS);
 
 /**
  * Gasto é dinheiro já gasto: sempre `paga`. Vale na criação e depois de qualquer mudança.
  * O horário do lembrete pode ficar guardado numa conta paga, para "Desfazer" o pagamento.
  */
-export function isConsistentFinanceEntry(v: { kind: FinanceKind; status: FinanceStatus }): boolean {
-  return v.kind !== 'gasto' || v.status === 'paga';
+export function isConsistentFinanceEntry(entry: { kind: FinanceKind; status: FinanceStatus }): boolean {
+  return entry.kind !== 'gasto' || entry.status === 'paga';
 }
 
+/** Corpo de `POST /finance-entries`. */
 export const createFinanceEntryInputSchema = z
   .object({
     /** Opcional: o cliente pode gerar o id (criação otimista e "Desfazer" de uma exclusão). */
@@ -45,6 +49,7 @@ export const createFinanceEntryInputSchema = z
   });
 export type CreateFinanceEntryInput = z.infer<typeof createFinanceEntryInputSchema>;
 
+/** Corpo de `PATCH /finance-entries/:id`: só os campos enviados mudam; pelo menos um é obrigatório. */
 export const updateFinanceEntryInputSchema = z
   .object({
     description: descriptionSchema.optional(),
@@ -55,17 +60,20 @@ export const updateFinanceEntryInputSchema = z
     reminderTime: timeOfDaySchema.nullable().optional(),
   })
   .strict()
-  .refine((v) => Object.values(v).some((x) => x !== undefined), {
+  .refine((input) => Object.values(input).some((value) => value !== undefined), {
     message: 'At least one field is required',
   });
 export type UpdateFinanceEntryInput = z.infer<typeof updateFinanceEntryInputSchema>;
 
-const MONTH_RE = /^(\d{4})-(0[1-9]|1[0-2])$/;
+/** `YYYY-MM`, mês de 01 a 12. */
+const YEAR_MONTH_PATTERN = /^(\d{4})-(0[1-9]|1[0-2])$/;
 
-function monthRange(month: string): { from: IsoDate; to: IsoDate } {
-  const [y, m] = month.split('-').map(Number) as [number, number];
-  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
-  return { from: `${month}-01`, to: `${month}-${String(last).padStart(2, '0')}` };
+/** Primeiro e último dia do mês `YYYY-MM`. */
+function monthRange(yearMonth: string): { from: IsoDate; to: IsoDate } {
+  const [year, month] = yearMonth.split('-').map(Number) as [number, number];
+  // Dia 0 do mês seguinte = último dia deste mês (`month` já é o índice 0-based do mês seguinte).
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return { from: `${yearMonth}-01`, to: `${yearMonth}-${String(lastDay).padStart(2, '0')}` };
 }
 
 /**
@@ -75,16 +83,16 @@ function monthRange(month: string): { from: IsoDate; to: IsoDate } {
  */
 export const listFinanceEntriesQuerySchema = z
   .object({
-    month: z.string().regex(MONTH_RE).optional(),
+    month: z.string().regex(YEAR_MONTH_PATTERN).optional(),
     from: isoDateSchema.optional(),
     to: isoDateSchema.optional(),
     status: financeStatusSchema.optional(),
   })
-  .refine((v) => v.month === undefined || (v.from === undefined && v.to === undefined), {
+  .refine((query) => query.month === undefined || (query.from === undefined && query.to === undefined), {
     message: 'month cannot be combined with from/to',
     path: ['month'],
   })
-  .refine((v) => v.from === undefined || v.to === undefined || v.from <= v.to, {
+  .refine((query) => query.from === undefined || query.to === undefined || query.from <= query.to, {
     message: 'from must be on or before to',
     path: ['from'],
   })
@@ -94,6 +102,7 @@ export const listFinanceEntriesQuerySchema = z
   });
 export type ListFinanceEntriesQuery = z.output<typeof listFinanceEntriesQuerySchema>;
 
+/** Lançamento financeiro como a API devolve. */
 export type FinanceEntryDto = {
   id: string;
   kind: FinanceKind;

@@ -13,6 +13,19 @@ export type SchedulerResult = {
 /** Orçamentos dos sub-passos (o pior caso real é de ~45 s: cada orçamento é checado antes de cada item, então o último ainda envia e ressincroniza; o `timeout_milliseconds` do `pg_net` é 60000). */
 export const SCHEDULER_BUDGETS_MS = { reminders: 15_000, briefings: 8_000 } as const;
 
+/** Resultados "zerados" que uma etapa devolve quando falha, para o relatório da passada continuar completo. */
+const EMPTY_REMINDERS_RESULT: RunRemindersResult = {
+  sent: 0,
+  retried: 0,
+  failed: 0,
+  cancelled: 0,
+  recovered: 0,
+  paused: 0,
+  leaseLost: 0,
+  deferred: 0,
+};
+const EMPTY_BRIEFINGS_RESULT: SendDailyBriefingsResult = { sent: 0, skippedEmpty: 0, retried: 0, failed: 0, paused: 0, deferred: 0 };
+
 export type RunSchedulerDeps = {
   maintenance: MaintenanceRepository;
   runReminders: () => Promise<RunRemindersResult>;
@@ -35,47 +48,45 @@ export type RunSchedulerDeps = {
 export function makeRunScheduler(deps: RunSchedulerDeps): () => Promise<SchedulerResult> {
   const { maintenance, clock, logger } = deps;
 
-  const step = async <T>(name: string, fallback: T, work: () => Promise<T>): Promise<T> => {
+  const runStep = async <T>(stepName: string, fallback: T, work: () => Promise<T>): Promise<T> => {
     try {
       return await work();
-    } catch (err) {
-      logger?.error('scheduler.step_failed', { step: name, errorName: err instanceof Error ? err.name : 'desconhecido' });
+    } catch (error) {
+      logger?.error('scheduler.step_failed', { step: stepName, errorName: error instanceof Error ? error.name : 'desconhecido' });
       return fallback;
     }
   };
 
+  /** Limpeza opcional: só roda (e só aparece no resultado) quando a funcionalidade está ligada. */
+  const runOptionalPurge = (
+    stepName: string,
+    purge: ((now: Date) => Promise<number>) | undefined,
+  ): Promise<number | undefined> =>
+    purge === undefined ? Promise.resolve(undefined) : runStep(stepName, 0, () => purge(clock.now()));
+
   return async () => {
-    const eventsRecovered = await step('recover_stuck_events', { recovered: 0, failed: 0 }, () =>
+    const eventsRecovered = await runStep('recover_stuck_events', { recovered: 0, failed: 0 }, () =>
       maintenance.recoverStuckEvents(clock.now()),
     );
-    const reminders = await step<RunRemindersResult>(
-      'reminders',
-      { sent: 0, retried: 0, failed: 0, cancelled: 0, recovered: 0, paused: 0, leaseLost: 0, deferred: 0 },
-      () => deps.runReminders(),
-    );
-    const briefings = await step<SendDailyBriefingsResult>(
-      'briefings',
-      { sent: 0, skippedEmpty: 0, retried: 0, failed: 0, paused: 0, deferred: 0 },
-      () => deps.sendDailyBriefings(),
-    );
-    const chatMessages = await step('purge_chat_messages', 0, () => maintenance.purgeExpiredChatMessages(clock.now()));
-    const linkCodes = await step('purge_link_codes', 0, () => maintenance.purgeExpiredLinkCodes(clock.now()));
-    const modelCalls = await step('purge_model_calls', 0, () => maintenance.purgeOldModelCalls(clock.now()));
-
-    const chatCaptures =
-      deps.purgeCaptures === undefined ? undefined : await step('purge_chat_captures', 0, () => deps.purgeCaptures!(clock.now()));
-
-    const telegramAuth =
-      deps.purgeTelegramAuth === undefined ? undefined : await step('purge_telegram_auth', 0, () => deps.purgeTelegramAuth!(clock.now()));
-
-    const qrLogin =
-      deps.purgeQrLogin === undefined ? undefined : await step('purge_qr_login', 0, () => deps.purgeQrLogin!(clock.now()));
+    // Os objetos "zerados" são copiados: cada passada devolve um resultado próprio.
+    const reminders = await runStep('reminders', { ...EMPTY_REMINDERS_RESULT }, () => deps.runReminders());
+    const briefings = await runStep('briefings', { ...EMPTY_BRIEFINGS_RESULT }, () => deps.sendDailyBriefings());
+    const chatMessages = await runStep('purge_chat_messages', 0, () => maintenance.purgeExpiredChatMessages(clock.now()));
+    const linkCodes = await runStep('purge_link_codes', 0, () => maintenance.purgeExpiredLinkCodes(clock.now()));
+    const modelCalls = await runStep('purge_model_calls', 0, () => maintenance.purgeOldModelCalls(clock.now()));
+    const chatCaptures = await runOptionalPurge('purge_chat_captures', deps.purgeCaptures);
+    const telegramAuth = await runOptionalPurge('purge_telegram_auth', deps.purgeTelegramAuth);
+    const qrLogin = await runOptionalPurge('purge_qr_login', deps.purgeQrLogin);
 
     const result: SchedulerResult = {
       reminders,
       briefings,
       eventsRecovered,
-      purged: { chatMessages, linkCodes, modelCalls, ...(chatCaptures !== undefined ? { chatCaptures } : {}),
+      purged: {
+        chatMessages,
+        linkCodes,
+        modelCalls,
+        ...(chatCaptures !== undefined ? { chatCaptures } : {}),
         ...(telegramAuth !== undefined ? { telegramAuth } : {}),
         ...(qrLogin !== undefined ? { qrLogin } : {}),
       },

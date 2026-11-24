@@ -9,23 +9,27 @@ export type RateLimiter = {
  * Limite de janela fixa, em memória. Vale por instância da API (suficiente para um processo só;
  * com várias instâncias o limite efetivo é multiplicado). As chaves vencidas são varridas aos poucos.
  */
+/** Acima disto, cada tentativa varre as janelas vencidas (evita crescimento sem fim do mapa). */
+const SWEEP_THRESHOLD_KEYS = 5000;
+const MS_PER_SECOND = 1000;
+
 export function makeRateLimiter(opts: { max: number; windowMs: number; clock: Clock }): RateLimiter {
   const { max, windowMs, clock } = opts;
   const windows = new Map<string, { start: number; count: number }>();
   return {
     hit(key) {
-      const now = clock.now().getTime();
-      if (windows.size > 5000) {
-        for (const [k, w] of windows) if (now - w.start >= windowMs) windows.delete(k);
+      const nowMs = clock.now().getTime();
+      if (windows.size > SWEEP_THRESHOLD_KEYS) {
+        for (const [windowKey, existing] of windows) if (nowMs - existing.start >= windowMs) windows.delete(windowKey);
       }
-      const w = windows.get(key);
-      if (w === undefined || now - w.start >= windowMs) {
-        windows.set(key, { start: now, count: 1 });
+      const current = windows.get(key);
+      if (current === undefined || nowMs - current.start >= windowMs) {
+        windows.set(key, { start: nowMs, count: 1 });
         return null;
       }
-      w.count += 1;
-      if (w.count <= max) return null;
-      return Math.max(1, Math.ceil((w.start + windowMs - now) / 1000));
+      current.count += 1;
+      if (current.count <= max) return null;
+      return Math.max(1, Math.ceil((current.start + windowMs - nowMs) / MS_PER_SECOND));
     },
   };
 }

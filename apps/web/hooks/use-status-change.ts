@@ -7,36 +7,40 @@ import { ApiError } from "@/lib/api";
 import { messageFor } from "@/lib/messages";
 import { useUpdateTask } from "./queries";
 
-type Snapshot = Array<[readonly unknown[], TaskDto[] | undefined]>;
+/** Cópia de todas as listas de tarefas em cache antes da mudança, para o rollback. */
+type TaskListsSnapshot = Array<[readonly unknown[], TaskDto[] | undefined]>;
 
 /**
  * Troca de status otimista (todas as listas de tarefas em cache), com rollback e mensagem
  * em caso de erro, e trava por tarefa contra duplo clique.
  */
 export function useStatusChange() {
-  const client = useQueryClient();
+  const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const inFlight = useRef<Set<string>>(new Set());
 
-  const update = useUpdateTask<Snapshot>({
+  const update = useUpdateTask<TaskListsSnapshot>({
     onMutate: async ({ id, input }) => {
-      await client.cancelQueries({ queryKey: ["tasks"] });
-      const snapshot = client.getQueriesData<TaskDto[]>({ queryKey: ["tasks"] });
-      for (const [key, list] of snapshot) {
-        if (!list) continue;
-        client.setQueryData<TaskDto[]>(
-          key,
-          list.map((t) => (t.id === id && input.status ? { ...t, status: input.status } : t)),
+      // Cancela buscas em andamento para não sobrescreverem a atualização otimista; `["tasks"]` cobre todos os filtros.
+      await queryClient.cancelQueries({ queryKey: ["tasks"] });
+      const snapshot = queryClient.getQueriesData<TaskDto[]>({ queryKey: ["tasks"] });
+      for (const [queryKey, tasks] of snapshot) {
+        if (!tasks) continue;
+        queryClient.setQueryData<TaskDto[]>(
+          queryKey,
+          tasks.map((task) => (task.id === id && input.status ? { ...task, status: input.status } : task)),
         );
       }
-      return snapshot as Snapshot;
+      return snapshot as TaskListsSnapshot;
     },
-    onError: (err, _vars, snapshot) => {
-      for (const [key, list] of snapshot ?? []) client.setQueryData(key, list);
-      setError(messageFor(err instanceof ApiError ? err : null));
+    onError: (error, _variables, snapshot) => {
+      // Rollback: devolve cada lista ao estado de antes da atualização otimista.
+      for (const [queryKey, tasks] of snapshot ?? []) queryClient.setQueryData(queryKey, tasks);
+      setError(messageFor(error instanceof ApiError ? error : null));
     },
   });
 
+  /** Troca o status; ignora o clique se a mesma tarefa ainda está sendo atualizada. */
   async function change(id: string, status: TaskStatus) {
     if (inFlight.current.has(id)) return;
     inFlight.current.add(id);

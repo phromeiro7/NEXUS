@@ -1,24 +1,33 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import type { InviteDto } from "@nexus/shared";
 import { copyLink, deleteWarning, shareInvite, statusLabel, summaryText, validityDays } from "@/components/mini/invites-card";
 import { isForbidden, useCreateInvite, useInvites, useDeleteInvite } from "@/hooks/use-invites";
 import { messageFor } from "@/lib/messages";
 
-const created = (iso: string) => new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+/** Esconde o elemento na tela mantendo-o para leitores de tela (rótulos de busca, legendas de tabela). */
+const VISUALLY_HIDDEN_STYLE: CSSProperties = { position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap" };
+
+/** Limite do nome do convidado (só para controle de quem gera o convite). */
+const INVITE_LABEL_MAX_LENGTH = 60;
+
+/** Data de criação no formato "dd/mm". */
+const formatCreatedDate = (isoDate: string) => new Date(isoDate).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 
 /** Convites (só administradores): gerar, copiar, compartilhar e apagar. Quem não administra vê um aviso gentil. */
 export function InvitesPanel() {
   const invites = useInvites();
-  const create = useCreateInvite();
-  const remove = useDeleteInvite();
+  const createInvite = useCreateInvite();
+  const deleteInvite = useDeleteInvite();
   const [label, setLabel] = useState("");
-  const [fresh, setFresh] = useState<InviteDto | null>(null);
+  // Convite recém-gerado, destacado com o link para copiar/compartilhar.
+  const [newInvite, setNewInvite] = useState<InviteDto | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [confirming, setConfirming] = useState<string | null>(null);
+  // Código do convite cuja exclusão aguarda confirmação na própria linha.
+  const [confirmingDeleteCode, setConfirmingDeleteCode] = useState<string | null>(null);
 
   if (invites.isPending) {
     return (
@@ -41,25 +50,27 @@ export function InvitesPanel() {
     );
   }
 
-  async function generate() {
+  async function generateInvite() {
     setError(null);
     setNotice(null);
     try {
-      const invite = await create.mutateAsync(label.trim() === "" ? undefined : label.trim());
+      const trimmedLabel = label.trim();
+      const invite = await createInvite.mutateAsync(trimmedLabel === "" ? undefined : trimmedLabel);
       setLabel("");
-      setFresh(invite);
+      setNewInvite(invite);
       setNotice(`Convite criado. Vale por ${validityDays(invite)} dias e abre uma conta só.`);
-    } catch (err) {
-      setError(messageFor(err));
+    } catch (caughtError) {
+      setError(messageFor(caughtError));
     }
   }
+  // Compartilhamento nativo quando houver; senão copia (o resultado diz qual aconteceu).
   async function share(invite: InviteDto) {
     setError(null);
     const result = await shareInvite(invite);
     if (result === "copiado") setNotice("Link copiado. É só colar na conversa.");
     else if (result === "falhou") setError("Não foi possível copiar. Selecione o link e copie.");
   }
-  async function copy(invite: InviteDto) {
+  async function copyInviteLink(invite: InviteDto) {
     setError(null);
     if ((await copyLink(invite)) === "copiado") setNotice("Link copiado.");
     else setError("Não foi possível copiar. Selecione o link e copie.");
@@ -67,17 +78,17 @@ export function InvitesPanel() {
   async function confirmDelete(invite: InviteDto) {
     setError(null);
     try {
-      await remove.mutateAsync(invite.code);
-      if (fresh?.code === invite.code) setFresh(null);
+      await deleteInvite.mutateAsync(invite.code);
+      if (newInvite?.code === invite.code) setNewInvite(null);
       setNotice(invite.status === "usado" ? "Convite apagado. A pessoa perdeu o acesso." : "Convite apagado.");
-    } catch (err) {
-      setError(messageFor(err));
+    } catch (caughtError) {
+      setError(messageFor(caughtError));
     } finally {
-      setConfirming(null);
+      setConfirmingDeleteCode(null);
     }
   }
 
-  const list = invites.data?.invites ?? [];
+  const inviteList = invites.data?.invites ?? [];
 
   return (
     <div className="pn-body">
@@ -100,26 +111,26 @@ export function InvitesPanel() {
 
         <label className="mini-label" style={{ maxWidth: 360, marginBottom: 12 }}>
           Nome da pessoa (opcional, só para o seu controle)
-          <input className="mini-field" maxLength={60} autoComplete="off" value={label} onChange={(e) => setLabel(e.target.value)} />
+          <input className="mini-field" maxLength={INVITE_LABEL_MAX_LENGTH} autoComplete="off" value={label} onChange={(event) => setLabel(event.target.value)} />
         </label>
-        <button type="button" className="mini-btn primary" disabled={create.isPending} onClick={() => void generate()}>
-          {create.isPending ? "Gerando…" : "Gerar convite"}
+        <button type="button" className="mini-btn primary" disabled={createInvite.isPending} onClick={() => void generateInvite()}>
+          {createInvite.isPending ? "Gerando…" : "Gerar convite"}
         </button>
 
-        {fresh !== null && (
+        {newInvite !== null && (
           <div className="pn-invite-box">
             <p>
-              <strong>Convite criado.</strong> Vale por {validityDays(fresh)} dias e abre uma conta só.
+              <strong>Convite criado.</strong> Vale por {validityDays(newInvite)} dias e abre uma conta só.
             </p>
             <label className="mini-label">
               Link para enviar
-              <input className="mini-field" readOnly value={fresh.link} onFocus={(e) => e.currentTarget.select()} />
+              <input className="mini-field" readOnly value={newInvite.link} onFocus={(event) => event.currentTarget.select()} />
             </label>
             <div className="pn-dialog-actions">
-              <button type="button" className="mini-btn primary pn-small-btn" onClick={() => void copy(fresh)}>
+              <button type="button" className="mini-btn primary pn-small-btn" onClick={() => void copyInviteLink(newInvite)}>
                 Copiar link
               </button>
-              <button type="button" className="mini-btn pn-small-btn" onClick={() => void share(fresh)}>
+              <button type="button" className="mini-btn pn-small-btn" onClick={() => void share(newInvite)}>
                 Compartilhar
               </button>
             </div>
@@ -145,7 +156,7 @@ export function InvitesPanel() {
         )}
         <div className="pn-table-wrap">
           <table className="pn-table">
-            <caption style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap" }}>Convites gerados</caption>
+            <caption style={VISUALLY_HIDDEN_STYLE}>Convites gerados</caption>
             <thead>
               <tr>
                 <th scope="col">Nome</th>
@@ -153,27 +164,27 @@ export function InvitesPanel() {
                 <th scope="col">Criado</th>
                 <th scope="col">Situação</th>
                 <th scope="col">
-                  <span style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap" }}>Ações</span>
+                  <span style={VISUALLY_HIDDEN_STYLE}>Ações</span>
                 </th>
               </tr>
             </thead>
             <tbody>
-              {list.map((invite) => (
+              {inviteList.map((invite) => (
                 <tr key={invite.code}>
                   <td style={{ fontWeight: 600 }}>{invite.label ?? "—"}</td>
                   <td className="pn-sub" style={{ fontVariantNumeric: "tabular-nums" }}>{invite.code}</td>
-                  <td className="pn-sub">{created(invite.createdAt)}</td>
+                  <td className="pn-sub">{formatCreatedDate(invite.createdAt)}</td>
                   <td>{statusLabel(invite)}</td>
                   <td className="act">
-                    {confirming === invite.code ? (
+                    {confirmingDeleteCode === invite.code ? (
                       <span role="group" aria-label="Apagar este convite?">
                         <span className="pn-sub" style={{ display: "block", marginBottom: 6 }}>
                           {deleteWarning(invite)}
                         </span>
-                        <button type="button" className="mini-btn danger pn-small-btn" disabled={remove.isPending} onClick={() => void confirmDelete(invite)}>
-                          {remove.isPending ? "Apagando…" : "Sim, apagar"}
+                        <button type="button" className="mini-btn danger pn-small-btn" disabled={deleteInvite.isPending} onClick={() => void confirmDelete(invite)}>
+                          {deleteInvite.isPending ? "Apagando…" : "Sim, apagar"}
                         </button>
-                        <button type="button" className="mini-btn pn-small-btn" disabled={remove.isPending} onClick={() => setConfirming(null)}>
+                        <button type="button" className="mini-btn pn-small-btn" disabled={deleteInvite.isPending} onClick={() => setConfirmingDeleteCode(null)}>
                           Cancelar
                         </button>
                       </span>
@@ -184,7 +195,7 @@ export function InvitesPanel() {
                             Compartilhar
                           </button>
                         )}
-                        <button type="button" className="mini-btn pn-small-btn" aria-label={`Apagar o convite ${invite.code}`} onClick={() => setConfirming(invite.code)}>
+                        <button type="button" className="mini-btn pn-small-btn" aria-label={`Apagar o convite ${invite.code}`} onClick={() => setConfirmingDeleteCode(invite.code)}>
                           Apagar
                         </button>
                       </>
@@ -194,7 +205,7 @@ export function InvitesPanel() {
               ))}
             </tbody>
           </table>
-          {list.length === 0 && !invites.isError && <p className="pn-empty">Nenhum convite ainda. Gere o primeiro acima.</p>}
+          {inviteList.length === 0 && !invites.isError && <p className="pn-empty">Nenhum convite ainda. Gere o primeiro acima.</p>}
         </div>
       </section>
     </div>

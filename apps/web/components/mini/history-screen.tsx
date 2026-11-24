@@ -17,7 +17,10 @@ import { useToast } from "./toast";
 
 const DONE = ["concluida"] as TaskStatus[];
 const DONE_OR_CANCELLED = ["concluida", "cancelada"] as TaskStatus[];
+/** Quantos dias o histórico mostra por vez; "Ver dias anteriores" carrega mais uma página. */
 const DAYS_PER_PAGE = 7;
+/** Janela do resumo "concluídas nos últimos 7 dias", contando hoje. */
+const SUMMARY_WINDOW_DAYS = 7;
 const FILTERS: Array<{ key: HistoryFilter; label: string }> = [
   { key: "tudo", label: "Tudo" },
   { key: "tarefas", label: "Tarefas" },
@@ -25,6 +28,7 @@ const FILTERS: Array<{ key: HistoryFilter; label: string }> = [
   { key: "entradas", label: "Entradas" },
 ];
 
+/** Tela "Histórico" do Mini App (/mini/historico): tarefas concluídas e lançamentos já pagos, por dia. */
 export function HistoryScreen() {
   const timezone = useSettings().data?.timezone;
   const today = useToday();
@@ -45,42 +49,61 @@ export function HistoryScreen() {
 }
 
 function HistoryContent({ timeZone, today }: { timeZone: string; today: IsoDate }) {
-  const [all, setAll] = useState(false);
+  const [includeCancelled, setIncludeCancelled] = useState(false);
   const [filter, setFilter] = useState<HistoryFilter>("tudo");
-  const [pages, setPages] = useState(1);
-  const q = useTasks({ status: all ? DONE_OR_CANCELLED : DONE });
+  const [pageCount, setPageCount] = useState(1);
+  const tasksQuery = useTasks({ status: includeCancelled ? DONE_OR_CANCELLED : DONE });
   const { error, change } = useStatusChange();
   const finance = useFinance();
   const toast = useToast();
-  const withTasks = filter === "tudo" || filter === "tarefas";
+  const showsTasks = filter === "tudo" || filter === "tarefas";
+  const showsOnlyMoney = filter === "gastos" || filter === "entradas";
 
+  // Um fuso inválido nas configurações faz o agrupamento lançar: vira erro na tela em vez de quebrar.
   let taskGroups: Array<{ day: IsoDate; tasks: TaskDto[] }> = [];
-  let zoneError = false;
+  let timeZoneError = false;
   try {
-    taskGroups = groupHistory(q.data ?? [], { timeZone, includeCancelled: all });
+    taskGroups = groupHistory(tasksQuery.data ?? [], { timeZone, includeCancelled });
   } catch {
-    zoneError = true;
+    timeZoneError = true;
   }
-  const finGroups = groupByDay(historyEntries(finance.lancamentos, filter));
+  const financeGroups = groupByDay(historyEntries(finance.lancamentos, filter));
   // Tarefas e lançamentos do mesmo dia ficam sob o mesmo título, do dia mais recente ao mais antigo.
-  const merged = new Map<IsoDate, { day: IsoDate; tasks: TaskDto[]; items: Lancamento[] }>();
-  if (withTasks) for (const g of taskGroups) merged.set(g.day, { day: g.day, tasks: g.tasks, items: [] });
-  for (const g of finGroups) merged.set(g.day, { day: g.day, tasks: merged.get(g.day)?.tasks ?? [], items: g.items });
-  const groups = [...merged.values()].sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : 0));
+  const groupsByDay = new Map<IsoDate, { day: IsoDate; tasks: TaskDto[]; items: Lancamento[] }>();
+  if (showsTasks) {
+    for (const group of taskGroups) groupsByDay.set(group.day, { day: group.day, tasks: group.tasks, items: [] });
+  }
+  for (const group of financeGroups) {
+    groupsByDay.set(group.day, { day: group.day, tasks: groupsByDay.get(group.day)?.tasks ?? [], items: group.items });
+  }
+  const groups = [...groupsByDay.values()].sort((first, second) =>
+    first.day < second.day ? 1 : first.day > second.day ? -1 : 0,
+  );
 
-  const weekStart = addDays(today, -6);
+  const summaryWindowStart = addDays(today, -(SUMMARY_WINDOW_DAYS - 1));
   const doneThisWeek = taskGroups
-    .filter((g) => g.day >= weekStart && g.day <= today)
-    .reduce((n, g) => n + g.tasks.filter((t) => t.status === "concluida").length, 0);
-  const visible = groups.slice(0, pages * DAYS_PER_PAGE);
-  const loading = withTasks && q.isPending && !q.isError;
-  const failed = withTasks && (q.isError || zoneError);
-  const shownTotal = netOf(visible.flatMap((g) => g.items));
+    .filter((group) => group.day >= summaryWindowStart && group.day <= today)
+    .reduce((count, group) => count + group.tasks.filter((task) => task.status === "concluida").length, 0);
+  const visibleGroups = groups.slice(0, pageCount * DAYS_PER_PAGE);
+  const loading = showsTasks && tasksQuery.isPending && !tasksQuery.isError;
+  const failed = showsTasks && (tasksQuery.isError || timeZoneError);
+  const visibleMoneyTotal = netOf(visibleGroups.flatMap((group) => group.items));
+
+  /** Trocar de filtro ou de modo volta para a primeira página. */
+  function selectFilter(nextFilter: HistoryFilter) {
+    setFilter(nextFilter);
+    setPageCount(1);
+  }
+
+  function selectIncludeCancelled(nextValue: boolean) {
+    setIncludeCancelled(nextValue);
+    setPageCount(1);
+  }
 
   function reopen(task: TaskDto) {
-    const was = task.status;
+    const previousStatus = task.status;
     void change(task.id, "pendente");
-    toast({ message: `Tarefa reaberta: ${task.title}.`, undo: () => void change(task.id, was) });
+    toast({ message: `Tarefa reaberta: ${task.title}.`, undo: () => void change(task.id, previousStatus) });
   }
 
   function removeEntry(item: Lancamento) {
@@ -93,7 +116,7 @@ function HistoryContent({ timeZone, today }: { timeZone: string; today: IsoDate 
       <header className="mini-hero">
         <h1>Histórico</h1>
         <p className="mini-hero-date">O que você já resolveu</p>
-        {!loading && !failed && withTasks && (
+        {!loading && !failed && showsTasks && (
           <p className="mini-hero-summary">
             {doneThisWeek === 0
               ? "Nenhuma concluída nos últimos 7 dias"
@@ -103,34 +126,31 @@ function HistoryContent({ timeZone, today }: { timeZone: string; today: IsoDate 
       </header>
 
       <div role="group" aria-label="Filtrar" className="mini-chips mini-filter">
-        {FILTERS.map((f) => (
+        {FILTERS.map((option) => (
           <button
-            key={f.key}
+            key={option.key}
             type="button"
             className="mini-chip"
-            aria-pressed={filter === f.key}
-            onClick={() => {
-              setFilter(f.key);
-              setPages(1);
-            }}
+            aria-pressed={filter === option.key}
+            onClick={() => selectFilter(option.key)}
           >
-            {f.label}
+            {option.label}
           </button>
         ))}
       </div>
-      {withTasks && (
+      {showsTasks && (
         <div role="group" aria-label="Mostrar" className="mini-chips mini-filter" style={{ marginTop: 8 }}>
-          <button type="button" className="mini-chip" aria-pressed={!all} onClick={() => { setAll(false); setPages(1); }}>
+          <button type="button" className="mini-chip" aria-pressed={!includeCancelled} onClick={() => selectIncludeCancelled(false)}>
             Concluídas
           </button>
-          <button type="button" className="mini-chip" aria-pressed={all} onClick={() => { setAll(true); setPages(1); }}>
+          <button type="button" className="mini-chip" aria-pressed={includeCancelled} onClick={() => selectIncludeCancelled(true)}>
             Com canceladas
           </button>
         </div>
       )}
-      {!loading && !failed && (filter === "gastos" || filter === "entradas") && visible.length > 0 && (
+      {!loading && !failed && showsOnlyMoney && visibleGroups.length > 0 && (
         <p className="mini-day-total" aria-live="polite">
-          {filter === "gastos" ? "Gastos" : "Entradas"} nos dias exibidos: <b>{formatBRL(Math.abs(shownTotal))}</b>
+          {filter === "gastos" ? "Gastos" : "Entradas"} nos dias exibidos: <b>{formatBRL(Math.abs(visibleMoneyTotal))}</b>
         </p>
       )}
 
@@ -155,7 +175,7 @@ function HistoryContent({ timeZone, today }: { timeZone: string; today: IsoDate 
       {!loading && !failed && groups.length === 0 && (
         <div className="mini-empty">
           <strong>Ainda não há nada por aqui.</strong>
-          {filter === "gastos" || filter === "entradas"
+          {showsOnlyMoney
             ? "Quando você anotar um lançamento já pago ou recebido, ele aparece aqui."
             : "Quando você concluir uma tarefa ou anotar um lançamento, aparece neste histórico."}
         </div>
@@ -163,14 +183,14 @@ function HistoryContent({ timeZone, today }: { timeZone: string; today: IsoDate 
 
       {!loading &&
         !failed &&
-        visible.map((g) => (
-          <section key={g.day} className="mini-section" aria-labelledby={`hd-${g.day}`}>
-            <h2 id={`hd-${g.day}`}>
-              {dayTitle(g.day, today)} <span className="mini-count">{g.tasks.length + g.items.length}</span>
+        visibleGroups.map((group) => (
+          <section key={group.day} className="mini-section" aria-labelledby={`hd-${group.day}`}>
+            <h2 id={`hd-${group.day}`}>
+              {dayTitle(group.day, today)} <span className="mini-count">{group.tasks.length + group.items.length}</span>
             </h2>
             <ul className="mini-list grouped">
-              {g.items.map((l) => (
-                <li key={l.id} className="mini-item done">
+              {group.items.map((entry) => (
+                <li key={entry.id} className="mini-item done">
                   <span className="mini-done-mark" aria-hidden="true">
                     <span>
                       <CheckIcon />
@@ -178,37 +198,37 @@ function HistoryContent({ timeZone, today }: { timeZone: string; today: IsoDate 
                   </span>
                   <div className="mini-body">
                     <div>
-                      <strong>{l.descricao}</strong>
+                      <strong>{entry.descricao}</strong>
                       <span className="mini-meta">
-                        <span>{l.categoria ? `${tipoLabel(l)} · ${l.categoria}` : tipoLabel(l)}</span>
+                        <span>{entry.categoria ? `${tipoLabel(entry)} · ${entry.categoria}` : tipoLabel(entry)}</span>
                       </span>
                     </div>
-                    <span className={`mini-amount${l.tipo === "entrada" ? " in" : ""}`} style={{ paddingRight: 0 }}>
-                      {l.tipo === "entrada" ? "+ " : "− "}
-                      {formatBRL(l.valorCentavos)}
+                    <span className={`mini-amount${entry.tipo === "entrada" ? " in" : ""}`} style={{ paddingRight: 0 }}>
+                      {entry.tipo === "entrada" ? "+ " : "− "}
+                      {formatBRL(entry.valorCentavos)}
                     </span>
                   </div>
-                  <button type="button" className="mini-reopen" aria-label={`Excluir ${l.descricao}`} onClick={() => removeEntry(l)}>
+                  <button type="button" className="mini-reopen" aria-label={`Excluir ${entry.descricao}`} onClick={() => removeEntry(entry)}>
                     <TrashIcon />
                     <span>Excluir</span>
                   </button>
                 </li>
               ))}
-              {g.tasks.map((t) => (
-                <li key={t.id} className={`mini-item done${t.status === "cancelada" ? " cancelled" : ""}`}>
+              {group.tasks.map((task) => (
+                <li key={task.id} className={`mini-item done${task.status === "cancelada" ? " cancelled" : ""}`}>
                   <span className="mini-done-mark" aria-hidden="true">
-                    <span>{t.status === "concluida" && <CheckIcon />}</span>
+                    <span>{task.status === "concluida" && <CheckIcon />}</span>
                   </span>
-                  <Link href={`/mini/tarefa/${t.id}`} className="mini-body" aria-label={`Abrir ${t.title}`}>
+                  <Link href={`/mini/tarefa/${task.id}`} className="mini-body" aria-label={`Abrir ${task.title}`}>
                     <div>
-                      <strong>{t.title}</strong>
+                      <strong>{task.title}</strong>
                       <span className="mini-meta">
-                        <span>{closedLabel(t, timeZone) ?? (t.status === "cancelada" ? "Cancelada" : "Concluída")}</span>
+                        <span>{closedLabel(task, timeZone) ?? (task.status === "cancelada" ? "Cancelada" : "Concluída")}</span>
                       </span>
                     </div>
                     <ChevronIcon />
                   </Link>
-                  <button type="button" className="mini-reopen" aria-label={`Reabrir ${t.title}`} onClick={() => reopen(t)}>
+                  <button type="button" className="mini-reopen" aria-label={`Reabrir ${task.title}`} onClick={() => reopen(task)}>
                     <UndoIcon />
                     <span>Reabrir</span>
                   </button>
@@ -218,8 +238,8 @@ function HistoryContent({ timeZone, today }: { timeZone: string; today: IsoDate 
           </section>
         ))}
 
-      {!loading && !failed && groups.length > visible.length && (
-        <button type="button" className="mini-btn" style={{ width: "100%", marginTop: 24 }} onClick={() => setPages((n) => n + 1)}>
+      {!loading && !failed && groups.length > visibleGroups.length && (
+        <button type="button" className="mini-btn" style={{ width: "100%", marginTop: 24 }} onClick={() => setPageCount((count) => count + 1)}>
           Ver dias anteriores
         </button>
       )}

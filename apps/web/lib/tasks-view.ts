@@ -1,6 +1,9 @@
 import type { IsoDate, TaskDto } from '@nexus/shared';
 import { addDays, daysBetween, todayIn } from './dates';
 
+const DAYS_PER_WEEK = 7;
+
+/** Seções da tela "Hoje", na ordem em que aparecem. */
 export type DayGroups = {
   overdue: TaskDto[];
   fatalToday: TaskDto[];
@@ -9,95 +12,103 @@ export type DayGroups = {
   undated: TaskDto[];
 };
 
-function isOpen(t: TaskDto): boolean {
-  return t.status === 'pendente' || t.status === 'em_andamento';
+function isOpen(task: TaskDto): boolean {
+  return task.status === 'pendente' || task.status === 'em_andamento';
 }
 
 /** Time ascending; tasks without time go last. */
-function byTime(a: TaskDto, b: TaskDto): number {
-  if (a.dueTime === b.dueTime) return 0;
-  if (a.dueTime === null) return 1;
-  if (b.dueTime === null) return -1;
-  return a.dueTime < b.dueTime ? -1 : 1;
+function byTime(first: TaskDto, second: TaskDto): number {
+  if (first.dueTime === second.dueTime) return 0;
+  if (first.dueTime === null) return 1;
+  if (second.dueTime === null) return -1;
+  return first.dueTime < second.dueTime ? -1 : 1;
 }
 
-function byDateThenTime(a: TaskDto, b: TaskDto): number {
-  if (a.dueDate !== b.dueDate) return (a.dueDate ?? '') < (b.dueDate ?? '') ? -1 : 1;
-  return byTime(a, b);
+function byDateThenTime(first: TaskDto, second: TaskDto): number {
+  if (first.dueDate !== second.dueDate) return (first.dueDate ?? '') < (second.dueDate ?? '') ? -1 : 1;
+  return byTime(first, second);
 }
 
+/** Separa as tarefas abertas nas seções de "Hoje": atrasadas, prazos fatais de hoje, com hora, só com data e sem data. */
 export function groupDay(tasks: TaskDto[], today: IsoDate): DayGroups {
-  const open = tasks.filter(isOpen);
-  const dueToday = open.filter((t) => t.dueDate === today);
+  const openTasks = tasks.filter(isOpen);
+  const dueToday = openTasks.filter((task) => task.dueDate === today);
   return {
-    overdue: open.filter((t) => t.dueDate !== null && t.dueDate < today).sort(byDateThenTime),
-    fatalToday: dueToday.filter((t) => t.fatal).sort(byTime),
-    timed: dueToday.filter((t) => !t.fatal && t.dueTime !== null).sort(byTime),
-    dateOnly: dueToday.filter((t) => !t.fatal && t.dueTime === null),
-    undated: open.filter((t) => t.dueDate === null),
+    overdue: openTasks.filter((task) => task.dueDate !== null && task.dueDate < today).sort(byDateThenTime),
+    fatalToday: dueToday.filter((task) => task.fatal).sort(byTime),
+    timed: dueToday.filter((task) => !task.fatal && task.dueTime !== null).sort(byTime),
+    dateOnly: dueToday.filter((task) => !task.fatal && task.dueTime === null),
+    undated: openTasks.filter((task) => task.dueDate === null),
   };
 }
 
+/** Os sete dias a partir de `from`, cada um com suas tarefas abertas ordenadas por horário. */
 export function groupWeek(
   tasks: TaskDto[],
   from: IsoDate,
 ): Array<{ date: IsoDate; tasks: TaskDto[] }> {
-  const open = tasks.filter(isOpen);
-  return Array.from({ length: 7 }, (_, i) => {
-    const date = addDays(from, i);
-    return { date, tasks: open.filter((t) => t.dueDate === date).sort(byTime) };
+  const openTasks = tasks.filter(isOpen);
+  return Array.from({ length: DAYS_PER_WEEK }, (_, dayOffset) => {
+    const date = addDays(from, dayOffset);
+    return { date, tasks: openTasks.filter((task) => task.dueDate === date).sort(byTime) };
   });
 }
 
+/** Quantas tarefas abertas (e quantas fatais) há em cada dia: alimenta os marcadores do calendário. */
 export function countByDay(tasks: TaskDto[]): Record<IsoDate, { total: number; fatal: number }> {
-  const out: Record<string, { total: number; fatal: number }> = {};
-  for (const t of tasks) {
-    if (!isOpen(t) || t.dueDate === null) continue;
-    const entry = (out[t.dueDate] ??= { total: 0, fatal: 0 });
-    entry.total += 1;
-    if (t.fatal) entry.fatal += 1;
+  const countsByDay: Record<string, { total: number; fatal: number }> = {};
+  for (const task of tasks) {
+    if (!isOpen(task) || task.dueDate === null) continue;
+    const dayCount = (countsByDay[task.dueDate] ??= { total: 0, fatal: 0 });
+    dayCount.total += 1;
+    if (task.fatal) dayCount.fatal += 1;
   }
-  return out;
+  return countsByDay;
 }
 
+/** Urgência em poucas palavras ("atrasada há 2 dias", "vence hoje", "em 5 dias"). */
 export function urgencyLabel(task: TaskDto, today: IsoDate): string {
   if (task.status === 'concluida') return 'concluída';
   if (task.status === 'cancelada') return 'cancelada';
   if (task.dueDate === null) return 'sem data';
-  const diff = daysBetween(today, task.dueDate);
-  if (diff < 0) return `atrasada há ${-diff} ${diff === -1 ? 'dia' : 'dias'}`;
-  if (diff === 0) return 'vence hoje';
-  if (diff === 1) return 'vence amanhã';
-  return `em ${diff} dias`;
+  const daysFromToday = daysBetween(today, task.dueDate);
+  if (daysFromToday < 0) return `atrasada há ${-daysFromToday} ${daysFromToday === -1 ? 'dia' : 'dias'}`;
+  if (daysFromToday === 0) return 'vence hoje';
+  if (daysFromToday === 1) return 'vence amanhã';
+  return `em ${daysFromToday} dias`;
 }
 
+/** Tarefas abertas que vencem hoje ou já venceram. */
 export function pendingCount(tasks: TaskDto[], today: IsoDate): number {
-  return tasks.filter((t) => isOpen(t) && t.dueDate !== null && t.dueDate <= today).length;
+  return tasks.filter((task) => isOpen(task) && task.dueDate !== null && task.dueDate <= today).length;
 }
 
+/**
+ * Histórico de tarefas encerradas agrupado pelo dia (no fuso do usuário) em que foram encerradas.
+ * Canceladas só entram com `includeCancelled`.
+ */
 export function groupHistory(
   tasks: TaskDto[],
-  opts: { timeZone: string; includeCancelled?: boolean },
+  options: { timeZone: string; includeCancelled?: boolean },
 ): Array<{ day: IsoDate; tasks: TaskDto[] }> {
-  const entries: Array<{ day: IsoDate; at: string; task: TaskDto }> = [];
-  for (const t of tasks) {
-    if (t.status === 'concluida') {
-      const at = t.completedAt ?? t.updatedAt;
-      entries.push({ day: todayIn(opts.timeZone, new Date(at)), at, task: t });
-    } else if (t.status === 'cancelada' && opts.includeCancelled) {
-      const at = t.completedAt ?? t.updatedAt;
-      entries.push({ day: todayIn(opts.timeZone, new Date(at)), at, task: t });
-    }
+  const entries: Array<{ day: IsoDate; closedAt: string; task: TaskDto }> = [];
+  for (const task of tasks) {
+    const isIncluded = task.status === 'concluida' || (task.status === 'cancelada' && options.includeCancelled);
+    if (!isIncluded) continue;
+    // Sem `completedAt` (dados antigos), a última atualização é a melhor estimativa do encerramento.
+    const closedAt = task.completedAt ?? task.updatedAt;
+    // O dia do encerramento é o do fuso do usuário, não o do navegador nem o UTC.
+    entries.push({ day: todayIn(options.timeZone, new Date(closedAt)), closedAt, task });
   }
   // Most recent first, both across days and within a day.
-  entries.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
-  const groups = new Map<IsoDate, TaskDto[]>();
-  for (const e of entries) {
-    const list = groups.get(e.day);
-    if (list) list.push(e.task);
-    else groups.set(e.day, [e.task]);
+  entries.sort((first, second) => Date.parse(second.closedAt) - Date.parse(first.closedAt));
+  const tasksByDay = new Map<IsoDate, TaskDto[]>();
+  for (const entry of entries) {
+    const dayTasks = tasksByDay.get(entry.day);
+    if (dayTasks) dayTasks.push(entry.task);
+    else tasksByDay.set(entry.day, [entry.task]);
   }
-  return [...groups.entries()]
-    .sort(([a], [b]) => (a < b ? 1 : a > b ? -1 : 0))
-    .map(([day, ts]) => ({ day, tasks: ts }));
+  return [...tasksByDay.entries()]
+    .sort(([firstDay], [secondDay]) => (firstDay < secondDay ? 1 : firstDay > secondDay ? -1 : 0))
+    .map(([day, dayTasks]) => ({ day, tasks: dayTasks }));
 }

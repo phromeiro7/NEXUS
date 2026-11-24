@@ -6,8 +6,14 @@ import { isForbidden, useCreateInvite, useInvites, useDeleteInvite } from "@/hoo
 import { messageFor } from "@/lib/messages";
 
 const SHARE_TEXT = "Entre no Nexus, meu assistente de tarefas e lembretes:";
+const MS_PER_DAY = 86_400_000;
+/** Limite do apelido opcional do convite. */
+const INVITE_LABEL_MAX_LENGTH = 60;
+/** Valor de `platform` quando o SDK do Telegram carrega num navegador comum. */
+const OUTSIDE_TELEGRAM_PLATFORM = "unknown";
 
-const day = (iso: string) => new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+/** "dd/mm" de um instante ISO, no fuso do aparelho. */
+const formatDayMonth = (iso: string) => new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 
 /** "12 gerados: 2 ativos, 9 usados, 1 expirado". Zeros ficam de fora. */
 export function summaryText(summary: InviteSummaryDto): string {
@@ -17,8 +23,8 @@ export function summaryText(summary: InviteSummaryDto): string {
     [summary.expirados, "expirado", "expirados"],
     [summary.revogados, "revogado", "revogados"],
   ]
-    .filter(([n]) => (n as number) > 0)
-    .map(([n, one, many]) => `${n} ${n === 1 ? one : many}`);
+    .filter(([count]) => (count as number) > 0)
+    .map(([count, singular, plural]) => `${count} ${count === 1 ? singular : plural}`);
   const total = `${summary.total} ${summary.total === 1 ? "convite gerado" : "convites gerados"}`;
   return parts.length === 0 ? total : `${total}: ${parts.join(", ")}`;
 }
@@ -30,14 +36,16 @@ export function deleteWarning(invite: InviteDto): string {
     : "Apagar este convite? O link deixa de funcionar.";
 }
 
+/** Dias de validade do convite (da criação à expiração), arredondado e no mínimo 1. */
 export function validityDays(invite: InviteDto): number {
-  return Math.max(1, Math.round((Date.parse(invite.expiresAt) - Date.parse(invite.createdAt)) / 86_400_000));
+  return Math.max(1, Math.round((Date.parse(invite.expiresAt) - Date.parse(invite.createdAt)) / MS_PER_DAY));
 }
 
+/** Estado do convite em uma frase para a lista: ativo até quando, usado ou expirado em que dia, ou revogado. */
 export function statusLabel(invite: InviteDto): string {
-  if (invite.status === "ativo") return `Ativo, vale até ${day(invite.expiresAt)}`;
-  if (invite.status === "usado") return `Usado em ${invite.usedAt === null ? "—" : day(invite.usedAt)}`;
-  if (invite.status === "expirado") return `Expirou em ${day(invite.expiresAt)}`;
+  if (invite.status === "ativo") return `Ativo, vale até ${formatDayMonth(invite.expiresAt)}`;
+  if (invite.status === "usado") return `Usado em ${invite.usedAt === null ? "—" : formatDayMonth(invite.usedAt)}`;
+  if (invite.status === "expirado") return `Expirou em ${formatDayMonth(invite.expiresAt)}`;
   return "Revogado";
 }
 
@@ -46,9 +54,9 @@ export function statusLabel(invite: InviteDto): string {
  * copia o link. Devolve o que aconteceu, para avisar a pessoa.
  */
 export async function shareInvite(invite: InviteDto): Promise<"compartilhado" | "copiado" | "falhou" | "cancelado"> {
-  const tg = typeof window === "undefined" ? undefined : window.Telegram?.WebApp;
-  if (tg?.openTelegramLink && tg.platform !== "unknown") {
-    tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(invite.link)}&text=${encodeURIComponent(SHARE_TEXT)}`);
+  const webApp = typeof window === "undefined" ? undefined : window.Telegram?.WebApp;
+  if (webApp?.openTelegramLink && webApp.platform !== OUTSIDE_TELEGRAM_PLATFORM) {
+    webApp.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(invite.link)}&text=${encodeURIComponent(SHARE_TEXT)}`);
     return "compartilhado";
   }
   if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
@@ -56,12 +64,14 @@ export async function shareInvite(invite: InviteDto): Promise<"compartilhado" | 
       await navigator.share({ title: "Nexus", text: SHARE_TEXT, url: invite.link });
       return "compartilhado";
     } catch (error) {
+      // A pessoa fechou a folha de compartilhar: não é erro. Outras falhas caem na cópia do link.
       if (error instanceof DOMException && error.name === "AbortError") return "cancelado";
     }
   }
   return copyLink(invite);
 }
 
+/** Copia o link do convite para a área de transferência; devolve se deu certo. */
 export async function copyLink(invite: InviteDto): Promise<"copiado" | "falhou"> {
   try {
     await navigator.clipboard.writeText(invite.link);
@@ -80,11 +90,14 @@ export function InvitesCard() {
   const create = useCreateInvite();
   const remove = useDeleteInvite();
   const [label, setLabel] = useState("");
-  const [fresh, setFresh] = useState<InviteDto | null>(null);
+  // Convite recém-gerado: mostra o link em destaque para compartilhar na hora.
+  const [newInvite, setNewInvite] = useState<InviteDto | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [confirming, setConfirming] = useState<string | null>(null);
+  // Código do convite cuja exclusão está aguardando confirmação.
+  const [confirmingDeleteCode, setConfirmingDeleteCode] = useState<string | null>(null);
 
+  // Enquanto carrega e para quem não é administrador (403) o cartão não aparece.
   if (invites.isPending) return null;
   if (invites.isError && isForbidden(invites.error)) return null;
 
@@ -94,10 +107,10 @@ export function InvitesCard() {
     try {
       const invite = await create.mutateAsync(label.trim() === "" ? undefined : label.trim());
       setLabel("");
-      setFresh(invite);
+      setNewInvite(invite);
       setNotice(`Convite criado. Vale por ${validityDays(invite)} dias e abre uma conta só.`);
-    } catch (err) {
-      setError(messageFor(err));
+    } catch (createError) {
+      setError(messageFor(createError));
     }
   }
 
@@ -118,16 +131,16 @@ export function InvitesCard() {
     setError(null);
     try {
       await remove.mutateAsync(invite.code);
-      if (fresh?.code === invite.code) setFresh(null);
+      if (newInvite?.code === invite.code) setNewInvite(null);
       setNotice(invite.status === "usado" ? "Convite apagado. A pessoa perdeu o acesso." : "Convite apagado.");
-    } catch (err) {
-      setError(messageFor(err));
+    } catch (deleteError) {
+      setError(messageFor(deleteError));
     } finally {
-      setConfirming(null);
+      setConfirmingDeleteCode(null);
     }
   }
 
-  const list = invites.data?.invites ?? [];
+  const inviteList = invites.data?.invites ?? [];
 
   return (
     <section className="mini-card mini-tg" aria-labelledby="mini-inv-title" data-testid="invites-card">
@@ -153,10 +166,10 @@ export function InvitesCard() {
       <input
         id="mini-inv-label"
         className="mini-field"
-        maxLength={60}
+        maxLength={INVITE_LABEL_MAX_LENGTH}
         autoComplete="off"
         value={label}
-        onChange={(e) => setLabel(e.target.value)}
+        onChange={(event) => setLabel(event.target.value)}
       />
       <button
         type="button"
@@ -168,7 +181,7 @@ export function InvitesCard() {
         {create.isPending ? "Gerando…" : "Gerar convite"}
       </button>
 
-      {fresh !== null && (
+      {newInvite !== null && (
         <div className="mini-tg-block">
           <label htmlFor="mini-inv-link" className="mini-tg-text">
             Link do convite
@@ -177,14 +190,14 @@ export function InvitesCard() {
             id="mini-inv-link"
             className="mini-field"
             readOnly
-            value={fresh.link}
-            onFocus={(e) => e.currentTarget.select()}
+            value={newInvite.link}
+            onFocus={(event) => event.currentTarget.select()}
           />
           <div className="mini-tg-actions">
-            <button type="button" className="mini-btn primary" onClick={() => void share(fresh)}>
+            <button type="button" className="mini-btn primary" onClick={() => void share(newInvite)}>
               Compartilhar
             </button>
-            <button type="button" className="mini-btn" onClick={() => void copy(fresh)}>
+            <button type="button" className="mini-btn" onClick={() => void copy(newInvite)}>
               Copiar link
             </button>
           </div>
@@ -197,23 +210,23 @@ export function InvitesCard() {
         </p>
       )}
 
-      {list.length === 0 && !invites.isError && <p className="mini-tg-text">Nenhum convite ainda. Gere o primeiro acima.</p>}
+      {inviteList.length === 0 && !invites.isError && <p className="mini-tg-text">Nenhum convite ainda. Gere o primeiro acima.</p>}
 
-      {list.length > 0 && (
+      {inviteList.length > 0 && (
         <ul className="mini-inv-list" aria-label="Convites criados">
-          {list.map((invite) => (
+          {inviteList.map((invite) => (
             <li key={invite.code} className="mini-inv-row">
               <p className="mini-tg-state">
                 {invite.label !== null && <strong>{invite.label}: </strong>}
                 {statusLabel(invite)}
               </p>
-              {confirming === invite.code ? (
+              {confirmingDeleteCode === invite.code ? (
                 <div role="group" aria-label="Apagar este convite?" className="mini-tg-actions">
                   <p className="mini-tg-text">{deleteWarning(invite)}</p>
                   <button type="button" className="mini-btn danger" disabled={remove.isPending} onClick={() => void confirmDelete(invite)}>
                     {remove.isPending ? "Apagando…" : "Sim, apagar"}
                   </button>
-                  <button type="button" className="mini-btn" disabled={remove.isPending} onClick={() => setConfirming(null)}>
+                  <button type="button" className="mini-btn" disabled={remove.isPending} onClick={() => setConfirmingDeleteCode(null)}>
                     Cancelar
                   </button>
                 </div>
@@ -224,7 +237,7 @@ export function InvitesCard() {
                       Compartilhar
                     </button>
                   )}
-                  <button type="button" className="mini-btn" aria-label={`Apagar o convite ${invite.code}`} onClick={() => setConfirming(invite.code)}>
+                  <button type="button" className="mini-btn" aria-label={`Apagar o convite ${invite.code}`} onClick={() => setConfirmingDeleteCode(invite.code)}>
                     Apagar
                   </button>
                 </div>

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createQrLogin, pollQrLogin, type QrLoginFailure } from "@/lib/qr-login";
 
+/** Etapas do login por QR, na ordem em que a tela as percorre (as quatro últimas encerram a espera). */
 export type QrPhase = "creating" | "waiting" | "confirm" | "entering" | "denied" | "refused" | "expired" | "error";
 
 export type QrLoginState = {
@@ -34,8 +35,14 @@ function pollDelay(elapsedMs: number): number {
   if (elapsedMs < 90_000) return 3_000;
   return 5_000;
 }
+/** Primeira consulta logo depois de criar o pedido. */
+const FIRST_POLL_DELAY_MS = 2_000;
 /** Falhas de rede seguidas: espera cresce até 10 s; na terceira a tela mostra o erro com "Tentar de novo". */
 const NETWORK_RETRIES = 3;
+const NETWORK_BACKOFF_BASE_MS = 2_000;
+const NETWORK_BACKOFF_MAX_MS = 10_000;
+/** Espera quando a API limita as tentativas sem dizer por quanto tempo. */
+const DEFAULT_RETRY_AFTER_SECONDS = 5;
 /** Rede de segurança caso o servidor nunca diga "expirado" (o pedido vale 3 minutos). */
 const GIVE_UP_MS = 10 * 60_000;
 
@@ -48,9 +55,10 @@ export function useQrLogin(options: Options): QrLoginState {
   const [phase, setPhase] = useState<QrPhase>("creating");
   const [deepLink, setDeepLink] = useState<string | null>(null);
   const [error, setError] = useState<QrLoginFailure | null>(null);
-  const [retryAfter, setRetryAfter] = useState<number | null>(null);
+  const [retryAfterSeconds, setRetryAfterSeconds] = useState<number | null>(null);
   const [attempt, setAttempt] = useState(0);
 
+  // Callbacks em refs: o efeito usa sempre a versão mais recente sem reiniciar o login a cada render.
   const exchangeRef = useRef(options.exchangeToken);
   exchangeRef.current = options.exchangeToken;
   const signedInRef = useRef(options.onSignedIn);
@@ -63,57 +71,72 @@ export function useQrLogin(options: Options): QrLoginState {
     let active = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let paused = false;
-    let started = 0;
-    let failures = 0;
+    let startedAt = 0;
+    let consecutiveNetworkFailures = 0;
     let request: { id: string; pollSecret: string } | null = null;
     const controller = new AbortController();
-    const fetchOpt = fetchRef.current ? { fetch: fetchRef.current } : {};
+    const fetchOverride = fetchRef.current ? { fetch: fetchRef.current } : {};
 
-    const stopWith = (next: QrPhase, why: QrLoginFailure | null = null, wait: number | null = null) => {
-      setPhase(next);
-      setError(why);
-      setRetryAfter(wait);
+    const stopWith = (
+      nextPhase: QrPhase,
+      failure: QrLoginFailure | null = null,
+      waitSeconds: number | null = null,
+    ) => {
+      setPhase(nextPhase);
+      setError(failure);
+      setRetryAfterSeconds(waitSeconds);
     };
 
-    const schedule = (ms: number) => {
+    const scheduleNextPoll = (delayMs: number) => {
       if (!active) return;
       clearTimeout(timer);
-      timer = setTimeout(() => void tick(), ms);
+      timer = setTimeout(() => void pollOnce(), delayMs);
     };
 
-    async function tick(): Promise<void> {
+    async function pollOnce(): Promise<void> {
       if (!active || request === null) return;
       // Aba escondida: não consulta. Ao voltar, a consulta é imediata.
       if (typeof document !== "undefined" && document.hidden) {
         paused = true;
         return;
       }
-      if (Date.now() - started > GIVE_UP_MS) return stopWith("expired");
-      const res = await pollQrLogin({ apiBaseUrl, id: request.id, pollSecret: request.pollSecret, signal: controller.signal, ...fetchOpt });
+      if (Date.now() - startedAt > GIVE_UP_MS) return stopWith("expired");
+      const result = await pollQrLogin({
+        apiBaseUrl,
+        id: request.id,
+        pollSecret: request.pollSecret,
+        signal: controller.signal,
+        ...fetchOverride,
+      });
       if (!active) return;
-      if (!res.ok) {
-        if (res.code === "rede") {
-          failures += 1;
-          if (failures >= NETWORK_RETRIES) return stopWith("error", "rede");
-          return schedule(Math.min(2_000 * 2 ** failures, 10_000));
+      if (!result.ok) {
+        if (result.code === "rede") {
+          consecutiveNetworkFailures += 1;
+          if (consecutiveNetworkFailures >= NETWORK_RETRIES) return stopWith("error", "rede");
+          // Espera exponencial: 4 s, 8 s... limitada a 10 s.
+          const backoffMs = NETWORK_BACKOFF_BASE_MS * 2 ** consecutiveNetworkFailures;
+          return scheduleNextPoll(Math.min(backoffMs, NETWORK_BACKOFF_MAX_MS));
         }
-        if (res.code === "muitas_tentativas") return schedule(Math.max(1, res.retryAfterSeconds ?? 5) * 1_000);
+        if (result.code === "muitas_tentativas") {
+          const waitSeconds = Math.max(1, result.retryAfterSeconds ?? DEFAULT_RETRY_AFTER_SECONDS);
+          return scheduleNextPoll(waitSeconds * 1_000);
+        }
         // Pedido que já não existe (limpo depois de vencer) é o mesmo que expirado.
-        if (res.code === "nao_encontrado") return stopWith("expired");
-        return stopWith("error", res.code);
+        if (result.code === "nao_encontrado") return stopWith("expired");
+        return stopWith("error", result.code);
       }
-      failures = 0;
-      switch (res.status) {
+      consecutiveNetworkFailures = 0;
+      switch (result.status) {
         case "aguardando":
           setPhase("waiting");
-          return schedule(pollDelay(Date.now() - started));
+          return scheduleNextPoll(pollDelay(Date.now() - startedAt));
         case "confirmar":
           setPhase("confirm");
-          return schedule(pollDelay(Date.now() - started));
+          return scheduleNextPoll(pollDelay(Date.now() - startedAt));
         case "aprovado": {
-          if (res.tokenHash === undefined) return stopWith("error", "generico");
+          if (result.tokenHash === undefined) return stopWith("error", "generico");
           setPhase("entering");
-          const exchanged = await exchangeRef.current(res.tokenHash);
+          const exchanged = await exchangeRef.current(result.tokenHash);
           if (!active) return;
           if (exchanged.error !== null) return stopWith("error", "generico");
           signedInRef.current();
@@ -131,7 +154,7 @@ export function useQrLogin(options: Options): QrLoginState {
     const onVisible = () => {
       if (!document.hidden && paused && active) {
         paused = false;
-        void tick();
+        void pollOnce();
       }
     };
     document.addEventListener("visibilitychange", onVisible);
@@ -139,14 +162,14 @@ export function useQrLogin(options: Options): QrLoginState {
     void (async () => {
       stopWith("creating");
       setDeepLink(null);
-      const created = await createQrLogin({ apiBaseUrl, signal: controller.signal, ...fetchOpt });
+      const created = await createQrLogin({ apiBaseUrl, signal: controller.signal, ...fetchOverride });
       if (!active) return;
       if (!created.ok) return stopWith("error", created.code, created.retryAfterSeconds ?? null);
       request = { id: created.request.id, pollSecret: created.request.pollSecret };
-      started = Date.now();
+      startedAt = Date.now();
       setDeepLink(created.request.deepLink);
       setPhase("waiting");
-      schedule(2_000);
+      scheduleNextPoll(FIRST_POLL_DELAY_MS);
     })();
 
     return () => {
@@ -157,6 +180,7 @@ export function useQrLogin(options: Options): QrLoginState {
     };
   }, [enabled, apiBaseUrl, attempt]);
 
-  const restart = useCallback(() => setAttempt((n) => n + 1), []);
-  return { phase, deepLink, error, retryAfterSeconds: retryAfter, restart };
+  // Mudar `attempt` reinicia o efeito: descarta o pedido atual e cria outro.
+  const restart = useCallback(() => setAttempt((previousAttempt) => previousAttempt + 1), []);
+  return { phase, deepLink, error, retryAfterSeconds, restart };
 }
