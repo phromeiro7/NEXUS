@@ -2,6 +2,7 @@ import { todayIn, type BriefingDto } from '@nexus/shared';
 import { buildBriefing } from '../domain/briefing.js';
 import type { Clock, ProfileRepository, TaskRepository } from './ports.js';
 
+/** Briefing do dia (atrasadas, fatais e audiências de hoje, próximos dias) calculado no fuso do usuário. */
 export function makeGetBriefing(deps: { tasks: TaskRepository; profiles: ProfileRepository; clock: Clock }) {
   return async (userId: string): Promise<BriefingDto> => {
     const profile = await deps.profiles.get(userId);

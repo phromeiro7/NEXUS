@@ -1,5 +1,6 @@
 import type { AuthClient } from "./supabase";
 
+/** Falhas do login pelo Telegram que a tela sabe explicar (os códigos vêm da API, mais "rede" e "generico"). */
 export type TelegramLoginFailure =
   | "assinatura_invalida"
   | "sessao_expirada"
@@ -12,7 +13,8 @@ export type TelegramLoginFailure =
 
 export type TelegramLoginResult = { ok: true } | { ok: false; code: TelegramLoginFailure };
 
-const KNOWN: readonly string[] = [
+/** Códigos da API repassados como estão; qualquer outro vira "generico". */
+const KNOWN_FAILURE_CODES: readonly string[] = [
   "assinatura_invalida",
   "sessao_expirada",
   "ja_utilizado",
@@ -21,14 +23,16 @@ const KNOWN: readonly string[] = [
   "login_desabilitado",
 ];
 
-function codeOf(body: unknown): TelegramLoginFailure {
-  const e = typeof body === "object" && body !== null ? (body as { error?: unknown }).error : undefined;
-  return typeof e === "string" && KNOWN.includes(e) ? (e as TelegramLoginFailure) : "generico";
+function failureCodeOf(body: unknown): TelegramLoginFailure {
+  const errorCode = typeof body === "object" && body !== null ? (body as { error?: unknown }).error : undefined;
+  return typeof errorCode === "string" && KNOWN_FAILURE_CODES.includes(errorCode)
+    ? (errorCode as TelegramLoginFailure)
+    : "generico";
 }
 
 // Dois disparos do mesmo initData ao mesmo tempo (ex.: efeito duplicado em desenvolvimento) dividem uma
 // só chamada: a API só aceita cada assinatura uma vez.
-const inflight = new Map<string, Promise<TelegramLoginResult>>();
+const inFlightByInitData = new Map<string, Promise<TelegramLoginResult>>();
 
 /**
  * Troca o `initData` assinado por uma sessão da conta que o Telegram tem vinculada: pede à API um token de
@@ -37,24 +41,24 @@ const inflight = new Map<string, Promise<TelegramLoginResult>>();
  */
 export function signInWithTelegram(
   client: AuthClient,
-  opts: { apiBaseUrl: string; initData: string; fetch?: typeof fetch },
+  options: { apiBaseUrl: string; initData: string; fetch?: typeof fetch },
 ): Promise<TelegramLoginResult> {
-  const existing = inflight.get(opts.initData);
+  const existing = inFlightByInitData.get(options.initData);
   if (existing) return existing;
-  const run = (async (): Promise<TelegramLoginResult> => {
-    const doFetch = opts.fetch ?? fetch;
+  const signIn = (async (): Promise<TelegramLoginResult> => {
+    const doFetch = options.fetch ?? fetch;
     let tokenHash: string;
     try {
-      const res = await doFetch(`${opts.apiBaseUrl}/auth/telegram`, {
+      const response = await doFetch(`${options.apiBaseUrl}/auth/telegram`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ initData: opts.initData }),
+        body: JSON.stringify({ initData: options.initData }),
       });
-      const body: unknown = await res.json().catch(() => null);
-      if (!res.ok) return { ok: false, code: codeOf(body) };
-      const hash = typeof body === "object" && body !== null ? (body as { tokenHash?: unknown }).tokenHash : undefined;
-      if (typeof hash !== "string" || hash === "") return { ok: false, code: "generico" };
-      tokenHash = hash;
+      const body: unknown = await response.json().catch(() => null);
+      if (!response.ok) return { ok: false, code: failureCodeOf(body) };
+      const receivedHash = typeof body === "object" && body !== null ? (body as { tokenHash?: unknown }).tokenHash : undefined;
+      if (typeof receivedHash !== "string" || receivedHash === "") return { ok: false, code: "generico" };
+      tokenHash = receivedHash;
     } catch {
       return { ok: false, code: "rede" };
     }
@@ -64,7 +68,7 @@ export function signInWithTelegram(
     } catch {
       return { ok: false, code: "rede" };
     }
-  })().finally(() => inflight.delete(opts.initData));
-  inflight.set(opts.initData, run);
-  return run;
+  })().finally(() => inFlightByInitData.delete(options.initData));
+  inFlightByInitData.set(options.initData, signIn);
+  return signIn;
 }

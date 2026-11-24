@@ -1,3 +1,4 @@
+/** Nome interno do app (também o escopo dos pacotes, `@nexus/*`). */
 export const APP_NAME = 'nexus';
 
 export * from './primitives.js';

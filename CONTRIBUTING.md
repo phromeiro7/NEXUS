@@ -28,3 +28,9 @@ passo completo está em [docs/DESENVOLVIMENTO.md](docs/DESENVOLVIMENTO.md).
 - Toda função nova de domínio vem com teste. Mudanças no banco entram como uma nova migration em
   `supabase/migrations/`, nunca editando as antigas.
 - Não commite segredos nem arquivos `.env`.
+
+## Estilo de código
+
+Priorizamos código claro e profissional. O padrão completo (nomes autodescritivos, comentários que explicam o
+porquê, constantes nomeadas, fluxo simples) está em [CLAUDE.md](CLAUDE.md#padrão-de-código-clareza-e-profissionalismo).
+Em resumo: quem lê o código pela primeira vez deve entender o que ele faz sem precisar adivinhar abreviações.

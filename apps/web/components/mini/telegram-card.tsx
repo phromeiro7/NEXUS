@@ -5,12 +5,13 @@ import { useTelegramLink } from "@/hooks/use-telegram-link";
 
 /** Vínculo do Telegram no Mini App: mesma lógica do painel (`useTelegramLink`), com a cara do Mini App. */
 export function TelegramCard({ linked, paused }: { linked: boolean; paused: boolean }) {
-  const t = useTelegramLink({ linked, paused });
-  const { activeCode, expired, pending, error, copyMsg, unlinkPending, hasClipboard, link } = t;
+  const telegramLink = useTelegramLink({ linked, paused });
+  const { activeCode, expired, pending, error, copyMsg, unlinkPending, hasClipboard, link } = telegramLink;
+  // Desvincular pede confirmação na própria tela antes de agir.
   const [confirming, setConfirming] = useState(false);
 
   async function confirmUnlink() {
-    await t.unlink();
+    await telegramLink.unlink();
     setConfirming(false);
   }
 
@@ -53,7 +54,7 @@ export function TelegramCard({ linked, paused }: { linked: boolean; paused: bool
                 type="button"
                 className="mini-btn"
                 onClick={() => {
-                  t.clearError();
+                  telegramLink.clearError();
                   setConfirming(true);
                 }}
               >
@@ -68,11 +69,12 @@ export function TelegramCard({ linked, paused }: { linked: boolean; paused: bool
         <div className="mini-tg-block">
           {!linked && <p className="mini-tg-text">Ainda não conectado. Vincule para receber os lembretes no chat.</p>}
           {activeCode === null ? (
-            <button type="button" className="mini-btn primary" disabled={pending} onClick={() => void t.generate()}>
+            <button type="button" className="mini-btn primary" disabled={pending} onClick={() => void telegramLink.generate()}>
               {pending ? "Gerando…" : "Gerar código"}
             </button>
           ) : (
             <>
+              {/* O rótulo soletra o código para o leitor de tela ler dígito a dígito. */}
               <p aria-label={`Código de vínculo: ${activeCode.code.split("").join(" ")}`} className="mini-code">
                 {activeCode.code}
               </p>
@@ -83,15 +85,15 @@ export function TelegramCard({ linked, paused }: { linked: boolean; paused: bool
               )}
               <p className="mini-tg-text">Se preferir, envie ao bot: /start {activeCode.code}</p>
               <p aria-hidden="true" className="mini-tg-text">
-                Válido por {t.remaining}. Só pode ser usado uma vez.
+                Válido por {telegramLink.remaining}. Só pode ser usado uma vez.
               </p>
               <div className="mini-tg-actions">
                 {hasClipboard && (
-                  <button type="button" className="mini-btn" onClick={() => void t.copy()}>
+                  <button type="button" className="mini-btn" onClick={() => void telegramLink.copy()}>
                     Copiar código
                   </button>
                 )}
-                <button type="button" className="mini-btn" disabled={pending} onClick={() => void t.generate()}>
+                <button type="button" className="mini-btn" disabled={pending} onClick={() => void telegramLink.generate()}>
                   Gerar outro código
                 </button>
               </div>

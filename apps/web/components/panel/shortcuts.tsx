@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { NewTaskDialog } from "./new-task-dialog";
 
-type Shortcuts = {
+type ShortcutsContextValue = {
   /** A barra de captura se registra aqui (só existe em Hoje e Finanças); sem ela os atalhos não valem. */
   registerCapture(focus: () => void): () => void;
   helpOpen: boolean;
@@ -12,14 +12,20 @@ type Shortcuts = {
   openNewTask(): void;
 };
 
-const NONE: Shortcuts = { registerCapture: () => () => {}, helpOpen: false, toggleHelp: () => {}, closeHelp: () => {}, openNewTask: () => {} };
-const Ctx = createContext<Shortcuts>(NONE);
-export const useShortcuts = () => useContext(Ctx);
+/** Valor fora do provedor: atalhos desligados (componentes funcionam sem quebrar). */
+const NO_SHORTCUTS: ShortcutsContextValue = { registerCapture: () => () => {}, helpOpen: false, toggleHelp: () => {}, closeHelp: () => {}, openNewTask: () => {} };
+const ShortcutsContext = createContext<ShortcutsContextValue>(NO_SHORTCUTS);
+/** Acesso aos atalhos do painel (registro da barra de captura, lista de ajuda, nova tarefa). */
+export const useShortcuts = () => useContext(ShortcutsContext);
+
+const TEXT_ENTRY_TAGS = ["INPUT", "TEXTAREA", "SELECT"];
+/** Diálogo aberto (qualquer modal): os atalhos globais ficam suspensos. */
+const OPEN_MODAL_SELECTOR = '[aria-modal="true"]';
 
 /** Quem está digitando (ou escolhendo numa lista) não aciona atalhos. */
 function isTyping(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
-  return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
+  return target.isContentEditable || TEXT_ENTRY_TAGS.includes(target.tagName);
 }
 
 /**
@@ -27,54 +33,57 @@ function isTyping(target: EventTarget | null): boolean {
  * Só valem em Hoje e Finanças, sem Ctrl/Alt/Cmd, fora de campos de texto e com nenhum diálogo aberto.
  */
 export function ShortcutsProvider({ children }: { children: ReactNode }) {
-  const focusCapture = useRef<(() => void) | null>(null);
+  const focusCaptureRef = useRef<(() => void) | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
-  const [newTask, setNewTask] = useState(false);
+  const [newTaskOpen, setNewTaskOpen] = useState(false);
 
+  // Devolve a função de cancelamento; só limpa se ainda for o mesmo registro (evita apagar uma barra mais nova).
   const registerCapture = useCallback((focus: () => void) => {
-    focusCapture.current = focus;
+    focusCaptureRef.current = focus;
     return () => {
-      if (focusCapture.current === focus) focusCapture.current = null;
+      if (focusCaptureRef.current === focus) focusCaptureRef.current = null;
     };
   }, []);
 
+  // Atalhos globais no documento. preventDefault evita que a tecla ("/", "n", "?") seja digitada no campo focado em seguida.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
-      if (isTyping(e.target) || document.querySelector('[aria-modal="true"]') !== null) return;
-      if (focusCapture.current === null) return;
-      if (e.key === "/") {
-        e.preventDefault();
-        focusCapture.current();
-      } else if (e.key === "n" || e.key === "N") {
-        e.preventDefault();
-        setNewTask(true);
-      } else if (e.key === "?") {
-        e.preventDefault();
-        setHelpOpen((v) => !v);
-      } else if (e.key === "Escape") {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const hasModifier = event.ctrlKey || event.metaKey || event.altKey;
+      if (event.defaultPrevented || hasModifier) return;
+      if (isTyping(event.target) || document.querySelector(OPEN_MODAL_SELECTOR) !== null) return;
+      if (focusCaptureRef.current === null) return;
+      if (event.key === "/") {
+        event.preventDefault();
+        focusCaptureRef.current();
+      } else if (event.key === "n" || event.key === "N") {
+        event.preventDefault();
+        setNewTaskOpen(true);
+      } else if (event.key === "?") {
+        event.preventDefault();
+        setHelpOpen((open) => !open);
+      } else if (event.key === "Escape") {
         setHelpOpen(false);
       }
     };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  const value = useMemo<Shortcuts>(
+  const value = useMemo<ShortcutsContextValue>(
     () => ({
       registerCapture,
       helpOpen,
-      toggleHelp: () => setHelpOpen((v) => !v),
+      toggleHelp: () => setHelpOpen((open) => !open),
       closeHelp: () => setHelpOpen(false),
-      openNewTask: () => setNewTask(true),
+      openNewTask: () => setNewTaskOpen(true),
     }),
     [registerCapture, helpOpen],
   );
 
   return (
-    <Ctx.Provider value={value}>
+    <ShortcutsContext.Provider value={value}>
       {children}
-      {newTask && <NewTaskDialog onClose={() => setNewTask(false)} />}
-    </Ctx.Provider>
+      {newTaskOpen && <NewTaskDialog onClose={() => setNewTaskOpen(false)} />}
+    </ShortcutsContext.Provider>
   );
 }

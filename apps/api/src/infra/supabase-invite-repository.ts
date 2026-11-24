@@ -2,9 +2,13 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { InviteCodeCollisionError } from '../application/errors.js';
 import type { InviteRecord, InviteRepository } from '../application/ports.js';
 
+/** SQLSTATE `unique_violation`: o código sorteado já existe. */
 const UNIQUE_VIOLATION = '23505';
 
-type Row = {
+const INVITE_COLUMNS = 'code, created_by, created_at, expires_at, revoked_at, used_at, used_by, label';
+
+/** Linha de `invites`. */
+type InviteRow = {
   code: string;
   created_by: string;
   created_at: string;
@@ -15,7 +19,7 @@ type Row = {
   label: string | null;
 };
 
-const toRecord = (row: Row): InviteRecord => ({
+const toRecord = (row: InviteRow): InviteRecord => ({
   code: row.code,
   createdBy: row.created_by,
   createdAt: new Date(row.created_at),
@@ -26,6 +30,10 @@ const toRecord = (row: Row): InviteRecord => ({
   label: row.label,
 });
 
+/**
+ * Convites de acesso. Reservar, concluir e devolver um convite são RPCs atômicas no banco:
+ * dois aceites simultâneos do mesmo código nunca criam duas contas.
+ */
 export function createSupabaseInviteRepository(client: SupabaseClient): InviteRepository {
   return {
     async create(createdBy, code, createdAt, expiresAt, label) {
@@ -43,11 +51,11 @@ export function createSupabaseInviteRepository(client: SupabaseClient): InviteRe
     async list(limit) {
       const { data, error } = await client
         .from('invites')
-        .select('code, created_by, created_at, expires_at, revoked_at, used_at, used_by, label')
+        .select(INVITE_COLUMNS)
         .order('created_at', { ascending: false })
         .limit(limit);
       if (error) throw new Error(`Falha ao listar convites: ${error.message}`);
-      return ((data ?? []) as Row[]).map(toRecord);
+      return ((data ?? []) as InviteRow[]).map(toRecord);
     },
 
     async revoke(code, now) {
@@ -55,6 +63,7 @@ export function createSupabaseInviteRepository(client: SupabaseClient): InviteRe
         .from('invites')
         .update({ revoked_at: now.toISOString() })
         .eq('code', code)
+        // Só convite ainda aberto pode ser revogado (nem usado, nem já revogado).
         .is('used_at', null)
         .is('revoked_at', null)
         .select('code');
@@ -65,11 +74,11 @@ export function createSupabaseInviteRepository(client: SupabaseClient): InviteRe
     async find(code) {
       const { data, error } = await client
         .from('invites')
-        .select('code, created_by, created_at, expires_at, revoked_at, used_at, used_by, label')
+        .select(INVITE_COLUMNS)
         .eq('code', code)
         .maybeSingle();
       if (error) throw new Error(`Falha ao buscar convite: ${error.message}`);
-      return data ? toRecord(data as Row) : null;
+      return data ? toRecord(data as InviteRow) : null;
     },
 
     async remove(code) {
@@ -102,8 +111,9 @@ export function createSupabaseInviteRepository(client: SupabaseClient): InviteRe
     async telegramIdOf(userId) {
       const { data, error } = await client.from('profiles').select('telegram_chat_id').eq('id', userId).maybeSingle();
       if (error) throw new Error(`Falha ao buscar o Telegram da conta: ${error.message}`);
-      const id = data?.telegram_chat_id as number | string | null | undefined;
-      return id === null || id === undefined ? null : Number(id);
+      // Em chat privado o id do chat é o id do usuário no Telegram; bigint pode chegar como string.
+      const telegramChatId = data?.telegram_chat_id as number | string | null | undefined;
+      return telegramChatId === null || telegramChatId === undefined ? null : Number(telegramChatId);
     },
   };
 }

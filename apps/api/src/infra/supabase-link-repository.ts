@@ -4,10 +4,13 @@ import type { LinkCodeRepository } from '../application/ports.js';
 import { maskEmail } from '../application/telegram/mask-email.js';
 import { isSyntheticEmail } from './supabase-account-provisioner.js';
 
+/** SQLSTATE `unique_violation`: o código de vínculo sorteado já existe. */
 const UNIQUE_VIOLATION = '23505';
 
+/** Linha devolvida pela RPC `consume_link_code`. */
 type ConsumeRow = { status: 'ok' | 'invalido' | 'chat_em_uso'; user_id: string | null };
 
+/** Vínculo entre a conta do painel e o chat do Telegram (códigos de uso único e `profiles.telegram_chat_id`). */
 export function createSupabaseLinkRepository(client: SupabaseClient): LinkCodeRepository {
   /**
    * E-mail mascarado da conta, só para a confirmação do vínculo. Qualquer falha (ou ausência de e-mail)
@@ -28,8 +31,8 @@ export function createSupabaseLinkRepository(client: SupabaseClient): LinkCodeRe
   return {
     async create(userId, code, expiresAt) {
       // Os códigos antigos saem primeiro: um usuário nunca tem mais de um código válido.
-      const removed = await client.from('link_codes').delete().eq('user_id', userId);
-      if (removed.error) throw new Error(`Falha ao apagar códigos de vínculo: ${removed.error.message}`);
+      const deletion = await client.from('link_codes').delete().eq('user_id', userId);
+      if (deletion.error) throw new Error(`Falha ao apagar códigos de vínculo: ${deletion.error.message}`);
       const { error } = await client
         .from('link_codes')
         .insert({ code, user_id: userId, expires_at: expiresAt.toISOString() });
@@ -39,6 +42,7 @@ export function createSupabaseLinkRepository(client: SupabaseClient): LinkCodeRe
     },
 
     async consume(code, chatId, now) {
+      // A RPC valida o código, vincula o chat e apaga o código numa só transação.
       const { data, error } = await client.rpc('consume_link_code', {
         p_code: code,
         p_chat_id: chatId,

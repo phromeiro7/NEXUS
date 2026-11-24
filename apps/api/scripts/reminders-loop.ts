@@ -9,18 +9,24 @@ import { pathToFileURL } from 'node:url';
 import { main as tickOnce } from './reminders-tick.js';
 
 export const DEFAULT_INTERVAL_SECONDS = 60;
+const MIN_INTERVAL_SECONDS = 5;
+const MAX_INTERVAL_SECONDS = 3600;
+const MS_PER_SECOND = 1000;
+/** Código de saída de uma passada que falhou (o tick devolve 0 quando dá certo). */
+const FAILED_EXIT_CODE = 1;
 
 /** Lê REMINDERS_LOOP_SECONDS; vazio = padrão; fora de 5..3600 ou não inteiro lança (nomeia a variável). */
 export function loopIntervalMs(env: Record<string, string | undefined>): number {
   const raw = env.REMINDERS_LOOP_SECONDS?.trim();
-  if (raw === undefined || raw === '') return DEFAULT_INTERVAL_SECONDS * 1000;
+  if (raw === undefined || raw === '') return DEFAULT_INTERVAL_SECONDS * MS_PER_SECOND;
   const seconds = /^\d+$/.test(raw) ? Number.parseInt(raw, 10) : Number.NaN;
-  if (!Number.isInteger(seconds) || seconds < 5 || seconds > 3600) {
+  if (!Number.isInteger(seconds) || seconds < MIN_INTERVAL_SECONDS || seconds > MAX_INTERVAL_SECONDS) {
     throw new Error('REMINDERS_LOOP_SECONDS inválida: esperado um inteiro entre 5 e 3600');
   }
-  return seconds * 1000;
+  return seconds * MS_PER_SECOND;
 }
 
+/** Dependências do laço, injetáveis para os testes não dependerem de relógio nem de rede. */
 export type LoopDeps = {
   /** Uma passada; devolve o código de saída do tick (0 = ok). Nunca deve lançar, mas se lançar o laço segue. */
   tick: () => Promise<number>;
@@ -36,18 +42,20 @@ export async function runLoop(deps: LoopDeps): Promise<number> {
   const now = deps.now ?? (() => new Date());
   let passes = 0;
   for (;;) {
-    let code: number;
+    let exitCode: number;
     try {
-      code = await deps.tick();
+      exitCode = await deps.tick();
     } catch {
-      code = 1;
+      exitCode = FAILED_EXIT_CODE;
     }
     passes += 1;
-    deps.log(`${now().toISOString()} tick ${code === 0 ? 'ok' : 'falhou'}`);
-    if (!(await deps.sleep(deps.intervalMs))) return passes;
+    deps.log(`${now().toISOString()} tick ${exitCode === 0 ? 'ok' : 'falhou'}`);
+    const shouldContinue = await deps.sleep(deps.intervalMs);
+    if (!shouldContinue) return passes;
   }
 }
 
+/** `sleep` que acorda na hora (com `false`) quando o sinal é abortado (Ctrl+C), sem esperar o intervalo. */
 function abortableSleep(signal: AbortSignal): (ms: number) => Promise<boolean> {
   return (ms) =>
     new Promise((resolve) => {
@@ -67,10 +75,16 @@ function abortableSleep(signal: AbortSignal): (ms: number) => Promise<boolean> {
 /** Uma API travada não pode travar o laço: passado `ms`, a passada conta como falha e a próxima começa. */
 export function withTimeout(work: Promise<number>, ms: number): Promise<number> {
   return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(1), ms);
+    const timer = setTimeout(() => resolve(FAILED_EXIT_CODE), ms);
     work.then(
-      (code) => (clearTimeout(timer), resolve(code)),
-      () => (clearTimeout(timer), resolve(1)),
+      (exitCode) => {
+        clearTimeout(timer);
+        resolve(exitCode);
+      },
+      () => {
+        clearTimeout(timer);
+        resolve(FAILED_EXIT_CODE);
+      },
     );
   });
 }
@@ -78,17 +92,18 @@ export function withTimeout(work: Promise<number>, ms: number): Promise<number> 
 /** O endpoint pode levar ~45 s no pior caso (README); acima disso é travada de verdade. */
 export const TICK_TIMEOUT_MS = 90_000;
 
+/** Entrada do script: valida o intervalo e roda o laço até SIGINT/SIGTERM. Devolve o código de saída. */
 export async function main(env: Record<string, string | undefined> = process.env): Promise<number> {
   let intervalMs: number;
   try {
     intervalMs = loopIntervalMs(env);
-  } catch (err) {
-    console.error(err instanceof Error ? err.message : 'Configuração inválida');
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : 'Configuração inválida');
     return 1;
   }
   const controller = new AbortController();
   for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => controller.abort());
-  console.log(`Agendador local: uma passada a cada ${intervalMs / 1000} s (Ctrl+C para parar)`);
+  console.log(`Agendador local: uma passada a cada ${intervalMs / MS_PER_SECOND} s (Ctrl+C para parar)`);
   await runLoop({
     tick: () => withTimeout(tickOnce(env), TICK_TIMEOUT_MS),
     sleep: abortableSleep(controller.signal),

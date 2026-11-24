@@ -11,36 +11,41 @@ import { reminderState, whenLabel } from "@/lib/mini-tasks";
 import { postponeOptions, type PostponeOption } from "@/lib/postpone";
 import { Dialog } from "./dialog";
 
-type Mode = "view" | "postpone" | "edit" | "cancel";
+/** Qual painel do diálogo está aberto: ações, opções de adiar, edição ou confirmação de cancelamento. */
+type DialogMode = "view" | "postpone" | "edit" | "cancel";
+
+/** Mesmo limite de título do schema compartilhado (updateTaskInputSchema). */
+const TASK_TITLE_MAX_LENGTH = 200;
 
 /** Uma tarefa aberta no painel: concluir, adiar, editar, cancelar ou excluir. Fecha quando a ação termina. */
 export function TaskDialog({ task, today, onClose }: { task: TaskDto; today: IsoDate; onClose: () => void }) {
   const toast = useToast();
-  const update = useUpdateTask();
-  const del = useDeleteTask();
+  const updateTask = useUpdateTask();
+  const deleteTask = useDeleteTask();
   const postponer = usePostpone();
-  const [mode, setMode] = useState<Mode>("view");
+  const [mode, setMode] = useState<DialogMode>("view");
   const [error, setError] = useState<string | null>(null);
   const [title, setTitle] = useState(task.title);
   const [date, setDate] = useState<string>(task.dueDate ?? "");
   const [time, setTime] = useState<string>(task.dueTime ?? "");
-  const pending = update.isPending || del.isPending || postponer.pending;
+  const pending = updateTask.isPending || deleteTask.isPending || postponer.pending;
   const shownError = error ?? postponer.error;
 
-  async function apply(input: UpdateTaskInput, after?: () => void) {
+  /** Grava a alteração e fecha; `afterClose` roda só em caso de sucesso (ex.: o aviso com desfazer). */
+  async function applyUpdate(input: UpdateTaskInput, afterClose?: () => void) {
     setError(null);
     try {
-      await update.mutateAsync({ id: task.id, input });
+      await updateTask.mutateAsync({ id: task.id, input });
       onClose();
-      after?.();
-    } catch (err) {
-      setError(messageFor(err));
+      afterClose?.();
+    } catch (caughtError) {
+      setError(messageFor(caughtError));
     }
   }
 
-  const complete = () =>
-    apply({ status: "concluida" }, () =>
-      toast({ message: `Tarefa concluída: ${task.title}.`, undo: () => void update.mutateAsync({ id: task.id, input: { status: "pendente" } }) }),
+  const completeTask = () =>
+    applyUpdate({ status: "concluida" }, () =>
+      toast({ message: `Tarefa concluída: ${task.title}.`, undo: () => void updateTask.mutateAsync({ id: task.id, input: { status: "pendente" } }) }),
     );
 
   async function postponeTo(input: PostponeOption["input"]) {
@@ -48,27 +53,27 @@ export function TaskDialog({ task, today, onClose }: { task: TaskDto; today: Iso
     if (await postponer.postpone(task, input, today)) onClose();
   }
 
-  async function saveEdit(e: FormEvent) {
-    e.preventDefault();
+  async function saveEdit(event: FormEvent) {
+    event.preventDefault();
     if (time !== "" && date === "") {
       setError("Escolha o dia para usar um horário.");
       return;
     }
     const parsed = updateTaskInputSchema.safeParse({ title: title.trim(), dueDate: date === "" ? null : date, dueTime: time === "" ? null : time });
     if (!parsed.success) {
-      setError("Confira o título (até 200 caracteres), o dia e o horário.");
+      setError(`Confira o título (até ${TASK_TITLE_MAX_LENGTH} caracteres), o dia e o horário.`);
       return;
     }
-    await apply(parsed.data);
+    await applyUpdate(parsed.data);
   }
 
-  async function remove() {
+  async function deleteForever() {
     setError(null);
     try {
-      await del.mutateAsync(task.id);
+      await deleteTask.mutateAsync(task.id);
       onClose();
-    } catch (err) {
-      setError(messageFor(err));
+    } catch (caughtError) {
+      setError(messageFor(caughtError));
     }
   }
 
@@ -93,7 +98,7 @@ export function TaskDialog({ task, today, onClose }: { task: TaskDto; today: Iso
 
       {mode === "view" && (
         <div className="pn-dialog-actions">
-          <button type="button" className="mini-btn primary" disabled={pending} onClick={() => void complete()}>
+          <button type="button" className="mini-btn primary" disabled={pending} onClick={() => void completeTask()}>
             <CheckIcon /> Concluir
           </button>
           <button type="button" className="mini-btn" onClick={() => setMode("postpone")}>
@@ -112,9 +117,9 @@ export function TaskDialog({ task, today, onClose }: { task: TaskDto; today: Iso
         <section aria-label="Adiar para" className="mini-stack">
           <strong>Adiar para quando?</strong>
           <div className="pn-dialog-actions">
-            {postponeOptions(task, today).map((o) => (
-              <button key={o.key} type="button" className="mini-btn" disabled={pending} onClick={() => void postponeTo(o.input)}>
-                {o.label}
+            {postponeOptions(task, today).map((option) => (
+              <button key={option.key} type="button" className="mini-btn" disabled={pending} onClick={() => void postponeTo(option.input)}>
+                {option.label}
               </button>
             ))}
             <button type="button" className="mini-btn quiet" onClick={() => setMode("view")}>
@@ -128,16 +133,16 @@ export function TaskDialog({ task, today, onClose }: { task: TaskDto; today: Iso
         <form onSubmit={saveEdit} noValidate className="mini-stack" aria-label="Editar tarefa">
           <label className="mini-label">
             Título
-            <input className="mini-field" value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} />
+            <input className="mini-field" value={title} maxLength={TASK_TITLE_MAX_LENGTH} onChange={(event) => setTitle(event.target.value)} />
           </label>
           <div className="pn-two">
             <label className="mini-label">
               Dia
-              <input type="date" className="mini-field" value={date} onChange={(e) => setDate(e.target.value)} />
+              <input type="date" className="mini-field" value={date} onChange={(event) => setDate(event.target.value)} />
             </label>
             <label className="mini-label">
               Horário
-              <input type="time" className="mini-field" value={time} onChange={(e) => setTime(e.target.value)} />
+              <input type="time" className="mini-field" value={time} onChange={(event) => setTime(event.target.value)} />
             </label>
           </div>
           <div className="pn-dialog-actions">
@@ -155,13 +160,13 @@ export function TaskDialog({ task, today, onClose }: { task: TaskDto; today: Iso
         <section role="group" aria-label="Confirmar cancelamento" className="mini-stack">
           <p style={{ margin: 0, fontWeight: 600 }}>Cancelar esta tarefa? Ela sai da lista e você pode reabri-la depois.</p>
           <div className="pn-dialog-actions">
-            <button type="button" className="mini-btn danger" disabled={pending} onClick={() => void apply({ status: "cancelada" })}>
+            <button type="button" className="mini-btn danger" disabled={pending} onClick={() => void applyUpdate({ status: "cancelada" })}>
               Cancelar tarefa
             </button>
             <button type="button" className="mini-btn" onClick={() => setMode("view")}>
               Manter tarefa
             </button>
-            <button type="button" className="mini-btn quiet" disabled={pending} onClick={() => void remove()}>
+            <button type="button" className="mini-btn quiet" disabled={pending} onClick={() => void deleteForever()}>
               Excluir de vez
             </button>
           </div>

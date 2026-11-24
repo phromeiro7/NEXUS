@@ -1,5 +1,6 @@
 import { QR_LOGIN_START_PREFIX, type AssistantReplyDto } from '@nexus/shared';
 import { z } from 'zod';
+import type { TelegramErrorClass } from '../../domain/reminder-message.js';
 import type { AssistantLogger, ProcessMessageInput } from '../assistant/process-message.js';
 import {
   AssistantUnavailableError,
@@ -45,14 +46,17 @@ const updateSchema = z.object({
     .optional(),
 });
 
-const TEXT = {
+type CallbackQuery = NonNullable<z.infer<typeof updateSchema>['callback_query']>;
+
+/** Textos fixos que o bot envia em resposta. */
+const REPLY_MESSAGES = {
   startHelp: 'Para vincular, gere um código no painel (Configurações) e envie /start CÓDIGO.',
   linkedNoHint:
     'Conta vinculada! Você receberá lembretes e o briefing do dia aqui. Se não foi você quem gerou o código no painel, envie /desvincular.',
   invalidCode: 'Código inválido ou vencido. Gere outro no painel.',
   chatInUse: 'Este Telegram já está ligado a outra conta.',
-  tooMany: 'Muitas tentativas. Tente de novo em alguns minutos.',
-  unlinked: 'Esta conta ainda não está vinculada. Gere um código no painel (Configurações) e envie /start CÓDIGO.',
+  tooManyAttempts: 'Muitas tentativas. Tente de novo em alguns minutos.',
+  notLinked: 'Esta conta ainda não está vinculada. Gere um código no painel (Configurações) e envie /start CÓDIGO.',
   unlinkedDone: 'Telegram desvinculado. Você não receberá mais lembretes por aqui.',
   onlyText: 'Por enquanto só entendo texto.',
   taskGone: 'Essa tarefa não existe mais.',
@@ -82,21 +86,30 @@ const TEXT = {
  * Confirmação do vínculo. Com a dica (e-mail mascarado), diz QUAL conta foi ligada: quem tocou num link
  * de outra pessoa (login CSRF) reconhece que a conta não é a sua. A dica nunca é registrada em log.
  */
-function linkedText(accountHint: string | null): string {
-  if (accountHint === null) return TEXT.linkedNoHint;
+function buildLinkedMessage(accountHint: string | null): string {
+  if (accountHint === null) return REPLY_MESSAGES.linkedNoHint;
   return `Conta vinculada: ${accountHint}. Você receberá lembretes e o briefing do dia aqui. Se você não reconhece esta conta, envie /desvincular agora.`;
 }
 
-const CODE_FORMAT = /^[A-Z0-9]{8}$/;
+/** Código de vínculo gerado no painel: 8 caracteres. */
+const LINK_CODE_FORMAT = /^[A-Z0-9]{8}$/;
 /** Convite: 12 caracteres (o código de vínculo tem 8). */
-const INVITE_FORMAT = /^[A-Z0-9]{12}$/;
+const INVITE_CODE_FORMAT = /^[A-Z0-9]{12}$/;
 /** Revogar convite pelo botão: `iv:r:<codigo>` (17 bytes, abaixo do limite de 64). */
-const REVOKE_PREFIX = 'iv:r:';
+const INVITE_REVOKE_CALLBACK_PREFIX = 'iv:r:';
 /** Resposta do login do painel: `ql:y:<id>` (confirmar) ou `ql:n:<id>` ("Não fui eu"); o id é um uuid (41 bytes). */
-const LOGIN_PREFIX = 'ql:';
-const LOGIN_CALLBACK = /^ql:(y|n):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+const QR_LOGIN_CALLBACK_PREFIX = 'ql:';
+const QR_LOGIN_CALLBACK_FORMAT = /^ql:(y|n):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
 /** `/comando`, `/comando@bot` e `/comando argumentos`; o comando não distingue maiúsculas. */
-const COMMAND = /^\/(start|desvincular|ajuda|convite|convites|meuid)(?:@([A-Za-z0-9_]+))?(?:\s+([\s\S]*))?$/i;
+const COMMAND_FORMAT = /^\/(start|desvincular|ajuda|convite|convites|meuid)(?:@([A-Za-z0-9_]+))?(?:\s+([\s\S]*))?$/i;
+
+/** Falhas de `/start` toleradas por chat dentro da janela, antes de bloquear novas tentativas (contra força bruta). */
+const MAX_FAILED_STARTS = 5;
+const FAILED_START_WINDOW_MS = 10 * 60_000;
+/** `/convites` lista no máximo esta quantidade (uma mensagem por convite). */
+const MAX_LISTED_INVITES = 10;
+const MS_PER_DAY = 86_400_000;
+const INVITE_DISPLAY_TIME_ZONE = 'America/Sao_Paulo';
 
 type CommandName = 'start' | 'desvincular' | 'ajuda' | 'convite' | 'convites' | 'meuid';
 
@@ -107,21 +120,25 @@ type CommandName = 'start' | 'desvincular' | 'ajuda' | 'convite' | 'convites' | 
 function parseCommand(
   text: string,
   botUsername: string | undefined,
-  allowed: ReadonlySet<CommandName>,
+  allowedCommands: ReadonlySet<CommandName>,
 ): { name: CommandName; args: string } | null {
-  const m = COMMAND.exec(text.trim());
-  if (m === null) return null;
-  const name = m[1]!.toLowerCase() as CommandName;
+  const match = COMMAND_FORMAT.exec(text.trim());
+  if (match === null) return null;
+  const name = match[1]!.toLowerCase() as CommandName;
   // Comando desligado (ou de administrador, para quem não é) continua sendo texto comum: não revela que existe.
-  if (!allowed.has(name)) return null;
-  const suffix = m[2];
-  if (suffix !== undefined && (botUsername === undefined || suffix.toLowerCase() !== botUsername.toLowerCase())) {
-    return null;
-  }
-  return { name, args: m[3] ?? '' };
+  if (!allowedCommands.has(name)) return null;
+  const botSuffix = match[2];
+  const isForAnotherBot =
+    botSuffix !== undefined && (botUsername === undefined || botSuffix.toLowerCase() !== botUsername.toLowerCase());
+  if (isForAnotherBot) return null;
+  return { name, args: match[3] ?? '' };
 }
 
-const errorName = (e: unknown) => (e instanceof Error ? e.name : 'desconhecido');
+const errorNameOf = (error: unknown) => (error instanceof Error ? error.name : 'desconhecido');
+
+/** Código de log de uma falha de envio: só a classificação, nunca o texto. */
+const sendFailureCode = (error: TelegramErrorClass): string =>
+  error.kind === 'permanent' ? `permanent:${error.reason}` : 'transient';
 
 export type HandleTelegramUpdateDeps = {
   links: LinkCodeRepository;
@@ -147,34 +164,72 @@ export type HandleTelegramUpdateDeps = {
   miniAppUrl?: string;
 };
 
-/*
+/**
+ * Cria o tratador do webhook do Telegram: roteia cada `Update` (mensagem, comando ou toque em botão)
+ * e garante que cada `update_id` só é tratado uma vez (reentregas do Telegram não duplicam efeitos).
+ *
  * Logs: só nomes de evento, códigos e nomes de erro. Nunca texto de mensagem, títulos, o código de
  * vínculo, segredos nem o chat id.
  */
 export function makeHandleTelegramUpdate(deps: HandleTelegramUpdateDeps) {
   const { links, events, confirmations, processMessage, telegram, clock, logger } = deps;
-  const limiter: FailedStartLimiter =
-    deps.failedStartLimiter ?? createFailedStartLimiter({ max: 5, windowMs: 10 * 60_000 });
+  const failedStartLimiter: FailedStartLimiter =
+    deps.failedStartLimiter ?? createFailedStartLimiter({ max: MAX_FAILED_STARTS, windowMs: FAILED_START_WINDOW_MS });
+
+  // Falhas de infraestrutura antes do registro do evento viram UpdateNotRegisteredError (a rota responde 500,
+  // e o Telegram reenvia o update). ForeignEventError passa direto: é adulteração, não falha transitória.
+  const beforeRegistration = async <T>(work: () => Promise<T>): Promise<T> => {
+    try {
+      return await work();
+    } catch (error) {
+      if (error instanceof ForeignEventError) throw error;
+      throw new UpdateNotRegisteredError(error);
+    }
+  };
+
+  /**
+   * Idempotência: registra o `update_id` para o usuário. `false` = reentrega de um update já tratado
+   * (nada a fazer). `userId` nulo registra o evento sem dono (chat não vinculado).
+   */
+  const registerFirstDelivery = async (userId: string | null, updateId: number, now: Date): Promise<boolean> =>
+    (await beforeRegistration(() => events.register(userId, 'telegram', String(updateId), now))).firstTime;
 
   /** Texto simples (sem parse_mode). Falha de envio: só o código da classificação é registrado. */
-  async function say(chatId: number, text: string): Promise<number | null> {
+  async function sendPlainText(chatId: number, text: string): Promise<number | null> {
     const sent = await telegram.sendMessage(chatId, text);
     if (sent.ok) return sent.messageId;
-    const code = sent.error.kind === 'permanent' ? `permanent:${sent.error.reason}` : 'transient';
-    logger.error('telegram.send_failed', { code });
+    logger.error('telegram.send_failed', { code: sendFailureCode(sent.error) });
     return null;
   }
 
-  async function handleModelPath(
+  /** Envia com botões; falha de envio só é registrada (como em `sendPlainText`). */
+  async function sendWithKeyboard(chatId: number, text: string, options?: { keyboard: InlineKeyboard }): Promise<void> {
+    const sent = await telegram.sendMessage(chatId, text, options);
+    if (!sent.ok) logger.error('telegram.send_failed', { code: sendFailureCode(sent.error) });
+  }
+
+  /** Botão "Abrir o Nexus" (Mini App); sem origem configurada, nenhum botão. */
+  const openMiniAppKeyboard = (): { keyboard: InlineKeyboard } | undefined =>
+    deps.miniAppUrl === undefined ? undefined : { keyboard: [[{ text: 'Abrir o Nexus', webAppUrl: deps.miniAppUrl }]] };
+
+  // ---------------------------------------------------------------------------------------------
+  // Assistente de IA
+  // ---------------------------------------------------------------------------------------------
+
+  /**
+   * Encaminha a mensagem ao assistente e responde no chat. Guarda quais tarefas a resposta afetou para que
+   * uma resposta (reply) a essa mensagem mire nelas. Erros conhecidos viram textos curtos ao usuário.
+   */
+  async function forwardToAssistant(
     userId: string,
     chatId: number,
     updateId: number,
     text: string,
     targetTaskIds: string[] | undefined,
   ): Promise<void> {
-    let result: AssistantReplyDto;
+    let assistantReply: AssistantReplyDto;
     try {
-      result = await processMessage({
+      assistantReply = await processMessage({
         userId,
         channel: 'telegram',
         externalId: String(updateId),
@@ -183,111 +238,136 @@ export function makeHandleTelegramUpdate(deps: HandleTelegramUpdateDeps) {
         ...(targetTaskIds !== undefined ? { targetTaskIds } : {}),
       });
     } catch (error) {
-      if (error instanceof RateLimitedError) return void (await say(chatId, TEXT.rateLimited));
-      if (error instanceof MessageTooLongError) return void (await say(chatId, TEXT.tooLong));
-      if (error instanceof AssistantUnavailableError) return void (await say(chatId, TEXT.unavailable));
-      if (error instanceof EventInProgressError) return void (await say(chatId, TEXT.inProgress));
-      if (error instanceof TargetTasksGoneError) return void (await say(chatId, TEXT.taskGone));
+      if (error instanceof RateLimitedError) return void (await sendPlainText(chatId, REPLY_MESSAGES.rateLimited));
+      if (error instanceof MessageTooLongError) return void (await sendPlainText(chatId, REPLY_MESSAGES.tooLong));
+      if (error instanceof AssistantUnavailableError) return void (await sendPlainText(chatId, REPLY_MESSAGES.unavailable));
+      if (error instanceof EventInProgressError) return void (await sendPlainText(chatId, REPLY_MESSAGES.inProgress));
+      if (error instanceof TargetTasksGoneError) return void (await sendPlainText(chatId, REPLY_MESSAGES.taskGone));
       // Um conflito de `update_id` indica adulteração: nada é respondido ao remetente.
-      if (error instanceof ForeignEventError) return logger.error('telegram.foreign_event', { code: errorName(error) });
-      return logger.error('telegram.process_failed', { errorName: errorName(error) });
+      if (error instanceof ForeignEventError) return logger.error('telegram.foreign_event', { code: errorNameOf(error) });
+      return logger.error('telegram.process_failed', { errorName: errorNameOf(error) });
     }
 
-    const messageId = await say(chatId, formatAssistantReply(result.reply, result.affectedTasks));
-    if (messageId === null || result.affectedTasks.length === 0) return;
+    const messageId = await sendPlainText(chatId, formatAssistantReply(assistantReply.reply, assistantReply.affectedTasks));
+    if (messageId === null || assistantReply.affectedTasks.length === 0) return;
     try {
       await confirmations.record(
         chatId,
         messageId,
-        result.affectedTasks.map((t) => t.id),
+        assistantReply.affectedTasks.map((task) => task.id),
       );
     } catch (error) {
-      logger.error('telegram.confirmation_failed', { errorName: errorName(error) });
+      logger.error('telegram.confirmation_failed', { errorName: errorNameOf(error) });
     }
   }
 
-  /** Botão "Abrir o Nexus" (Mini App); sem origem configurada, nenhum botão. */
-  const openKeyboard = (): { keyboard: InlineKeyboard } | undefined =>
-    deps.miniAppUrl === undefined ? undefined : { keyboard: [[{ text: 'Abrir o Nexus', webAppUrl: deps.miniAppUrl }]] };
+  // ---------------------------------------------------------------------------------------------
+  // Convites
+  // ---------------------------------------------------------------------------------------------
 
   /** `/start CONVITE`: mensagem única para qualquer convite que não vale (não diz o motivo). */
   async function handleInviteStart(chatId: number, code: string, now: Date): Promise<void> {
     if (deps.acceptInvite === undefined) {
-      limiter.recordFailure(chatId, now);
-      await say(chatId, TEXT.inviteInvalid);
+      failedStartLimiter.recordFailure(chatId, now);
+      await sendPlainText(chatId, REPLY_MESSAGES.inviteInvalid);
       return;
     }
     let result: AcceptInviteResult;
     try {
       result = await deps.acceptInvite(code, chatId);
     } catch (error) {
-      logger.error('telegram.invite_accept_failed', { errorName: errorName(error) });
-      await say(chatId, TEXT.inviteFailed);
+      logger.error('telegram.invite_accept_failed', { errorName: errorNameOf(error) });
+      await sendPlainText(chatId, REPLY_MESSAGES.inviteFailed);
       return;
     }
     if (result.status === 'invalido') {
-      limiter.recordFailure(chatId, now);
-      await say(chatId, TEXT.inviteInvalid);
+      failedStartLimiter.recordFailure(chatId, now);
+      await sendPlainText(chatId, REPLY_MESSAGES.inviteInvalid);
       return;
     }
-    const text = result.status === 'criada' ? TEXT.inviteCreated : TEXT.alreadyLinked;
-    const sent = await telegram.sendMessage(chatId, text, openKeyboard());
-    if (!sent.ok) {
-      logger.error('telegram.send_failed', { code: sent.error.kind === 'permanent' ? `permanent:${sent.error.reason}` : 'transient' });
-    }
+    const text = result.status === 'criada' ? REPLY_MESSAGES.inviteCreated : REPLY_MESSAGES.alreadyLinked;
+    await sendWithKeyboard(chatId, text, openMiniAppKeyboard());
   }
 
+  /** `/convite`: cria um convite e manda o link com o botão de compartilhar. */
   async function sendNewInvite(userId: string, chatId: number): Promise<void> {
-    const invite = deps.invites!;
-    const created = await invite.create(userId);
-    const days = Math.max(1, Math.round((Date.parse(created.expiresAt) - Date.parse(created.createdAt)) / 86_400_000));
-    const sent = await telegram.sendMessage(
+    const inviteUseCases = deps.invites!;
+    const created = await inviteUseCases.create(userId);
+    const validityDays = Math.max(
+      1,
+      Math.round((Date.parse(created.expiresAt) - Date.parse(created.createdAt)) / MS_PER_DAY),
+    );
+    await sendWithKeyboard(
       chatId,
-      `Convite criado. Vale por ${days} ${days === 1 ? 'dia' : 'dias'} e abre uma conta só.\n${created.link}`,
+      `Convite criado. Vale por ${validityDays} ${validityDays === 1 ? 'dia' : 'dias'} e abre uma conta só.\n${created.link}`,
       { keyboard: [[{ text: 'Compartilhar', url: inviteShareUrl(created.link) }]] },
     );
-    if (!sent.ok) logger.error('telegram.send_failed', { code: sent.error.kind === 'permanent' ? `permanent:${sent.error.reason}` : 'transient' });
   }
 
+  /** `/convites`: uma mensagem por convite ativo, cada uma com o botão "Revogar". */
   async function sendActiveInvites(userId: string, chatId: number): Promise<void> {
-    const invite = deps.invites!;
-    const active = (await invite.list(userId)).filter((i) => i.status === 'ativo').slice(0, 10);
-    if (active.length === 0) return void (await say(chatId, TEXT.noActiveInvites));
-    for (const item of active) {
-      const until = new Date(item.expiresAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' });
-      await telegram.sendMessage(chatId, `Convite ativo, vale até ${until}.\n${item.link}`, {
-        keyboard: [[{ text: 'Revogar', callbackData: `${REVOKE_PREFIX}${item.code}` }]],
+    const inviteUseCases = deps.invites!;
+    const activeInvites = (await inviteUseCases.list(userId))
+      .filter((invite) => invite.status === 'ativo')
+      .slice(0, MAX_LISTED_INVITES);
+    if (activeInvites.length === 0) return void (await sendPlainText(chatId, REPLY_MESSAGES.noActiveInvites));
+    for (const invite of activeInvites) {
+      const expiresOn = new Date(invite.expiresAt).toLocaleDateString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        timeZone: INVITE_DISPLAY_TIME_ZONE,
+      });
+      // Falha de envio de um item não interrompe a lista (o resultado não é verificado).
+      await telegram.sendMessage(chatId, `Convite ativo, vale até ${expiresOn}.\n${invite.link}`, {
+        keyboard: [[{ text: 'Revogar', callbackData: `${INVITE_REVOKE_CALLBACK_PREFIX}${invite.code}` }]],
       });
     }
   }
 
-  /** Toque em "Revogar" de um convite (só administrador, em chat privado vinculado). */
-  async function handleInviteCallback(
-    updateId: number,
-    callback: NonNullable<z.infer<typeof updateSchema>['callback_query']>,
+  /** `/convite` e `/convites` (só administrador, com conta vinculada). */
+  async function handleInviteCommand(
+    commandName: 'convite' | 'convites',
+    userId: string | null,
+    chatId: number,
   ): Promise<void> {
+    if (userId === null) return void (await sendPlainText(chatId, REPLY_MESSAGES.linkFirst));
+    try {
+      if (commandName === 'convite') await sendNewInvite(userId, chatId);
+      else await sendActiveInvites(userId, chatId);
+    } catch (error) {
+      if (error instanceof ForbiddenError) return void (await sendPlainText(chatId, REPLY_MESSAGES.adminOnly));
+      logger.error('telegram.invite_failed', { errorName: errorNameOf(error) });
+      await sendPlainText(chatId, REPLY_MESSAGES.captureFailed);
+    }
+  }
+
+  /** Toque em "Revogar" de um convite (só administrador, em chat privado vinculado). */
+  async function handleInviteRevokeCallback(updateId: number, callback: CallbackQuery): Promise<void> {
     const target = callback.message;
     if (deps.invites === undefined || target === undefined || target.chat.type !== 'private' || callback.data === undefined) return;
     const chatId = target.chat.id;
-    const code = callback.data.slice(REVOKE_PREFIX.length);
+    const code = callback.data.slice(INVITE_REVOKE_CALLBACK_PREFIX.length);
     const now = clock.now();
     const userId = await beforeRegistration(() => links.userForChat(chatId));
     if (userId === null || !deps.invites.isAdminChat(chatId)) {
-      await telegram.answerCallbackQuery(callback.id, TEXT.adminOnly);
+      await telegram.answerCallbackQuery(callback.id, REPLY_MESSAGES.adminOnly);
       return;
     }
-    const first = await beforeRegistration(() => events.register(userId, 'telegram', String(updateId), now));
-    if (!first.firstTime) return;
+    if (!(await registerFirstDelivery(userId, updateId, now))) return;
     try {
       await deps.invites.revoke(userId, code);
-      await telegram.answerCallbackQuery(callback.id, TEXT.inviteRevoked);
-      await telegram.editMessageText(chatId, target.message_id, TEXT.inviteRevoked);
+      await telegram.answerCallbackQuery(callback.id, REPLY_MESSAGES.inviteRevoked);
+      await telegram.editMessageText(chatId, target.message_id, REPLY_MESSAGES.inviteRevoked);
     } catch (error) {
       // Já usado, revogado ou inexistente: nada a revogar. Fecha o botão sem alarde.
-      logger.error('telegram.invite_revoke_failed', { errorName: errorName(error) });
-      await telegram.answerCallbackQuery(callback.id, TEXT.inviteInvalid);
+      logger.error('telegram.invite_revoke_failed', { errorName: errorNameOf(error) });
+      await telegram.answerCallbackQuery(callback.id, REPLY_MESSAGES.inviteInvalid);
     }
   }
+
+  // ---------------------------------------------------------------------------------------------
+  // Login do painel por QR code
+  // ---------------------------------------------------------------------------------------------
 
   /**
    * `/start login_<nonce>`: a pessoa leu o QR do painel. Sem conta, recusa. Com conta, pergunta se foi ela e deixa
@@ -298,79 +378,73 @@ export function makeHandleTelegramUpdate(deps: HandleTelegramUpdateDeps) {
     try {
       result = await deps.qrLogin!.start({ nonce, chatId, userId });
     } catch (error) {
-      logger.error('telegram.qr_login_failed', { errorName: errorName(error) });
-      await say(chatId, TEXT.loginFailed);
+      logger.error('telegram.qr_login_failed', { errorName: errorNameOf(error) });
+      await sendPlainText(chatId, REPLY_MESSAGES.loginFailed);
       return;
     }
     if (result.kind === 'invalido') {
-      limiter.recordFailure(chatId, now);
-      await say(chatId, TEXT.loginInvalid);
+      failedStartLimiter.recordFailure(chatId, now);
+      await sendPlainText(chatId, REPLY_MESSAGES.loginInvalid);
       return;
     }
     if (result.kind === 'recusado') {
-      await say(chatId, TEXT.loginNoAccount);
+      await sendPlainText(chatId, REPLY_MESSAGES.loginNoAccount);
       return;
     }
-    const sent = await telegram.sendMessage(
+    await sendWithKeyboard(
       chatId,
       `Entrar no painel do Nexus pelo navegador?\n${result.label} · ${result.time}\nConfirme só se foi você quem acabou de abrir o painel. Se alguém lhe enviou este link ou QR code, toque em Não fui eu.`,
       {
         keyboard: [
           [
-            { text: 'Confirmar', callbackData: `${LOGIN_PREFIX}y:${result.requestId}` },
-            { text: 'Não fui eu', callbackData: `${LOGIN_PREFIX}n:${result.requestId}` },
+            { text: 'Confirmar', callbackData: `${QR_LOGIN_CALLBACK_PREFIX}y:${result.requestId}` },
+            { text: 'Não fui eu', callbackData: `${QR_LOGIN_CALLBACK_PREFIX}n:${result.requestId}` },
           ],
         ],
       },
     );
-    if (!sent.ok) {
-      logger.error('telegram.send_failed', { code: sent.error.kind === 'permanent' ? `permanent:${sent.error.reason}` : 'transient' });
-    }
   }
 
   /** Toque em Confirmar / "Não fui eu" do login do painel (só no chat que abriu o pedido, para a conta dele). */
-  async function handleLoginCallback(
-    updateId: number,
-    callback: NonNullable<z.infer<typeof updateSchema>['callback_query']>,
-  ): Promise<void> {
+  async function handleLoginCallback(updateId: number, callback: CallbackQuery): Promise<void> {
     const target = callback.message;
     if (deps.qrLogin === undefined || target === undefined || target.chat.type !== 'private' || callback.data === undefined) return;
-    const parsed = LOGIN_CALLBACK.exec(callback.data);
-    if (parsed === null) return;
+    const parsedCallback = QR_LOGIN_CALLBACK_FORMAT.exec(callback.data);
+    if (parsedCallback === null) return;
     const chatId = target.chat.id;
     const now = clock.now();
     const userId = await beforeRegistration(() => links.userForChat(chatId));
     if (userId === null) {
-      await telegram.answerCallbackQuery(callback.id, TEXT.loginNoAccount);
+      await telegram.answerCallbackQuery(callback.id, REPLY_MESSAGES.loginNoAccount);
       return;
     }
-    const first = await beforeRegistration(() => events.register(userId, 'telegram', String(updateId), now));
-    if (!first.firstTime) return;
-    const approve = parsed[1]!.toLowerCase() === 'y';
+    if (!(await registerFirstDelivery(userId, updateId, now))) return;
+    const approve = parsedCallback[1]!.toLowerCase() === 'y';
     let decision: Awaited<ReturnType<NonNullable<typeof deps.qrLogin>['decide']>>;
     try {
-      decision = await deps.qrLogin.decide({ requestId: parsed[2]!, chatId, userId, approve });
+      decision = await deps.qrLogin.decide({ requestId: parsedCallback[2]!, chatId, userId, approve });
     } catch (error) {
-      logger.error('telegram.qr_login_callback_failed', { errorName: errorName(error) });
-      await telegram.answerCallbackQuery(callback.id, TEXT.captureFailed);
+      logger.error('telegram.qr_login_callback_failed', { errorName: errorNameOf(error) });
+      await telegram.answerCallbackQuery(callback.id, REPLY_MESSAGES.captureFailed);
       return;
     }
     // Já respondido ou vencido: só um aviso curto. A mensagem não é reescrita (um segundo toque não apaga a resposta certa).
     if (decision === 'expirado') {
-      await telegram.answerCallbackQuery(callback.id, TEXT.loginClosed);
+      await telegram.answerCallbackQuery(callback.id, REPLY_MESSAGES.loginClosed);
       return;
     }
-    const text = decision === 'aprovado' ? TEXT.loginApproved : TEXT.loginDenied;
+    const text = decision === 'aprovado' ? REPLY_MESSAGES.loginApproved : REPLY_MESSAGES.loginDenied;
     await telegram.answerCallbackQuery(callback.id, text);
     // Sem teclado: os botões somem e a mensagem fica como registro do que foi decidido.
     await telegram.editMessageText(chatId, target.message_id, text);
   }
 
+  // ---------------------------------------------------------------------------------------------
+  // Registro por regras (proposta com botões)
+  // ---------------------------------------------------------------------------------------------
+
   /** Toque num botão da proposta do chat. Só existe com o registro por regras ligado. */
-  async function handleCallbackQuery(
-    updateId: number,
-    callback: NonNullable<z.infer<typeof updateSchema>['callback_query']>,
-  ): Promise<void> {
+  async function handleCaptureCallback(updateId: number, callback: CallbackQuery): Promise<void> {
     const capture = deps.capture;
     const target = callback.message;
     if (capture === undefined || target === undefined || target.chat.type !== 'private' || callback.data === undefined) return;
@@ -378,141 +452,147 @@ export function makeHandleTelegramUpdate(deps: HandleTelegramUpdateDeps) {
     const now = clock.now();
     const userId = await beforeRegistration(() => links.userForChat(chatId));
     if (userId === null) {
-      const result = await telegram.answerCallbackQuery(callback.id, TEXT.linkFirst);
+      const result = await telegram.answerCallbackQuery(callback.id, REPLY_MESSAGES.linkFirst);
       if (!result.ok) logger.error('telegram.capture_answer_failed', { code: 'sem_vinculo' });
       return;
     }
-    const first = await beforeRegistration(() => events.register(userId, 'telegram', String(updateId), now));
-    if (!first.firstTime) return;
+    if (!(await registerFirstDelivery(userId, updateId, now))) return;
     try {
       await capture.handleCallback(userId, { id: callback.id, chatId, messageId: target.message_id, data: callback.data });
     } catch (error) {
-      logger.error('telegram.capture_callback_failed', { errorName: errorName(error) });
+      logger.error('telegram.capture_callback_failed', { errorName: errorNameOf(error) });
     }
   }
 
-  // Falhas de infraestrutura antes do registro do evento viram UpdateNotRegisteredError (a rota responde 500).
-  const beforeRegistration = async <T>(work: () => Promise<T>): Promise<T> => {
-    try {
-      return await work();
-    } catch (error) {
-      if (error instanceof ForeignEventError) throw error;
-      throw new UpdateNotRegisteredError(error);
-    }
-  };
+  // ---------------------------------------------------------------------------------------------
+  // Comandos
+  // ---------------------------------------------------------------------------------------------
 
-  async function handle(update: unknown): Promise<void> {
+  /** Comandos que este chat pode usar, conforme os recursos ligados e se o chat é de administrador. */
+  function allowedCommandsFor(chatId: number): Set<CommandName> {
+    const allowedCommands = new Set<CommandName>(['start', 'desvincular']);
+    if (deps.capture !== undefined) allowedCommands.add('ajuda');
+    if (deps.invites !== undefined) {
+      allowedCommands.add('meuid');
+      if (deps.invites.isAdminChat(chatId)) {
+        allowedCommands.add('convite');
+        allowedCommands.add('convites');
+      }
+    }
+    return allowedCommands;
+  }
+
+  /**
+   * `/start <argumento>`: login do painel por QR, convite ou código de vínculo (nesta ordem). Toda tentativa
+   * inválida conta no limitador por chat, que bloqueia novas tentativas para impedir adivinhar códigos.
+   */
+  async function handleStartCommand(chatId: number, args: string, userId: string | null, now: Date): Promise<void> {
+    const startArgument = args.trim();
+    if (startArgument === '') return void (await sendPlainText(chatId, REPLY_MESSAGES.startHelp));
+    if (!failedStartLimiter.allow(chatId, now)) return void (await sendPlainText(chatId, REPLY_MESSAGES.tooManyAttempts));
+    // Login do painel: `login_<nonce>` (o nonce distingue maiúsculas, por isso antes do toUpperCase).
+    if (deps.qrLogin !== undefined && startArgument.startsWith(QR_LOGIN_START_PREFIX)) {
+      await handleLoginStart(chatId, startArgument.slice(QR_LOGIN_START_PREFIX.length), userId, now);
+      return;
+    }
+    const code = startArgument.toUpperCase();
+    if (INVITE_CODE_FORMAT.test(code)) {
+      await handleInviteStart(chatId, code, now);
+      return;
+    }
+    if (!LINK_CODE_FORMAT.test(code)) {
+      failedStartLimiter.recordFailure(chatId, now);
+      return void (await sendPlainText(chatId, REPLY_MESSAGES.invalidCode));
+    }
+    const outcome = await links.consume(code, chatId, now);
+    if (outcome.status === 'ok') return void (await sendPlainText(chatId, buildLinkedMessage(outcome.accountHint)));
+    failedStartLimiter.recordFailure(chatId, now);
+    await sendPlainText(chatId, outcome.status === 'chat_em_uso' ? REPLY_MESSAGES.chatInUse : REPLY_MESSAGES.invalidCode);
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Roteamento do update
+  // ---------------------------------------------------------------------------------------------
+
+  async function handleUpdate(update: unknown): Promise<void> {
     const parsed = updateSchema.safeParse(update);
     if (!parsed.success) return;
     const { update_id: updateId, message, callback_query: callbackQuery } = parsed.data;
+
+    // Toque em botão: o prefixo do `callback_data` diz de qual fluxo ele é.
     if (message === undefined) {
-      if (callbackQuery?.data?.startsWith(REVOKE_PREFIX) === true) await handleInviteCallback(updateId, callbackQuery);
-      else if (callbackQuery?.data?.startsWith(LOGIN_PREFIX) === true) await handleLoginCallback(updateId, callbackQuery);
-      else if (callbackQuery !== undefined) await handleCallbackQuery(updateId, callbackQuery);
+      if (callbackQuery?.data?.startsWith(INVITE_REVOKE_CALLBACK_PREFIX) === true) await handleInviteRevokeCallback(updateId, callbackQuery);
+      else if (callbackQuery?.data?.startsWith(QR_LOGIN_CALLBACK_PREFIX) === true) await handleLoginCallback(updateId, callbackQuery);
+      else if (callbackQuery !== undefined) await handleCaptureCallback(updateId, callbackQuery);
       return; // edited_message, channel_post...
     }
+    // Grupos e canais são ignorados: o bot só conversa em chat privado.
     if (message.chat.type !== 'private') return;
     const chatId = message.chat.id;
     const now = clock.now();
 
     const userId = await beforeRegistration(() => links.userForChat(chatId));
     const text = message.text;
-    const allowed = new Set<CommandName>(['start', 'desvincular']);
-    if (deps.capture !== undefined) allowed.add('ajuda');
-    if (deps.invites !== undefined) {
-      allowed.add('meuid');
-      if (deps.invites.isAdminChat(chatId)) {
-        allowed.add('convite');
-        allowed.add('convites');
-      }
-    }
-    const command = text === undefined ? null : parseCommand(text, deps.botUsername, allowed);
+    const command = text === undefined ? null : parseCommand(text, deps.botUsername, allowedCommandsFor(chatId));
 
     /** Idempotência dos ramos sem modelo (Ruling 21): `false` = já tratado, nada a fazer. */
-    const firstTime = async (): Promise<boolean> =>
-      (await beforeRegistration(() => events.register(userId, 'telegram', String(updateId), now))).firstTime;
+    const isFirstDelivery = (): Promise<boolean> => registerFirstDelivery(userId, updateId, now);
 
     if (text === undefined) {
-      if (!(await firstTime())) return;
-      await say(chatId, TEXT.onlyText);
+      if (!(await isFirstDelivery())) return;
+      await sendPlainText(chatId, REPLY_MESSAGES.onlyText);
       return;
     }
 
     if (command?.name === 'ajuda') {
-      if (!(await firstTime())) return;
-      await say(chatId, TEXT.help);
+      if (!(await isFirstDelivery())) return;
+      await sendPlainText(chatId, REPLY_MESSAGES.help);
       return;
     }
 
-    const invites = deps.invites;
-    if (command?.name === 'meuid' && invites !== undefined) {
-      if (!(await firstTime())) return;
-      await say(chatId, `Seu id do Telegram é ${chatId}.`);
+    const invitesEnabled = deps.invites !== undefined;
+    if (command?.name === 'meuid' && invitesEnabled) {
+      if (!(await isFirstDelivery())) return;
+      await sendPlainText(chatId, `Seu id do Telegram é ${chatId}.`);
       return;
     }
 
-    if ((command?.name === 'convite' || command?.name === 'convites') && invites !== undefined) {
-      if (!(await firstTime())) return;
-      if (userId === null) return void (await say(chatId, TEXT.linkFirst));
-      try {
-        if (command.name === 'convite') await sendNewInvite(userId, chatId);
-        else await sendActiveInvites(userId, chatId);
-      } catch (error) {
-        if (error instanceof ForbiddenError) return void (await say(chatId, TEXT.adminOnly));
-        logger.error('telegram.invite_failed', { errorName: errorName(error) });
-        await say(chatId, TEXT.captureFailed);
-      }
+    if ((command?.name === 'convite' || command?.name === 'convites') && invitesEnabled) {
+      if (!(await isFirstDelivery())) return;
+      await handleInviteCommand(command.name, userId, chatId);
       return;
     }
 
     if (command?.name === 'desvincular') {
-      if (!(await firstTime())) return;
-      if (userId === null) return void (await say(chatId, TEXT.unlinked));
+      if (!(await isFirstDelivery())) return;
+      if (userId === null) return void (await sendPlainText(chatId, REPLY_MESSAGES.notLinked));
       await links.unlink(userId);
-      await say(chatId, TEXT.unlinkedDone);
+      await sendPlainText(chatId, REPLY_MESSAGES.unlinkedDone);
       return;
     }
 
     if (command?.name === 'start') {
-      if (!(await firstTime())) return;
-      const raw = command.args.trim();
-      if (raw === '') return void (await say(chatId, TEXT.startHelp));
-      if (!limiter.allow(chatId, now)) return void (await say(chatId, TEXT.tooMany));
-      // Login do painel: `login_<nonce>` (o nonce distingue maiúsculas, por isso antes do toUpperCase).
-      if (deps.qrLogin !== undefined && raw.startsWith(QR_LOGIN_START_PREFIX)) {
-        await handleLoginStart(chatId, raw.slice(QR_LOGIN_START_PREFIX.length), userId, now);
-        return;
-      }
-      const code = raw.toUpperCase();
-      if (INVITE_FORMAT.test(code)) {
-        await handleInviteStart(chatId, code, now);
-        return;
-      }
-      if (!CODE_FORMAT.test(code)) {
-        limiter.recordFailure(chatId, now);
-        return void (await say(chatId, TEXT.invalidCode));
-      }
-      const outcome = await links.consume(code, chatId, now);
-      if (outcome.status === 'ok') return void (await say(chatId, linkedText(outcome.accountHint)));
-      limiter.recordFailure(chatId, now);
-      await say(chatId, outcome.status === 'chat_em_uso' ? TEXT.chatInUse : TEXT.invalidCode);
+      if (!(await isFirstDelivery())) return;
+      await handleStartCommand(chatId, command.args, userId, now);
       return;
     }
 
+    // Texto comum: daqui em diante exige conta vinculada.
     if (userId === null) {
-      if (!(await firstTime())) return;
-      await say(chatId, TEXT.unlinked);
+      if (!(await isFirstDelivery())) return;
+      await sendPlainText(chatId, REPLY_MESSAGES.notLinked);
       return;
     }
 
-    let targets: string[] | undefined;
+    // Resposta (reply) a uma confirmação do assistente: mira as tarefas daquela mensagem, se ainda existirem.
+    let targetTaskIds: string[] | undefined;
     if (message.reply_to_message !== undefined) {
-      const found = await confirmations.tasksFor(userId, chatId, message.reply_to_message.message_id);
-      if (found.alive.length > 0) {
-        targets = found.alive;
-      } else if (found.deletedCount > 0) {
-        if (!(await firstTime())) return;
-        await say(chatId, TEXT.taskGone);
+      const repliedTasks = await confirmations.tasksFor(userId, chatId, message.reply_to_message.message_id);
+      if (repliedTasks.alive.length > 0) {
+        targetTaskIds = repliedTasks.alive;
+      } else if (repliedTasks.deletedCount > 0) {
+        if (!(await isFirstDelivery())) return;
+        await sendPlainText(chatId, REPLY_MESSAGES.taskGone);
         return;
       }
     }
@@ -520,35 +600,35 @@ export function makeHandleTelegramUpdate(deps: HandleTelegramUpdateDeps) {
     // Registro por regras: entendeu -> proposta com botões (nada é gravado antes de Confirmar). Não entendeu ->
     // assistente de IA, se houver; senão a ajuda curta. Resposta a uma confirmação do assistente continua com ele.
     const capture = deps.capture;
-    if (capture !== undefined && targets === undefined) {
+    if (capture !== undefined && targetTaskIds === undefined) {
       const proposal = await beforeRegistration(() => capture.interpret(userId, text));
       if (proposal !== null) {
-        if (!(await firstTime())) return;
+        if (!(await isFirstDelivery())) return;
         try {
           await capture.propose(userId, chatId, proposal);
         } catch (error) {
-          logger.error('telegram.capture_failed', { errorName: errorName(error) });
-          await say(chatId, TEXT.captureFailed);
+          logger.error('telegram.capture_failed', { errorName: errorNameOf(error) });
+          await sendPlainText(chatId, REPLY_MESSAGES.captureFailed);
         }
         return;
       }
       if (deps.assistantEnabled !== true) {
-        if (!(await firstTime())) return;
-        await say(chatId, CAPTURE_HELP);
+        if (!(await isFirstDelivery())) return;
+        await sendPlainText(chatId, CAPTURE_HELP);
         return;
       }
     }
 
     // O `processMessage` faz o próprio registro do evento (externalId = update_id) e reproduz a resposta.
-    await handleModelPath(userId, chatId, updateId, text, targets);
+    await forwardToAssistant(userId, chatId, updateId, text, targetTaskIds);
   }
 
   return async (update: unknown): Promise<void> => {
     try {
-      await handle(update);
+      await handleUpdate(update);
     } catch (error) {
       // Registro do evento de outro usuário: adulteração, nunca responde.
-      if (error instanceof ForeignEventError) return logger.error('telegram.foreign_event', { code: errorName(error) });
+      if (error instanceof ForeignEventError) return logger.error('telegram.foreign_event', { code: errorNameOf(error) });
       throw error;
     }
   };

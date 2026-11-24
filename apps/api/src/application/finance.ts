@@ -8,6 +8,7 @@ import {
 import { InvalidInputError, NotFoundError } from './errors.js';
 import type { Clock, FinanceEntryPatch, FinanceEntryRepository } from './ports.js';
 
+/** Casos de uso dos lançamentos financeiros; `paidAt` é sempre definido aqui, nunca pelo cliente. */
 export function makeFinanceUseCases(deps: { finance: FinanceEntryRepository; clock: Clock }) {
   const { finance, clock } = deps;
 
@@ -29,14 +30,15 @@ export function makeFinanceUseCases(deps: { finance: FinanceEntryRepository; clo
       const current = await finance.get(userId, id);
       if (current === null) throw new NotFoundError('lancamento');
 
-      const status = input.status ?? current.status;
-      if (!isConsistentFinanceEntry({ kind: current.kind, status })) {
+      const nextStatus = input.status ?? current.status;
+      if (!isConsistentFinanceEntry({ kind: current.kind, status: nextStatus })) {
         throw new InvalidInputError('lancamento_inconsistente');
       }
 
       const patch: FinanceEntryPatch = { ...input };
       // paidAt acompanha a situação: pagar marca o instante (uma vez só), desfazer limpa.
-      if (input.status !== undefined && input.status !== current.status) {
+      const statusChanged = input.status !== undefined && input.status !== current.status;
+      if (statusChanged) {
         patch.paidAt = input.status === 'paga' ? clock.now().toISOString() : null;
       }
 

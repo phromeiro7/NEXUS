@@ -10,6 +10,10 @@ import type {
 } from './ports.js';
 import { makeSyncReminders, remindersFor } from './sync-reminders.js';
 
+/**
+ * Casos de uso das tarefas. Toda escrita mantém os lembretes em sincronia: eles são calculados antes de
+ * gravar (para falhar sem estado parcial) e, se a troca falhar depois, a gravação é desfeita.
+ */
 export function makeTaskUseCases(deps: {
   tasks: TaskRepository;
   profiles: ProfileRepository;
@@ -74,8 +78,11 @@ export function makeTaskUseCases(deps: {
       if (current === null) throw new NotFoundError('tarefa');
 
       // (1) tarefa encerrada só aceita `status` (reabrir)
-      const closed = current.status === 'concluida' || current.status === 'cancelada';
-      if (closed && Object.entries(input).some(([k, v]) => k !== 'status' && v !== undefined)) {
+      const isClosed = current.status === 'concluida' || current.status === 'cancelada';
+      const changesMoreThanStatus = Object.entries(input).some(
+        ([field, value]) => field !== 'status' && value !== undefined,
+      );
+      if (isClosed && changesMoreThanStatus) {
         throw new ConflictError('tarefa_encerrada');
       }
 
@@ -84,19 +91,20 @@ export function makeTaskUseCases(deps: {
 
       // (2) status
       if (input.status !== undefined) {
-        const next = applyStatusChange(
+        const nextState = applyStatusChange(
           { status: current.status, completedAt: current.completedAt === null ? null : new Date(current.completedAt) },
           input.status,
           now,
         );
-        patch.status = next.status;
-        patch.completedAt = next.completedAt === null ? null : next.completedAt.toISOString();
+        patch.status = nextState.status;
+        patch.completedAt = nextState.completedAt === null ? null : nextState.completedAt.toISOString();
       }
 
       // (3) campos simples e data/hora
       if (input.title !== undefined) patch.title = input.title;
       if (input.type !== undefined) patch.type = input.type;
       if (input.fatal !== undefined) patch.fatal = input.fatal;
+      // Tirar a data também tira a hora (hora sem data não existe); trocar a data preserva a hora atual.
       if (input.dueDate !== undefined) {
         patch.dueDate = input.dueDate;
         if (input.dueDate === null) patch.dueTime = input.dueTime ?? null;

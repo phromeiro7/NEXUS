@@ -31,6 +31,7 @@ export function toCreateInput(item: Lancamento): CreateFinanceEntryInput {
 }
 
 /** Mais antigos primeiro, como o usuário os anotou; o id desempata para a ordem ser estável. */
-export function byCreation(a: Lancamento, b: Lancamento): number {
-  return a.criadoEm < b.criadoEm ? -1 : a.criadoEm > b.criadoEm ? 1 : a.id < b.id ? -1 : 1;
+export function byCreation(first: Lancamento, second: Lancamento): number {
+  if (first.criadoEm !== second.criadoEm) return first.criadoEm < second.criadoEm ? -1 : 1;
+  return first.id < second.id ? -1 : 1;
 }

@@ -8,9 +8,12 @@ import { generateCode } from './telegram/link.js';
 export const INVITE_DEFAULT_TTL_DAYS = 7;
 /** Quantos convites a lista devolve (os mais recentes). */
 export const INVITE_LIST_LIMIT = 200;
+/** Novas tentativas quando o código sorteado já existe (colisão rara, mas possível). */
 const MAX_COLLISION_RETRIES = 3;
-const DAY_MS = 24 * 60 * 60_000;
+const MS_PER_DAY = 24 * 60 * 60_000;
+const INVITE_SHARE_TEXT = 'Entre no Nexus, meu assistente de tarefas e lembretes:';
 
+/** Estado do convite calculado na hora: uso e revogação valem mais que o vencimento. */
 export function inviteStatus(record: InviteRecord, now: Date): InviteStatus {
   if (record.usedAt !== null) return 'usado';
   if (record.revokedAt !== null) return 'revogado';
@@ -18,14 +21,14 @@ export function inviteStatus(record: InviteRecord, now: Date): InviteStatus {
   return 'ativo';
 }
 
+/** Deep link do bot que já leva o código do convite no `/start`. */
 function inviteLink(botUsername: string, code: string): string {
   return `https://t.me/${botUsername}?start=${code}`;
 }
 
 /** Link do Telegram que abre a escolha de conversa já com o convite escrito. */
 export function inviteShareUrl(link: string): string {
-  const text = 'Entre no Nexus, meu assistente de tarefas e lembretes:';
-  return `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`;
+  return `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(INVITE_SHARE_TEXT)}`;
 }
 
 export type InviteDeps = {
@@ -45,10 +48,10 @@ export type InviteDeps = {
  * de propósito: não há coluna para escalar por engano, e perder o acesso é só editar o ambiente.
  */
 export function makeInviteUseCases(deps: InviteDeps) {
-  const randomBytes = deps.randomBytes ?? ((n: number) => nodeRandomBytes(n));
-  const ttlMs = (deps.ttlDays ?? INVITE_DEFAULT_TTL_DAYS) * DAY_MS;
+  const randomBytes = deps.randomBytes ?? ((byteCount: number) => nodeRandomBytes(byteCount));
+  const ttlMs = (deps.ttlDays ?? INVITE_DEFAULT_TTL_DAYS) * MS_PER_DAY;
 
-  const toDto = (record: InviteRecord, now: Date): InviteDto => ({
+  const toInviteDto = (record: InviteRecord, now: Date): InviteDto => ({
     code: record.code,
     link: inviteLink(deps.botUsername ?? '', record.code),
     status: inviteStatus(record, now),
@@ -58,6 +61,7 @@ export function makeInviteUseCases(deps: InviteDeps) {
     label: record.label ?? null,
   });
 
+  /** Lança `ForbiddenError` se a conta não tem Telegram vinculado ou se ele não está na lista de administradores. */
   async function requireAdmin(userId: string): Promise<void> {
     if (deps.adminTelegramIds.size === 0) throw new ForbiddenError();
     const telegramId = await deps.invites.telegramIdOf(userId);
@@ -70,6 +74,7 @@ export function makeInviteUseCases(deps: InviteDeps) {
       return deps.adminTelegramIds.has(chatId);
     },
 
+    /** Versão booleana de `requireAdmin`, para o painel decidir o que mostrar. */
     async isAdmin(userId: string): Promise<boolean> {
       try {
         await requireAdmin(userId);
@@ -80,6 +85,7 @@ export function makeInviteUseCases(deps: InviteDeps) {
       }
     },
 
+    /** Cria um convite com código novo; numa colisão sorteia outro, até `MAX_COLLISION_RETRIES` vezes. */
     async create(userId: string, label?: string): Promise<InviteDto> {
       await requireAdmin(userId);
       const now = deps.clock.now();
@@ -88,13 +94,14 @@ export function makeInviteUseCases(deps: InviteDeps) {
         const code = generateCode(randomBytes, INVITE_CODE_LENGTH);
         try {
           await deps.invites.create(userId, code, now, expiresAt, label);
-          return toDto({ code, createdBy: userId, createdAt: now, expiresAt, revokedAt: null, usedAt: null, label: label ?? null }, now);
+          return toInviteDto({ code, createdBy: userId, createdAt: now, expiresAt, revokedAt: null, usedAt: null, label: label ?? null }, now);
         } catch (error) {
           if (!(error instanceof InviteCodeCollisionError) || attempt >= MAX_COLLISION_RETRIES) throw error;
         }
       }
     },
 
+    /** Contagem por estado dos convites mais recentes (até `INVITE_LIST_LIMIT`). */
     async summary(userId: string): Promise<InviteSummaryDto> {
       await requireAdmin(userId);
       const now = deps.clock.now();
@@ -118,23 +125,24 @@ export function makeInviteUseCases(deps: InviteDeps) {
       await requireAdmin(userId);
       const record = await deps.invites.find(code);
       if (record === null) throw new NotFoundError('convite');
-      const guest = record.usedBy ?? null;
-      if (guest !== null) {
-        const guestTelegram = await deps.invites.telegramIdOf(guest);
-        if (guest === userId || (guestTelegram !== null && deps.adminTelegramIds.has(guestTelegram))) {
-          throw new ConflictError('convite_de_administrador');
-        }
-        await deps.accounts.block(guest);
+      const guestUserId = record.usedBy ?? null;
+      if (guestUserId !== null) {
+        const guestTelegramId = await deps.invites.telegramIdOf(guestUserId);
+        const guestIsAdmin = guestTelegramId !== null && deps.adminTelegramIds.has(guestTelegramId);
+        if (guestUserId === userId || guestIsAdmin) throw new ConflictError('convite_de_administrador');
+        await deps.accounts.block(guestUserId);
       }
       await deps.invites.remove(code);
     },
 
+    /** Os convites mais recentes, com estado e link prontos para o painel. */
     async list(userId: string): Promise<InviteDto[]> {
       await requireAdmin(userId);
       const now = deps.clock.now();
-      return (await deps.invites.list(INVITE_LIST_LIMIT)).map((r) => toDto(r, now));
+      return (await deps.invites.list(INVITE_LIST_LIMIT)).map((record) => toInviteDto(record, now));
     },
 
+    /** Invalida um convite ainda não usado; a conta de quem já o usou não é afetada (para isso, `remove`). */
     async revoke(userId: string, code: string): Promise<void> {
       await requireAdmin(userId);
       // Já usado, revogado ou inexistente: nada a revogar (404; não distingue o motivo).
@@ -169,16 +177,17 @@ export function makeAcceptInvite(deps: AcceptInviteDeps) {
     const now = deps.clock.now();
     if (!(await deps.invites.claim(code, now))) return { status: 'invalido' };
 
-    let created: { userId: string; created: boolean } | null = null;
+    let account: { userId: string; created: boolean } | null = null;
     try {
-      created = await deps.accounts.createForTelegram(chatId);
-      await deps.accounts.linkChat(created.userId, chatId);
-      await deps.invites.finish(code, created.userId, now);
-      return { status: 'criada', userId: created.userId };
+      account = await deps.accounts.createForTelegram(chatId);
+      await deps.accounts.linkChat(account.userId, chatId);
+      await deps.invites.finish(code, account.userId, now);
+      return { status: 'criada', userId: account.userId };
     } catch (error) {
+      // Desfaz best-effort: falhas da limpeza são engolidas para o erro original subir.
       await deps.invites.release(code).catch(() => undefined);
       // Só apaga a conta que ESTA tentativa criou; uma conta anterior do mesmo Telegram nunca é apagada.
-      if (created?.created === true) await deps.accounts.remove(created.userId).catch(() => undefined);
+      if (account?.created === true) await deps.accounts.remove(account.userId).catch(() => undefined);
       if (error instanceof Error && error.name === 'ChatAlreadyLinkedError') return { status: 'ja_vinculado' };
       throw error;
     }

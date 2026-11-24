@@ -6,6 +6,7 @@ import { NameForm, SettingsFields } from "@/components/mini/settings-screen";
 import { TelegramCard } from "@/components/mini/telegram-card";
 import { useSettings } from "@/hooks/queries";
 
+/** Seção de configurações: título e dica à esquerda, conteúdo à direita. */
 function Section({ title, hint, children }: { title: string; hint: string; children: ReactNode }) {
   return (
     <div className="pn-sec">
@@ -24,7 +25,7 @@ function Section({ title, hint, children }: { title: string; hint: string; child
  * de autenticação do app ainda não troca e-mail nem encerra as outras sessões).
  */
 export function SettingsPanel() {
-  const q = useSettings();
+  const settingsQuery = useSettings();
   const { signOut } = useAuth();
 
   return (
@@ -39,19 +40,24 @@ export function SettingsPanel() {
         </Section>
 
         <Section title="Horários e avisos" hint="Valem para todas as suas tarefas e contas.">
-          {q.isError ? (
+          {settingsQuery.isError ? (
             <p role="alert" className="mini-alert" style={{ marginTop: 0 }}>
               Não foi possível carregar as configurações. Tente de novo em instantes.
             </p>
-          ) : q.isPending ? (
+          ) : settingsQuery.isPending ? (
             <div role="status" aria-label="Carregando configurações" className="mini-skeleton" style={{ height: 180 }} />
           ) : (
-            <SettingsFields key={JSON.stringify(q.data)} settings={q.data} />
+            // A key remonta o formulário quando os dados do servidor mudam, para os campos não ficarem com valores velhos.
+            <SettingsFields key={JSON.stringify(settingsQuery.data)} settings={settingsQuery.data} />
           )}
         </Section>
 
         <Section title="Telegram" hint="Avisos e registro pelo chat.">
-          {q.data !== undefined ? <TelegramCard linked={q.data.telegramLinked} paused={q.data.channelPaused} /> : <div role="status" aria-label="Carregando" className="mini-skeleton" />}
+          {settingsQuery.data !== undefined ? (
+            <TelegramCard linked={settingsQuery.data.telegramLinked} paused={settingsQuery.data.channelPaused} />
+          ) : (
+            <div role="status" aria-label="Carregando" className="mini-skeleton" />
+          )}
         </Section>
 
         <Section title="Sessão" hint="Onde você está conectado.">

@@ -16,10 +16,12 @@ import type { ReminderDraft, ReminderKind } from '../domain/reminders.js';
  * devolve nem altera linhas de outro usuário.
  */
 
+/** Tarefa a criar: o repositório gera `id` e datas; `source` diz por onde ela entrou. */
 export type NewTask = Omit<TaskDto, 'id' | 'createdAt' | 'updatedAt'> & {
   source: 'painel' | 'telegram';
   sourceText: string | null;
 };
+/** Só os campos presentes são alterados. */
 export type TaskPatch = Partial<Omit<TaskDto, 'id' | 'createdAt' | 'updatedAt'>>;
 
 export interface TaskRepository {
@@ -39,6 +41,7 @@ export interface TaskRepository {
   softDelete(userId: string, id: string, now: Date): Promise<boolean>;
 }
 
+/** Perfil do usuário: as mesmas configurações que o painel exibe. */
 export type ProfileRecord = SettingsDto;
 
 export interface ProfileRepository {
@@ -52,6 +55,7 @@ export interface ReminderRepository {
   replacePending(userId: string, taskId: string, drafts: ReminderDraft[]): Promise<void>;
 }
 
+/** Relógio injetável, para os testes controlarem "agora". */
 export interface Clock {
   now(): Date;
 }
@@ -79,6 +83,7 @@ export interface FinanceEntryRepository {
   remove(userId: string, id: string): Promise<boolean>;
 }
 
+/** Por onde a conversa chegou; o histórico de cada canal é separado. */
 export type ChatChannel = 'painel' | 'telegram';
 export type ChatRole = 'user' | 'assistant';
 
@@ -191,6 +196,7 @@ export interface AssistantModel {
 export type InlineButton = { text: string } & ({ callbackData: string } | { webAppUrl: string } | { url: string });
 export type InlineKeyboard = InlineButton[][];
 
+/** Resposta de uma chamada ao Telegram que nunca lança: sucesso com dados extras ou o erro já classificado. */
 type TelegramCall<T> = Promise<({ ok: true } & T) | { ok: false; error: TelegramErrorClass }>;
 
 /** Envia texto simples. Nunca lança por falha do Telegram: devolve a classificação do erro. */
@@ -224,6 +230,7 @@ export type ClaimedReminder = {
   timezone: string;
 };
 
+/** Fila de envio dos lembretes, com reserva por `attempts` para dois envios nunca pegarem o mesmo lembrete. */
 export interface ReminderQueue {
   /** Reserva até `limit` lembretes vencidos (SKIP LOCKED); o mais antigo primeiro. */
   claimDue(now: Date, limit: number): Promise<ClaimedReminder[]>;
@@ -326,6 +333,7 @@ export interface ConfirmationRepository {
   tasksFor(userId: string, chatId: number, messageId: number): Promise<{ alive: string[]; deletedCount: number }>;
 }
 
+/** Limpezas e recuperações periódicas feitas pelo agendador; cada uma devolve quantas linhas tocou. */
 export interface MaintenanceRepository {
   purgeExpiredChatMessages(now: Date): Promise<number>;
   purgeExpiredLinkCodes(now: Date): Promise<number>;
@@ -404,6 +412,7 @@ export type QrLoginRecord = {
   expiresAt: Date;
 };
 
+/** Pedidos de login por QR; cada transição de estado é um UPDATE atômico. */
 export interface QrLoginRepository {
   create(input: {
     id: string;

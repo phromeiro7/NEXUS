@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import type { IsoDate } from "@nexus/shared";
 import { EntryFormFields } from "@/components/mini/entry-form";
 import { FinanceNotice } from "@/components/mini/finance-notice";
@@ -14,6 +14,9 @@ import { monthRows, nextSort, rowActionLabel, situationLabel, sortRows, tableTot
 import { CaptureBar } from "./capture-bar";
 import { Dialog } from "./dialog";
 
+/** Esconde o elemento na tela mantendo-o para leitores de tela (rótulos de busca, legendas de tabela). */
+const VISUALLY_HIDDEN_STYLE: CSSProperties = { position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap" };
+
 const FILTERS: Array<{ key: TableFilter; label: string }> = [
   { key: "tudo", label: "Tudo" },
   { key: "gastos", label: "Gastos" },
@@ -21,6 +24,7 @@ const FILTERS: Array<{ key: TableFilter; label: string }> = [
   { key: "contas", label: "Contas" },
 ];
 
+/** Tela "Finanças" do painel: resumo do mês, tabela de lançamentos com busca, filtro e ordenação. */
 export function FinancePanel() {
   const today = useToday();
   return (
@@ -40,22 +44,23 @@ export function FinancePanel() {
   );
 }
 
-function sentence(sobra: number, any: boolean): string {
-  if (!any) return "Nada anotado neste mês.";
-  return sobra >= 0 ? `Sobram ${formatBRLShort(sobra)} depois das contas.` : `Faltam ${formatBRLShort(-sobra)} para fechar as contas.`;
+/** Frase de resumo do mês: quanto sobra (ou falta) depois das contas. */
+function describeMonthBalance(balanceCents: number, hasEntries: boolean): string {
+  if (!hasEntries) return "Nada anotado neste mês.";
+  return balanceCents >= 0
+    ? `Sobram ${formatBRLShort(balanceCents)} depois das contas.`
+    : `Faltam ${formatBRLShort(-balanceCents)} para fechar as contas.`;
 }
 
-function dayCell(date: IsoDate): string {
-  return formatShort(date);
-}
-
-function SortHeader({ label, k, sort, onSort, className }: { label: string; k: SortKey; sort: Sort; onSort: (k: SortKey) => void; className?: string }) {
-  const active = sort.key === k;
+/** Cabeçalho de coluna ordenável: anuncia a direção em `aria-sort` e mostra a seta. */
+function SortHeader({ label, k: sortKey, sort, onSort, className }: { label: string; k: SortKey; sort: Sort; onSort: (sortKey: SortKey) => void; className?: string }) {
+  const isActive = sort.key === sortKey;
+  const isAscending = sort.dir === "asc";
   return (
-    <th scope="col" className={className} aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
-      <button type="button" className="pn-sortbtn" onClick={() => onSort(k)}>
+    <th scope="col" className={className} aria-sort={isActive ? (isAscending ? "ascending" : "descending") : "none"}>
+      <button type="button" className="pn-sortbtn" onClick={() => onSort(sortKey)}>
         {label}
-        <span aria-hidden="true">{active ? (sort.dir === "asc" ? "↑" : "↓") : ""}</span>
+        <span aria-hidden="true">{isActive ? (isAscending ? "↑" : "↓") : ""}</span>
       </button>
     </th>
   );
@@ -65,25 +70,27 @@ function FinanceContent({ today }: { today: IsoDate }) {
   const finance = useFinance();
   const toast = useToast();
   const currentMonth = monthOf(today);
-  const [ym, setYm] = useState<YearMonth>(currentMonth);
+  const [selectedMonth, setSelectedMonth] = useState<YearMonth>(currentMonth);
   const [filter, setFilter] = useState<TableFilter>("tudo");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<Sort>({ key: "data", dir: "desc" });
   const [adding, setAdding] = useState(false);
 
-  const list = finance.lancamentos;
-  const totals = monthTotals(list, ym);
-  const any = hasMonthEntries(list, ym);
-  const rows = sortRows(monthRows(list, ym, { filter, query }), sort.key, sort.dir);
+  const entries = finance.lancamentos;
+  const totals = monthTotals(entries, selectedMonth);
+  const hasEntries = hasMonthEntries(entries, selectedMonth);
+  const rows = sortRows(monthRows(entries, selectedMonth, { filter, query }), sort.key, sort.dir);
+  // Ano corrente: o título do mês só mostra o ano quando ele é outro.
   const currentYear = Number(currentMonth.slice(0, 4));
+  const changeSort = (sortKey: SortKey) => setSort(nextSort(sort, sortKey));
 
-  function settle(l: Lancamento) {
-    finance.marcarPaga(l.id);
-    toast({ message: `${l.tipo === "entrada" ? "Entrada recebida" : "Conta paga"}: ${l.descricao}.`, undo: () => finance.desmarcarPaga(l.id) });
+  function settleEntry(entry: Lancamento) {
+    finance.marcarPaga(entry.id);
+    toast({ message: `${entry.tipo === "entrada" ? "Entrada recebida" : "Conta paga"}: ${entry.descricao}.`, undo: () => finance.desmarcarPaga(entry.id) });
   }
-  function drop(l: Lancamento) {
-    finance.remove(l.id);
-    toast({ message: `Lançamento excluído: ${l.descricao}.`, undo: () => finance.restore(l) });
+  function deleteEntry(entry: Lancamento) {
+    finance.remove(entry.id);
+    toast({ message: `Lançamento excluído: ${entry.descricao}.`, undo: () => finance.restore(entry) });
   }
 
   return (
@@ -95,13 +102,13 @@ function FinanceContent({ today }: { today: IsoDate }) {
         <span className="pn-sub" style={{ fontSize: "1rem" }}>
           Gastos, entradas e contas do mês
         </span>
-        <button type="button" className="mini-btn pn-small-btn" aria-label="Mês anterior" onClick={() => setYm(shiftMonth(ym, -1))}>
+        <button type="button" className="mini-btn pn-small-btn" aria-label="Mês anterior" onClick={() => setSelectedMonth(shiftMonth(selectedMonth, -1))}>
           <BackIcon />
         </button>
         <strong style={{ minWidth: 120, textAlign: "center", fontSize: "1.0625rem" }} aria-live="polite">
-          {monthTitle(ym, currentYear)}
+          {monthTitle(selectedMonth, currentYear)}
         </strong>
-        <button type="button" className="mini-btn pn-small-btn" aria-label="Próximo mês" onClick={() => setYm(shiftMonth(ym, 1))}>
+        <button type="button" className="mini-btn pn-small-btn" aria-label="Próximo mês" onClick={() => setSelectedMonth(shiftMonth(selectedMonth, 1))}>
           <ChevronIcon />
         </button>
         <button type="button" className="mini-btn primary pn-small-btn" onClick={() => setAdding(true)}>
@@ -111,7 +118,7 @@ function FinanceContent({ today }: { today: IsoDate }) {
 
       <FinanceNotice />
 
-      <p style={{ margin: "12px 0 0", fontSize: "1.25rem" }}>{sentence(totals.sobra, any)}</p>
+      <p style={{ margin: "12px 0 0", fontSize: "1.25rem" }}>{describeMonthBalance(totals.sobra, hasEntries)}</p>
       <dl className="pn-facts">
         <div>
           <dt>Entrou</dt>
@@ -128,14 +135,14 @@ function FinanceContent({ today }: { today: IsoDate }) {
       </dl>
 
       <div className="pn-tools">
-        <label htmlFor="pn-busca" style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap" }}>
+        <label htmlFor="pn-busca" style={VISUALLY_HIDDEN_STYLE}>
           Buscar lançamento
         </label>
-        <input id="pn-busca" type="search" className="mini-field" value={query} placeholder="Buscar por nome ou categoria" onChange={(e) => setQuery(e.target.value)} />
+        <input id="pn-busca" type="search" className="mini-field" value={query} placeholder="Buscar por nome ou categoria" onChange={(event) => setQuery(event.target.value)} />
         <div role="group" aria-label="Filtrar por tipo" className="mini-chips">
-          {FILTERS.map((f) => (
-            <button key={f.key} type="button" className="mini-chip" aria-pressed={filter === f.key} onClick={() => setFilter(f.key)}>
-              {f.label}
+          {FILTERS.map((filterOption) => (
+            <button key={filterOption.key} type="button" className="mini-chip" aria-pressed={filter === filterOption.key} onClick={() => setFilter(filterOption.key)}>
+              {filterOption.label}
             </button>
           ))}
         </div>
@@ -146,42 +153,42 @@ function FinanceContent({ today }: { today: IsoDate }) {
           <div role="status" aria-label="Carregando lançamentos" className="mini-skeleton" />
         ) : (
           <table className="pn-table">
-            <caption style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap" }}>Lançamentos do mês</caption>
+            <caption style={VISUALLY_HIDDEN_STYLE}>Lançamentos do mês</caption>
             <thead>
               <tr>
-                <SortHeader label="Data" k="data" sort={sort} onSort={(k) => setSort(nextSort(sort, k))} />
-                <SortHeader label="Descrição" k="descricao" sort={sort} onSort={(k) => setSort(nextSort(sort, k))} />
+                <SortHeader label="Data" k="data" sort={sort} onSort={changeSort} />
+                <SortHeader label="Descrição" k="descricao" sort={sort} onSort={changeSort} />
                 <th scope="col">Categoria</th>
                 <th scope="col">Situação</th>
-                <SortHeader label="Valor" k="valor" sort={sort} onSort={(k) => setSort(nextSort(sort, k))} className="num" />
+                <SortHeader label="Valor" k="valor" sort={sort} onSort={changeSort} className="num" />
                 <th scope="col">
-                  <span style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap" }}>Ações</span>
+                  <span style={VISUALLY_HIDDEN_STYLE}>Ações</span>
                 </th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((l) => {
-                const action = rowActionLabel(l);
-                const late = l.situacao === "a_pagar" && l.data < today;
+              {rows.map((entry) => {
+                const actionLabel = rowActionLabel(entry);
+                const isLate = entry.situacao === "a_pagar" && entry.data < today;
                 return (
-                  <tr key={l.id}>
+                  <tr key={entry.id}>
                     <td style={{ fontVariantNumeric: "tabular-nums" }} className="pn-sub">
-                      {dayCell(l.data)}
+                      {formatShort(entry.data)}
                     </td>
-                    <td style={{ fontWeight: 600 }}>{l.descricao}</td>
-                    <td className="pn-sub">{l.categoria ?? "—"}</td>
-                    <td className={late ? "pn-status-late" : undefined}>{situationLabel(l, today)}</td>
+                    <td style={{ fontWeight: 600 }}>{entry.descricao}</td>
+                    <td className="pn-sub">{entry.categoria ?? "—"}</td>
+                    <td className={isLate ? "pn-status-late" : undefined}>{situationLabel(entry, today)}</td>
                     <td className="num" style={{ fontWeight: 700 }}>
-                      {l.tipo === "entrada" ? "+ " : "− "}
-                      {formatBRL(l.valorCentavos)}
+                      {entry.tipo === "entrada" ? "+ " : "− "}
+                      {formatBRL(entry.valorCentavos)}
                     </td>
                     <td className="act">
-                      {action !== null && (
-                        <button type="button" className="mini-btn pn-small-btn" aria-label={`${action}: ${l.descricao}`} onClick={() => settle(l)}>
-                          {action}
+                      {actionLabel !== null && (
+                        <button type="button" className="mini-btn pn-small-btn" aria-label={`${actionLabel}: ${entry.descricao}`} onClick={() => settleEntry(entry)}>
+                          {actionLabel}
                         </button>
                       )}
-                      <button type="button" className="mini-btn quiet pn-small-btn" aria-label={`Excluir: ${l.descricao}`} onClick={() => drop(l)}>
+                      <button type="button" className="mini-btn quiet pn-small-btn" aria-label={`Excluir: ${entry.descricao}`} onClick={() => deleteEntry(entry)}>
                         Excluir
                       </button>
                     </td>
@@ -202,7 +209,7 @@ function FinanceContent({ today }: { today: IsoDate }) {
         )}
         {!finance.loading && rows.length === 0 && (
           <p className="pn-empty">
-            {any ? "Nenhum lançamento com esse filtro ou busca." : `Nada anotado em ${monthTitle(ym, currentYear)}. Use a barra de cima ou “Novo lançamento”.`}
+            {hasEntries ? "Nenhum lançamento com esse filtro ou busca." : `Nada anotado em ${monthTitle(selectedMonth, currentYear)}. Use a barra de cima ou “Novo lançamento”.`}
           </p>
         )}
       </div>

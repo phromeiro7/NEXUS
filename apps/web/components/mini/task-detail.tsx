@@ -15,40 +15,46 @@ import { BackIcon, CheckIcon } from "./icons";
 import { useToast } from "./toast";
 
 const TYPE_LABEL = { prazo: "Prazo", tarefa: "Tarefa", audiencia: "Audiência" } as const;
+/** Mesmo limite de título do schema de tarefa (citado na mensagem de validação). */
+const TITLE_MAX_LENGTH = 200;
 
+type TaskDetailMode = "view" | "postpone" | "edit" | "cancel";
+
+/** Tela de detalhe de uma tarefa no Mini App (/mini/tarefa/[id]): concluir, adiar, editar e cancelar. */
 export function TaskDetail({ id }: { id: string }) {
   const today = useToday();
-  const q = useTask(id);
-  const back = (
+  const taskQuery = useTask(id);
+  const backLink = (
     <Link href="/mini" className="mini-back">
       <BackIcon /> Hoje
     </Link>
   );
 
-  if (q.isError) {
-    const gone = q.error instanceof ApiError && q.error.status === 404;
+  if (taskQuery.isError) {
+    const notFound = taskQuery.error instanceof ApiError && taskQuery.error.status === 404;
     return (
       <main>
-        {back}
+        {backLink}
         <p role="alert" className="mini-alert">
-          {gone ? "Não encontramos esta tarefa. Ela pode ter sido excluída." : "Não foi possível abrir a tarefa. Tente de novo."}
+          {notFound ? "Não encontramos esta tarefa. Ela pode ter sido excluída." : "Não foi possível abrir a tarefa. Tente de novo."}
         </p>
       </main>
     );
   }
-  if (q.isPending || today === null) {
+  if (taskQuery.isPending || today === null) {
     return (
       <main role="status" aria-label="Carregando tarefa">
-        {back}
+        {backLink}
         <div className="mini-skeleton" style={{ marginTop: 16, height: 160 }} />
       </main>
     );
   }
-  const task = q.data;
-  return <Loaded key={task.updatedAt} task={task} today={today} back={back} />;
+  const task = taskQuery.data;
+  // A key recria o detalhe quando a tarefa muda no servidor, reiniciando o formulário de edição.
+  return <LoadedTaskDetail key={task.updatedAt} task={task} today={today} back={backLink} />;
 }
 
-function Loaded({
+function LoadedTaskDetail({
   task,
   today,
   back,
@@ -60,24 +66,26 @@ function Loaded({
   const router = useRouter();
   const toast = useToast();
   const update = useUpdateTask();
-  const del = useDeleteTask();
+  const deleteTask = useDeleteTask();
   const postponer = usePostpone();
-  const [mode, setMode] = useState<"view" | "postpone" | "edit" | "cancel">("view");
+  // A tela mostra um painel de cada vez: ações, opções de adiar, edição ou confirmação de cancelamento.
+  const [mode, setMode] = useState<TaskDetailMode>("view");
   const [error, setError] = useState<string | null>(null);
   const [title, setTitle] = useState(task.title);
   const [date, setDate] = useState<string>(task.dueDate ?? "");
   const [time, setTime] = useState<string>(task.dueTime ?? "");
 
-  const open = task.status === "pendente" || task.status === "em_andamento";
+  const isOpen = task.status === "pendente" || task.status === "em_andamento";
 
-  async function apply(input: Parameters<typeof update.mutateAsync>[0]["input"], then?: () => void) {
+  /** Salva a alteração, volta para as ações e, se deu certo, roda `onSuccess`. */
+  async function applyUpdate(input: Parameters<typeof update.mutateAsync>[0]["input"], onSuccess?: () => void) {
     setError(null);
     try {
       await update.mutateAsync({ id: task.id, input });
       setMode("view");
-      then?.();
-    } catch (err) {
-      setError(messageFor(err));
+      onSuccess?.();
+    } catch (updateError) {
+      setError(messageFor(updateError));
     }
   }
 
@@ -87,17 +95,22 @@ function Loaded({
   }
 
   async function complete() {
-    const before = task.status;
-    await apply({ status: "concluida" }, () =>
+    const previousStatus = task.status;
+    await applyUpdate({ status: "concluida" }, () =>
       toast({
         message: `Tarefa concluída: ${task.title}.`,
-        undo: () => void update.mutateAsync({ id: task.id, input: { status: before === "concluida" ? "pendente" : before } }),
+        // Desfazer devolve o status anterior; se já estava concluída, reabre como pendente.
+        undo: () =>
+          void update.mutateAsync({
+            id: task.id,
+            input: { status: previousStatus === "concluida" ? "pendente" : previousStatus },
+          }),
       }),
     );
   }
 
-  async function saveEdit(e: FormEvent) {
-    e.preventDefault();
+  async function saveEdit(event: FormEvent) {
+    event.preventDefault();
     if (time !== "" && date === "") {
       setError("Escolha o dia para usar um horário.");
       return;
@@ -111,23 +124,24 @@ function Loaded({
       setError("Confira o título (até 200 caracteres), o dia e o horário.");
       return;
     }
-    await apply(parsed.data);
+    await applyUpdate(parsed.data);
   }
 
   async function cancelTask() {
-    await apply({ status: "cancelada" }, () => router.push("/mini"));
+    await applyUpdate({ status: "cancelada" }, () => router.push("/mini"));
   }
+
   async function remove() {
     setError(null);
     try {
-      await del.mutateAsync(task.id);
+      await deleteTask.mutateAsync(task.id);
       router.push("/mini");
-    } catch (err) {
-      setError(messageFor(err));
+    } catch (deleteError) {
+      setError(messageFor(deleteError));
     }
   }
 
-  const pending = update.isPending || del.isPending || postponer.pending;
+  const pending = update.isPending || deleteTask.isPending || postponer.pending;
   const shownError = error ?? postponer.error;
   const tag = task.fatal ? "Prazo fatal" : TYPE_LABEL[task.type];
 
@@ -160,7 +174,7 @@ function Loaded({
 
       {mode === "view" && (
         <div className="mini-actions">
-          {open ? (
+          {isOpen ? (
             <>
               <button type="button" className="mini-btn primary" disabled={pending} onClick={() => void complete()}>
                 <CheckIcon /> Concluir tarefa
@@ -176,7 +190,7 @@ function Loaded({
               </button>
             </>
           ) : (
-            <button type="button" className="mini-btn primary" disabled={pending} onClick={() => void apply({ status: "pendente" })}>
+            <button type="button" className="mini-btn primary" disabled={pending} onClick={() => void applyUpdate({ status: "pendente" })}>
               Reabrir tarefa
             </button>
           )}
@@ -187,9 +201,9 @@ function Loaded({
         <section className="mini-card" aria-label="Adiar para">
           <h2 style={{ margin: 0, fontSize: "1.0625rem" }}>Adiar para quando?</h2>
           <div className="mini-sheet">
-            {postponeOptions(task, today).map((o) => (
-              <button key={o.key} type="button" className="mini-btn" disabled={pending} onClick={() => void postponeTo(o.input)}>
-                {o.label}
+            {postponeOptions(task, today).map((option) => (
+              <button key={option.key} type="button" className="mini-btn" disabled={pending} onClick={() => void postponeTo(option.input)}>
+                {option.label}
               </button>
             ))}
             <button type="button" className="mini-btn quiet" onClick={() => setMode("view")}>
@@ -203,16 +217,16 @@ function Loaded({
         <form className="mini-card mini-sheet" onSubmit={saveEdit} noValidate aria-label="Editar tarefa">
           <label className="mini-label">
             Título
-            <input className="mini-field" value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} />
+            <input className="mini-field" value={title} maxLength={TITLE_MAX_LENGTH} onChange={(event) => setTitle(event.target.value)} />
           </label>
           <div className="mini-stack">
             <label className="mini-label">
               Dia
-              <input type="date" className="mini-field" value={date} onChange={(e) => setDate(e.target.value)} />
+              <input type="date" className="mini-field" value={date} onChange={(event) => setDate(event.target.value)} />
             </label>
             <label className="mini-label">
               Horário
-              <input type="time" className="mini-field" value={time} onChange={(e) => setTime(e.target.value)} />
+              <input type="time" className="mini-field" value={time} onChange={(event) => setTime(event.target.value)} />
             </label>
           </div>
           <button type="submit" className="mini-btn primary" disabled={pending} style={{ justifyContent: "center" }}>

@@ -8,8 +8,8 @@ import { useInvites } from "./use-invites";
  * a área de administração (falha fechada).
  */
 export function useIsAdmin(): boolean | undefined {
-  const q = useInvites();
-  if (q.isSuccess) return true;
-  if (q.isError) return false;
+  const invites = useInvites();
+  if (invites.isSuccess) return true;
+  if (invites.isError) return false;
   return undefined;
 }

@@ -10,11 +10,16 @@ import { byCreation, toCreateInput, toLancamento } from "@/lib/finance-map";
 import { clearLocalLancamentos, readLocalLancamentos } from "@/lib/finance-local";
 
 /** Todos os lançamentos do usuário numa consulta só: as telas filtram por mês, dia e tipo. */
-const KEY = ["finance"] as const;
-const MUTATION_KEY = ["finance", "mutation"] as const;
+const FINANCE_QUERY_KEY = ["finance"] as const;
+/** Marca as mutações financeiras para contar quantas ainda estão em andamento (ver `settle`). */
+const FINANCE_MUTATION_KEY = ["finance", "mutation"] as const;
 /** Falha ao salvar, compartilhada por todas as telas montadas (cada useFinance() é uma instância). */
 const SAVE_ERROR_KEY = ["finance-save-error"] as const;
-const EMPTY: readonly Lancamento[] = [];
+/** Referência estável para a lista vazia: evita recalcular memos enquanto não há dados. */
+const NO_ENTRIES: readonly Lancamento[] = [];
+
+const HTTP_CONFLICT = 409;
+const HTTP_NOT_FOUND = 404;
 
 export type FinanceApi = {
   lancamentos: readonly Lancamento[];
@@ -31,19 +36,24 @@ export type FinanceApi = {
   remove(id: string): void;
 };
 
-function newId(): string {
-  const c = globalThis.crypto;
-  if (typeof c?.randomUUID === "function") return c.randomUUID();
-  const b = c.getRandomValues(new Uint8Array(16));
-  b[6] = (b[6]! & 0x0f) | 0x40;
-  b[8] = (b[8]! & 0x3f) | 0x80;
-  const h = [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
-  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+/**
+ * UUID v4 gerado no cliente. `randomUUID` só existe em contexto seguro (HTTPS/localhost); fora dele,
+ * monta o mesmo formato a partir de bytes aleatórios.
+ */
+function generateId(): string {
+  const cryptoApi = globalThis.crypto;
+  if (typeof cryptoApi?.randomUUID === "function") return cryptoApi.randomUUID();
+  const bytes = cryptoApi.getRandomValues(new Uint8Array(16));
+  // Bits fixos do RFC 4122: versão 4 no byte 6 e variante "10xx" no byte 8.
+  bytes[6] = (bytes[6]! & 0x0f) | 0x40;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 /** 409 em criar (já existe) e 404 em apagar (já não existe) significam que o estado desejado já vale. */
-function alreadyDone(e: unknown, ...codes: number[]): boolean {
-  return e instanceof ApiError && codes.includes(e.status);
+function alreadyDone(error: unknown, ...statusCodes: number[]): boolean {
+  return error instanceof ApiError && statusCodes.includes(error.status);
 }
 
 /**
@@ -53,7 +63,8 @@ function alreadyDone(e: unknown, ...codes: number[]): boolean {
 export function useFinance(): FinanceApi {
   const api = useApi();
   const { userId } = useAuth();
-  const qc = useQueryClient();
+  const queryClient = useQueryClient();
+  // Estado local guardado no cache (sem buscar nada) só para ser compartilhado entre as instâncias.
   const { data: saveFailed } = useQuery({
     queryKey: SAVE_ERROR_KEY,
     queryFn: () => false,
@@ -62,44 +73,48 @@ export function useFinance(): FinanceApi {
     staleTime: Infinity,
     gcTime: Infinity,
   });
-  const setSaveFailed = useCallback((v: boolean) => qc.setQueryData(SAVE_ERROR_KEY, v), [qc]);
+  const setSaveFailed = useCallback((failed: boolean) => queryClient.setQueryData(SAVE_ERROR_KEY, failed), [queryClient]);
 
   const query = useQuery({
-    queryKey: KEY,
+    queryKey: FINANCE_QUERY_KEY,
     queryFn: () => api.listFinanceEntries(),
     enabled: userId !== null,
   });
 
+  /** Atualização otimista: aplica a mudança direto na lista em cache, antes da resposta da API. */
   const patchCache = useCallback(
-    (fn: (list: FinanceEntryDto[]) => FinanceEntryDto[]) => {
-      qc.setQueryData<FinanceEntryDto[]>(KEY, (old) => fn(old ?? []));
+    (update: (entries: FinanceEntryDto[]) => FinanceEntryDto[]) => {
+      queryClient.setQueryData<FinanceEntryDto[]>(FINANCE_QUERY_KEY, (cached) => update(cached ?? []));
     },
-    [qc],
+    [queryClient],
   );
 
   /** Só a última mutação em andamento recarrega, para não apagar a atualização otimista das outras. */
   const settle = useCallback(async () => {
-    if (qc.isMutating({ mutationKey: MUTATION_KEY }) <= 1) await qc.invalidateQueries({ queryKey: KEY });
-  }, [qc]);
+    const isLastPendingMutation = queryClient.isMutating({ mutationKey: FINANCE_MUTATION_KEY }) <= 1;
+    if (isLastPendingMutation) await queryClient.invalidateQueries({ queryKey: FINANCE_QUERY_KEY });
+  }, [queryClient]);
 
-  const fail = useCallback(() => setSaveFailed(true), [setSaveFailed]);
+  const markSaveFailed = useCallback(() => setSaveFailed(true), [setSaveFailed]);
 
   const create = useMutation({
-    mutationKey: MUTATION_KEY,
+    mutationKey: FINANCE_MUTATION_KEY,
     mutationFn: async (item: Lancamento) => {
       try {
         await api.createFinanceEntry(toCreateInput(item));
-      } catch (e) {
-        if (!alreadyDone(e, 409)) throw e;
+      } catch (error) {
+        if (!alreadyDone(error, HTTP_CONFLICT)) throw error;
       }
     },
     onMutate: async (item) => {
-      await qc.cancelQueries({ queryKey: KEY });
-      patchCache((list) =>
-        list.some((e) => e.id === item.id)
-          ? list
+      // Cancela buscas em andamento: a resposta antiga sobrescreveria a atualização otimista.
+      await queryClient.cancelQueries({ queryKey: FINANCE_QUERY_KEY });
+      // Mesmo id já na lista (ex.: "desfazer" repetido): não duplica.
+      patchCache((entries) =>
+        entries.some((entry) => entry.id === item.id)
+          ? entries
           : [
-              ...list,
+              ...entries,
               {
                 id: item.id,
                 kind: item.tipo,
@@ -116,49 +131,52 @@ export function useFinance(): FinanceApi {
             ],
       );
     },
-    onError: fail,
+    onError: markSaveFailed,
     onSettled: settle,
   });
 
   const setStatus = useMutation({
-    mutationKey: MUTATION_KEY,
+    mutationKey: FINANCE_MUTATION_KEY,
     mutationFn: ({ id, status }: { id: string; status: FinanceStatus }) =>
       api.updateFinanceEntry(id, { status }),
     onMutate: async ({ id, status }) => {
-      await qc.cancelQueries({ queryKey: KEY });
+      await queryClient.cancelQueries({ queryKey: FINANCE_QUERY_KEY });
       const now = new Date().toISOString();
-      patchCache((list) =>
-        list.map((e) => (e.id === id ? { ...e, status, paidAt: status === "paga" ? (e.paidAt ?? now) : null } : e)),
+      // Marcar como paga mantém a data de pagamento que já existia; desmarcar a apaga.
+      patchCache((entries) =>
+        entries.map((entry) =>
+          entry.id === id ? { ...entry, status, paidAt: status === "paga" ? (entry.paidAt ?? now) : null } : entry,
+        ),
       );
     },
-    onError: fail,
+    onError: markSaveFailed,
     onSettled: settle,
   });
 
   const destroy = useMutation({
-    mutationKey: MUTATION_KEY,
+    mutationKey: FINANCE_MUTATION_KEY,
     mutationFn: async (id: string) => {
       try {
         await api.deleteFinanceEntry(id);
-      } catch (e) {
-        if (!alreadyDone(e, 404)) throw e;
+      } catch (error) {
+        if (!alreadyDone(error, HTTP_NOT_FOUND)) throw error;
       }
     },
     onMutate: async (id) => {
-      await qc.cancelQueries({ queryKey: KEY });
-      patchCache((list) => list.filter((e) => e.id !== id));
+      await queryClient.cancelQueries({ queryKey: FINANCE_QUERY_KEY });
+      patchCache((entries) => entries.filter((entry) => entry.id !== id));
     },
-    onError: fail,
+    onError: markSaveFailed,
     onSettled: settle,
   });
 
   const data = query.data;
-  const lancamentos = useMemo(() => (data ? data.map(toLancamento).sort(byCreation) : EMPTY), [data]);
+  const lancamentos = useMemo(() => (data ? data.map(toLancamento).sort(byCreation) : NO_ENTRIES), [data]);
 
   const add = useCallback(
     (input: LancamentoInput): Lancamento | null => {
       if (userId === null) return null;
-      const item: Lancamento = { ...input, id: newId(), criadoEm: new Date().toISOString() };
+      const item: Lancamento = { ...input, id: generateId(), criadoEm: new Date().toISOString() };
       setSaveFailed(false);
       create.mutate(item);
       return item;
@@ -196,6 +214,7 @@ export function useFinance(): FinanceApi {
   const reload = useCallback(() => void query.refetch(), [query]);
   const dismissError = useCallback(() => setSaveFailed(false), [setSaveFailed]);
 
+  // Erro de carga só conta sem dados: com a lista já na tela, uma recarga que falhou não a esconde.
   const error: FinanceApi["error"] = saveFailed ? "save" : query.isError && !data ? "load" : null;
 
   return useMemo(
@@ -231,7 +250,7 @@ export type LocalImport = {
 export function useLocalImport(): LocalImport {
   const api = useApi();
   const { userId } = useAuth();
-  const qc = useQueryClient();
+  const queryClient = useQueryClient();
   const [items, setItems] = useState<Lancamento[]>([]);
   const [importing, setImporting] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -248,8 +267,8 @@ export function useLocalImport(): LocalImport {
       for (const item of items) {
         try {
           await api.createFinanceEntry(toCreateInput(item));
-        } catch (e) {
-          if (!alreadyDone(e, 409)) throw e;
+        } catch (error) {
+          if (!alreadyDone(error, HTTP_CONFLICT)) throw error;
         }
       }
       clearLocalLancamentos(userId);
@@ -258,9 +277,10 @@ export function useLocalImport(): LocalImport {
       setFailed(true);
     } finally {
       setImporting(false);
-      await qc.invalidateQueries({ queryKey: KEY });
+      // Recarrega mesmo em falha: parte dos lançamentos pode ter sido gravada antes do erro.
+      await queryClient.invalidateQueries({ queryKey: FINANCE_QUERY_KEY });
     }
-  }, [api, userId, items, importing, qc]);
+  }, [api, userId, items, importing, queryClient]);
 
   const descartar = useCallback(() => {
     if (userId === null) return;

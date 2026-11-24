@@ -1,24 +1,29 @@
 import type { IsoDate, TaskType } from '@nexus/shared';
 import type { ReminderKind } from './reminders.js';
 
-const TYPE_LABEL: Record<TaskType, string> = {
+const TASK_TYPE_LABEL: Record<TaskType, string> = {
   prazo: 'Prazo',
   tarefa: 'Tarefa',
   audiencia: 'Audiência',
 };
 
+const MS_PER_MINUTE = 60_000;
+const MS_PER_SECOND = 1000;
 const MAX_TITLE_CHARS = 200;
-const LATE_THRESHOLD_MS = 5 * 60_000;
+const LATE_THRESHOLD_MS = 5 * MS_PER_MINUTE;
+const UNTITLED = 'Sem título';
 
 /** Texto simples: espaços colapsados, no máximo 200 pontos de código, nunca vazio. */
 export function sanitizeTitle(raw: string): string {
   const collapsed = raw.replace(/\s+/g, ' ').trim();
-  if (collapsed === '') return 'Sem título';
-  const chars = Array.from(collapsed);
-  if (chars.length <= MAX_TITLE_CHARS) return collapsed;
-  return `${chars.slice(0, MAX_TITLE_CHARS - 1).join('')}…`;
+  if (collapsed === '') return UNTITLED;
+  // `Array.from` separa por ponto de código: não corta um emoji (par substituto) ao meio.
+  const codePoints = Array.from(collapsed);
+  if (codePoints.length <= MAX_TITLE_CHARS) return collapsed;
+  return `${codePoints.slice(0, MAX_TITLE_CHARS - 1).join('')}…`;
 }
 
+/** Texto do lembrete enviado pelo bot, conforme o tipo de lembrete; `late` acrescenta "(atrasado)". */
 export function renderReminder(input: {
   kind: ReminderKind;
   title: string;
@@ -30,24 +35,25 @@ export function renderReminder(input: {
 }): string {
   const { kind, taskType, dueDate, dueTime, fatal, late } = input;
   const title = sanitizeTitle(input.title);
-  const type = TYPE_LABEL[taskType];
-  const label = fatal ? 'Prazo fatal' : type;
+  const typeLabel = TASK_TYPE_LABEL[taskType];
+  // Prazo fatal se anuncia como tal nos avisos por dia; nos avisos por horário vale o tipo.
+  const dayNoticeLabel = fatal ? 'Prazo fatal' : typeLabel;
   const [, month, day] = dueDate.split('-');
   const dayMonth = `${day}/${month}`;
 
-  let text: string;
+  let message: string;
   if (kind === 'tres_dias') {
-    text = `Prazo fatal em 3 dias, ${dayMonth}: ${title}`;
+    message = `Prazo fatal em 3 dias, ${dayMonth}: ${title}`;
   } else if (kind === 'dia_anterior') {
-    text = `${label} amanhã, ${dayMonth}: ${title}`;
+    message = `${dayNoticeLabel} amanhã, ${dayMonth}: ${title}`;
   } else if (kind === 'antecipado' && dueTime !== null) {
-    text = `${type} às ${dueTime} (em breve): ${title}`;
+    message = `${typeLabel} às ${dueTime} (em breve): ${title}`;
   } else if (kind === 'no_horario' && dueTime !== null) {
-    text = `${type} agora, às ${dueTime}: ${title}`;
+    message = `${typeLabel} agora, às ${dueTime}: ${title}`;
   } else {
-    text = `${label} hoje, ${dayMonth}: ${title}`;
+    message = `${dayNoticeLabel} hoje, ${dayMonth}: ${title}`;
   }
-  return late ? `${text} (atrasado)` : text;
+  return late ? `${message} (atrasado)` : message;
 }
 
 /** Atrasado = mais de 5 minutos além do horário reservado (5:00 exatos não conta). */
@@ -55,7 +61,8 @@ export function isLate(scheduledAt: Date, now: Date): boolean {
   return now.getTime() - scheduledAt.getTime() > LATE_THRESHOLD_MS;
 }
 
-const RETRY_DELAYS_MS = [60_000, 300_000, 900_000, 3_600_000] as const;
+/** Esperas entre tentativas de envio: 1 min, 5 min, 15 min, 1 h. */
+const RETRY_DELAYS_MS = [1, 5, 15, 60].map((minutes) => minutes * MS_PER_MINUTE);
 
 /** Espera antes da próxima tentativa; `null` quando as tentativas se esgotaram (a partir da 5ª). */
 export function retryDelayMs(attempt: number): number | null {
@@ -65,9 +72,16 @@ export function retryDelayMs(attempt: number): number | null {
   return RETRY_DELAYS_MS[attempt - 1] ?? null;
 }
 
+/** Erro do Telegram classificado: `transient` vale nova tentativa; `permanent` não. */
 export type TelegramErrorClass =
   | { kind: 'transient'; retryAfterMs?: number }
   | { kind: 'permanent'; reason: 'bot_bloqueado' | 'chat_inexistente' | 'outro' };
+
+const NETWORK_FAILURE_STATUS = 0;
+const HTTP_BAD_REQUEST = 400;
+const HTTP_FORBIDDEN = 403;
+const HTTP_REQUEST_TIMEOUT = 408;
+const HTTP_TOO_MANY_REQUESTS = 429;
 
 type TelegramErrorBody = {
   error_code?: number;
@@ -88,23 +102,26 @@ export function classifyTelegramError(
       ? body.description.toLowerCase()
       : '';
 
-  if (status === 403) return { kind: 'permanent', reason: 'bot_bloqueado' };
-  if (status === 400) {
+  if (status === HTTP_FORBIDDEN) return { kind: 'permanent', reason: 'bot_bloqueado' };
+  if (status === HTTP_BAD_REQUEST) {
     return {
       kind: 'permanent',
       reason: description.includes('chat not found') ? 'chat_inexistente' : 'outro',
     };
   }
-  if (status === 429) {
+  if (status === HTTP_TOO_MANY_REQUESTS) {
     const retryAfter =
       body !== null && typeof body === 'object' && body.parameters !== null && typeof body.parameters === 'object'
         ? body.parameters.retry_after
         : undefined;
     if (typeof retryAfter === 'number' && Number.isFinite(retryAfter) && retryAfter >= 0) {
-      return { kind: 'transient', retryAfterMs: retryAfter * 1000 };
+      return { kind: 'transient', retryAfterMs: retryAfter * MS_PER_SECOND };
     }
     return { kind: 'transient' };
   }
-  if (status === 0 || status === 408 || (status >= 500 && status <= 599)) return { kind: 'transient' };
+  const isServerError = status >= 500 && status <= 599;
+  if (status === NETWORK_FAILURE_STATUS || status === HTTP_REQUEST_TIMEOUT || isServerError) {
+    return { kind: 'transient' };
+  }
   return { kind: 'permanent', reason: 'outro' };
 }

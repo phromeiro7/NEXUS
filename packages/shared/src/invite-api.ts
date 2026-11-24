@@ -14,7 +14,8 @@ export const createInviteInputSchema = z.object({
     .trim()
     .max(INVITE_LABEL_MAX)
     .optional()
-    .transform((v) => (v === undefined || v === '' ? undefined : v)),
+    // Rótulo vazio é o mesmo que nenhum rótulo.
+    .transform((label) => (label === undefined || label === '' ? undefined : label)),
 });
 export type CreateInviteInput = z.input<typeof createInviteInputSchema>;
 

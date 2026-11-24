@@ -4,6 +4,7 @@ import type { BriefingRepository } from '../application/ports.js';
 import type { RemindersLogger } from '../application/run-reminders.js';
 import { briefingLocalDate } from '../domain/briefing-window.js';
 
+/** Perfil candidato ao briefing diário (colunas de `profiles`). */
 type CandidateRow = {
   id: string;
   telegram_chat_id: number | string;
@@ -15,6 +16,7 @@ type CandidateRow = {
 /** Deve ficar <= `max_rows` do PostgREST (supabase/config.toml: 1000), senão páginas viram truncadas em silêncio. */
 const DEFAULT_PAGE_SIZE = 500;
 
+/** Briefing diário: escolhe quem está na janela local de envio e reserva/libera o envio por dia (RPCs). */
 export function createSupabaseBriefingRepository(
   client: SupabaseClient,
   opts: { pageSize?: number; logger?: RemindersLogger } = {},
@@ -24,17 +26,17 @@ export function createSupabaseBriefingRepository(
 
   return {
     async dueFor(now) {
-      const out: Array<{ userId: string; chatId: number; timezone: string; localDate: IsoDate }> = [];
+      const dueRecipients: Array<{ userId: string; chatId: number; timezone: string; localDate: IsoDate }> = [];
       // Candidatos: vinculados e não pausados, em páginas ordenadas por id (ordem estável).
       // A janela local é decidida em código, por fuso (Ruling 19).
-      for (let from = 0; ; from += pageSize) {
+      for (let pageStart = 0; ; pageStart += pageSize) {
         const { data, error } = await client
           .from('profiles')
           .select('id, telegram_chat_id, timezone, briefing_time, last_briefing_sent_on')
           .not('telegram_chat_id', 'is', null)
           .eq('channel_paused', false)
           .order('id')
-          .range(from, from + pageSize - 1);
+          .range(pageStart, pageStart + pageSize - 1);
         if (error) throw new Error(`Falha ao listar destinatários do briefing: ${error.message}`);
         const rows = (data ?? []) as CandidateRow[];
 
@@ -42,24 +44,29 @@ export function createSupabaseBriefingRepository(
           let localDate: IsoDate | null;
           try {
             localDate = briefingLocalDate(now, row.timezone, row.briefing_time);
-          } catch (err) {
+          } catch (error) {
             // Perfil com fuso/hora inválidos não pode derrubar o briefing dos demais.
             logger?.error('briefing.invalid_profile', {
               userId: row.id,
-              errorName: err instanceof Error ? err.name : 'desconhecido',
+              errorName: error instanceof Error ? error.name : 'desconhecido',
             });
             continue;
           }
+          // Fora da janela de envio no fuso do usuário.
           if (localDate === null) continue;
-          if (row.last_briefing_sent_on !== null && row.last_briefing_sent_on >= localDate) continue;
-          out.push({ userId: row.id, chatId: Number(row.telegram_chat_id), timezone: row.timezone, localDate });
+          // Datas ISO comparam como texto: já enviado hoje (ou depois) não entra de novo.
+          const alreadySent = row.last_briefing_sent_on !== null && row.last_briefing_sent_on >= localDate;
+          if (alreadySent) continue;
+          dueRecipients.push({ userId: row.id, chatId: Number(row.telegram_chat_id), timezone: row.timezone, localDate });
         }
 
-        if (rows.length < pageSize) break;
+        const isLastPage = rows.length < pageSize;
+        if (isLastPage) break;
       }
-      return out;
+      return dueRecipients;
     },
 
+    // Reserva atômica no banco: só um disparo por usuário e dia local recebe `true`.
     async claim(userId, localDate) {
       const { data, error } = await client.rpc('claim_briefing', { p_user_id: userId, p_local_date: localDate });
       if (error) throw new Error(`Falha ao reservar o briefing: ${error.message}`);

@@ -5,6 +5,7 @@ import type { ClaimedReminder, ReminderQueue } from '../application/ports.js';
 import type { ReminderKind } from '../domain/reminders.js';
 import { toHourMinute } from './mappers.js';
 
+/** Linha devolvida pela RPC `claim_due_reminders` (lembrete com a tarefa e o perfil). */
 type ClaimRow = {
   reminder_id: string;
   user_id: string;
@@ -21,11 +22,12 @@ type ClaimRow = {
   timezone: string;
 };
 
+/** Códigos das exceções SQL que indicam perda da reserva do lembrete. */
 const LEASE_CODES = ['lembrete_inexistente', 'lembrete_reservado_por_outro', 'lembrete_em_estado_invalido'] as const;
 
 /** Só as três perdas de reserva viram erro tipado; qualquer outra falha do banco é um erro comum. */
 function leaseError(message: string): ReminderLeaseError | null {
-  const code = LEASE_CODES.find((c) => message.includes(c));
+  const code = LEASE_CODES.find((leaseCode) => message.includes(leaseCode));
   return code ? new ReminderLeaseError(code) : null;
 }
 
@@ -47,6 +49,7 @@ function claimedFromRow(row: ClaimRow): ClaimedReminder {
   };
 }
 
+/** Fila de lembretes do Telegram: reserva (lease) os vencidos, registra o resultado e recupera os presos. */
 export function createSupabaseReminderQueue(client: SupabaseClient): ReminderQueue {
   return {
     async claimDue(now, limit) {

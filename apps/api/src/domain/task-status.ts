@@ -1,5 +1,6 @@
 import { canTransition, type TaskStatus } from '@nexus/shared';
 
+/** Lançado quando a mudança de status não é permitida por `canTransition`. */
 export class InvalidTransitionError extends Error {
   constructor(
     readonly from: TaskStatus,

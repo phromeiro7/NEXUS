@@ -18,17 +18,24 @@ import { spokenTime } from "@/lib/mini-tasks";
 import { BackIcon } from "./icons";
 import { useToast } from "./toast";
 
-type Kind = "gasto" | "entrada";
-type Errors = Partial<Record<"valor" | "descricao" | "data", string>>;
+type EntryKind = "gasto" | "entrada";
+type FieldErrors = Partial<Record<"valor" | "descricao" | "data", string>>;
 
-const ISO = /^\d{4}-\d{2}-\d{2}$/;
+/** Data completa no formato AAAA-MM-DD (o input de data devolve "" quando incompleto). */
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+/** Tamanho máximo da descrição do lançamento. */
+const DESCRIPTION_MAX_LENGTH = 80;
+/** Horário sugerido para o lembrete de uma conta a pagar. */
+const DEFAULT_REMINDER_TIME = "09:00";
 
+/** "hoje", "amanhã" ou a data curta, para as frases de resumo do formulário. */
 function whenWords(date: IsoDate, today: IsoDate): string {
   if (date === today) return "hoje";
   if (date === addDays(today, 1)) return "amanhã";
   return formatShort(date);
 }
 
+/** Página "Novo lançamento" do Mini App (/mini/financas/novo); ao salvar volta para Finanças. */
 export function EntryForm() {
   const today = useToday();
   if (today === null) {
@@ -58,47 +65,51 @@ function EntryFormContent({ today }: { today: IsoDate }) {
 export function EntryFormFields({ today, onSaved }: { today: IsoDate; onSaved: () => void }) {
   const toast = useToast();
   const finance = useFinance();
-  const ids = useId();
-  const [kind, setKind] = useState<Kind>("gasto");
+  const idPrefix = useId();
+  const [kind, setKind] = useState<EntryKind>("gasto");
   const [valor, setValor] = useState("");
   const [descricao, setDescricao] = useState("");
   const [categoria, setCategoria] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
+  // "Vou pagar" / "Vou receber": ainda não foi pago (ou recebido), então tem vencimento e lembrete.
+  const [settlesLater, setSettlesLater] = useState(false);
   const [date, setDate] = useState<string>(today);
-  const [time, setTime] = useState("09:00");
-  const [errors, setErrors] = useState<Errors>({});
+  const [time, setTime] = useState(DEFAULT_REMINDER_TIME);
+  const [errors, setErrors] = useState<FieldErrors>({});
 
-  const incoming = kind === "entrada";
-  const categories = incoming ? CATEGORIAS_ENTRADA : CATEGORIAS_GASTO;
+  const isIncoming = kind === "entrada";
+  const categories = isIncoming ? CATEGORIAS_ENTRADA : CATEGORIAS_GASTO;
 
-  function chooseKind(next: Kind) {
-    if (next === kind) return;
-    setKind(next);
+  /** Trocar o tipo limpa a categoria, porque gastos e entradas têm listas diferentes. */
+  function chooseKind(nextKind: EntryKind) {
+    if (nextKind === kind) return;
+    setKind(nextKind);
     setCategoria(null);
   }
 
-  function submit(e: FormEvent) {
-    e.preventDefault();
+  function submit(event: FormEvent) {
+    event.preventDefault();
     const cents = parseValor(valor);
     const title = descricao.trim();
-    const next: Errors = {};
-    if (cents === null) next.valor = "Digite um valor maior que zero, como 119,90.";
-    if (title === "") next.descricao = "Diga o que foi, por exemplo: internet.";
-    if (!ISO.test(date)) next.data = pending ? "Escolha o dia do vencimento." : "Escolha o dia.";
-    setErrors(next);
-    if (Object.keys(next).length > 0 || cents === null) {
-      const first = next.valor ? "valor" : next.descricao ? "descricao" : "data";
-      document.getElementById(`${ids}-${first}`)?.focus();
+    const nextErrors: FieldErrors = {};
+    if (cents === null) nextErrors.valor = "Digite um valor maior que zero, como 119,90.";
+    if (title === "") nextErrors.descricao = "Diga o que foi, por exemplo: internet.";
+    if (!ISO_DATE_PATTERN.test(date)) nextErrors.data = settlesLater ? "Escolha o dia do vencimento." : "Escolha o dia.";
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0 || cents === null) {
+      // Leva o foco ao primeiro campo com erro, na ordem em que aparecem na tela.
+      const firstInvalidField = nextErrors.valor ? "valor" : nextErrors.descricao ? "descricao" : "data";
+      document.getElementById(`${idPrefix}-${firstInvalidField}`)?.focus();
       return;
     }
+    // Gasto ainda não pago vira "conta" (a pagar); entrada continua "entrada" nos dois casos.
     const input: LancamentoInput = {
-      tipo: incoming ? "entrada" : pending ? "conta" : "gasto",
-      descricao: title.slice(0, 80),
+      tipo: isIncoming ? "entrada" : settlesLater ? "conta" : "gasto",
+      descricao: title.slice(0, DESCRIPTION_MAX_LENGTH),
       valorCentavos: cents,
       categoria,
       data: date as IsoDate,
-      situacao: pending ? "a_pagar" : "paga",
-      lembreteHora: pending && time !== "" ? time : null,
+      situacao: settlesLater ? "a_pagar" : "paga",
+      lembreteHora: settlesLater && time !== "" ? time : null,
     };
     const saved = finance.add(input);
     if (saved === null) {
@@ -106,21 +117,21 @@ export function EntryFormFields({ today, onSaved }: { today: IsoDate; onSaved: (
       return;
     }
     toast({
-      message: `${incoming ? "Entrada" : pending ? "Conta" : "Gasto"} anotado: ${title}, ${formatBRL(cents)}.`,
+      message: `${isIncoming ? "Entrada" : settlesLater ? "Conta" : "Gasto"} anotado: ${title}, ${formatBRL(cents)}.`,
       undo: () => finance.remove(saved.id),
     });
     onSaved();
   }
 
-  const preview = parseValor(valor);
-  const hint =
-    pending && ISO.test(date)
+  const previewCents = parseValor(valor);
+  const reminderHint =
+    settlesLater && ISO_DATE_PATTERN.test(date)
       ? time === ""
         ? `Vamos guardar o vencimento de ${whenWords(date as IsoDate, today)}, sem lembrete.`
         : `Lembrete anotado: ${whenWords(date as IsoDate, today)} às ${spokenTime(time)}.`
       : null;
 
-  const chip = (label: string, pressed: boolean, onClick: () => void) => (
+  const renderChip = (label: string, pressed: boolean, onClick: () => void) => (
     <button key={label} type="button" className="mini-chip" aria-pressed={pressed} onClick={onClick}>
       {label}
     </button>
@@ -131,53 +142,53 @@ export function EntryFormFields({ today, onSaved }: { today: IsoDate; onSaved: (
         <fieldset className="mini-step">
           <legend>Tipo</legend>
           <div className="mini-chips">
-            {chip("Gasto", kind === "gasto", () => chooseKind("gasto"))}
-            {chip("Entrada", kind === "entrada", () => chooseKind("entrada"))}
+            {renderChip("Gasto", kind === "gasto", () => chooseKind("gasto"))}
+            {renderChip("Entrada", kind === "entrada", () => chooseKind("entrada"))}
           </div>
         </fieldset>
 
         <div className="mini-stack">
-          <label htmlFor={`${ids}-valor`} className="mini-label">
+          <label htmlFor={`${idPrefix}-valor`} className="mini-label">
             Valor
             <span className="mini-money-field">
               <span aria-hidden="true">R$</span>
               <input
-                id={`${ids}-valor`}
+                id={`${idPrefix}-valor`}
                 className="mini-field"
                 value={valor}
-                onChange={(e) => setValor(e.target.value)}
+                onChange={(event) => setValor(event.target.value)}
                 inputMode="decimal"
                 autoComplete="off"
                 placeholder="119,90"
                 aria-invalid={errors.valor ? true : undefined}
-                aria-describedby={errors.valor ? `${ids}-valor-erro` : undefined}
+                aria-describedby={errors.valor ? `${idPrefix}-valor-erro` : undefined}
               />
             </span>
           </label>
           {errors.valor && (
-            <p id={`${ids}-valor-erro`} role="alert" className="mini-fielderr">
+            <p id={`${idPrefix}-valor-erro`} role="alert" className="mini-fielderr">
               {errors.valor}
             </p>
           )}
         </div>
 
         <div className="mini-stack">
-          <label htmlFor={`${ids}-descricao`} className="mini-label">
+          <label htmlFor={`${idPrefix}-descricao`} className="mini-label">
             O que foi
             <input
-              id={`${ids}-descricao`}
+              id={`${idPrefix}-descricao`}
               className="mini-field"
               value={descricao}
-              onChange={(e) => setDescricao(e.target.value)}
-              maxLength={80}
+              onChange={(event) => setDescricao(event.target.value)}
+              maxLength={DESCRIPTION_MAX_LENGTH}
               autoComplete="off"
-              placeholder={incoming ? "Ex.: freela do site" : "Ex.: internet"}
+              placeholder={isIncoming ? "Ex.: freela do site" : "Ex.: internet"}
               aria-invalid={errors.descricao ? true : undefined}
-              aria-describedby={errors.descricao ? `${ids}-descricao-erro` : undefined}
+              aria-describedby={errors.descricao ? `${idPrefix}-descricao-erro` : undefined}
             />
           </label>
           {errors.descricao && (
-            <p id={`${ids}-descricao-erro`} role="alert" className="mini-fielderr">
+            <p id={`${idPrefix}-descricao-erro`} role="alert" className="mini-fielderr">
               {errors.descricao}
             </p>
           )}
@@ -185,51 +196,53 @@ export function EntryFormFields({ today, onSaved }: { today: IsoDate; onSaved: (
 
         <fieldset className="mini-step">
           <legend>Categoria (opcional)</legend>
-          <div className="mini-chips">{categories.map((c) => chip(c, categoria === c, () => setCategoria(categoria === c ? null : c)))}</div>
+          <div className="mini-chips">{categories.map((category) =>
+              renderChip(category, categoria === category, () => setCategoria(categoria === category ? null : category)),
+            )}</div>
         </fieldset>
 
         <fieldset className="mini-step">
           <legend>Situação</legend>
           <div className="mini-chips">
-            {chip(incoming ? "Já recebi" : "Já paguei", !pending, () => setPending(false))}
-            {chip(incoming ? "Vou receber" : "Vou pagar", pending, () => setPending(true))}
+            {renderChip(isIncoming ? "Já recebi" : "Já paguei", !settlesLater, () => setSettlesLater(false))}
+            {renderChip(isIncoming ? "Vou receber" : "Vou pagar", settlesLater, () => setSettlesLater(true))}
           </div>
         </fieldset>
 
         <div className="mini-form-row">
           <div className="mini-stack">
-            <label htmlFor={`${ids}-data`} className="mini-label">
-              {pending ? "Vence em" : "Dia"}
+            <label htmlFor={`${idPrefix}-data`} className="mini-label">
+              {settlesLater ? "Vence em" : "Dia"}
               <input
-                id={`${ids}-data`}
+                id={`${idPrefix}-data`}
                 type="date"
                 className="mini-field"
                 value={date}
-                onChange={(e) => setDate(e.target.value)}
+                onChange={(event) => setDate(event.target.value)}
                 aria-invalid={errors.data ? true : undefined}
-                aria-describedby={errors.data ? `${ids}-data-erro` : undefined}
+                aria-describedby={errors.data ? `${idPrefix}-data-erro` : undefined}
               />
             </label>
           </div>
-          {pending && (
+          {settlesLater && (
             <div className="mini-stack">
-              <label htmlFor={`${ids}-hora`} className="mini-label">
+              <label htmlFor={`${idPrefix}-hora`} className="mini-label">
                 Lembrar às
-                <input id={`${ids}-hora`} type="time" className="mini-field" value={time} onChange={(e) => setTime(e.target.value)} />
+                <input id={`${idPrefix}-hora`} type="time" className="mini-field" value={time} onChange={(event) => setTime(event.target.value)} />
               </label>
             </div>
           )}
         </div>
         {errors.data && (
-          <p id={`${ids}-data-erro`} role="alert" className="mini-fielderr" style={{ marginTop: -12 }}>
+          <p id={`${idPrefix}-data-erro`} role="alert" className="mini-fielderr" style={{ marginTop: -12 }}>
             {errors.data}
           </p>
         )}
 
-        {hint && <p className="mini-summary">{hint}</p>}
-        {preview !== null && descricao.trim() !== "" && (
+        {reminderHint && <p className="mini-summary">{reminderHint}</p>}
+        {previewCents !== null && descricao.trim() !== "" && (
           <p className="mini-hint" style={{ marginTop: -8 }}>
-            Será anotado: {descricao.trim()}, {formatBRL(preview)}.
+            Será anotado: {descricao.trim()}, {formatBRL(previewCents)}.
           </p>
         )}
 

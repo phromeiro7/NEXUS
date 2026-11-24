@@ -6,8 +6,14 @@ import { timeOnlyLabel, whenLabel } from "@/lib/mini-tasks";
 import { postponeShortcuts, type PostponeKind } from "@/lib/postpone";
 import { CheckIcon, ChevronIcon, ClockIcon } from "./icons";
 
+/** Etiqueta exibida ao lado da data para os tipos de tarefa que merecem destaque. */
 const TYPE_TAG: Record<string, string> = { prazo: "Prazo", audiencia: "Audiência" };
 
+/** Animação de entrada escalonada: cada linha atrasa um pouco mais, até um teto para listas longas. */
+const STAGGER_STEP_MS = 30;
+const MAX_STAGGERED_ITEMS = 8;
+
+/** Linha de tarefa das listas do Mini App: concluir, abrir o detalhe e (opcional) adiar para amanhã. */
 export function TaskItem({
   task,
   today,
@@ -25,11 +31,13 @@ export function TaskItem({
   /** Na seção "Hoje" o dia é redundante: mostra só o horário. */
   compact?: boolean;
 }) {
-  const late = task.dueDate !== null && task.dueDate < today;
-  const tomorrow = onPostpone ? postponeShortcuts(task, today)[0] : undefined;
+  const isLate = task.dueDate !== null && task.dueDate < today;
+  // O primeiro atalho de adiar é sempre "Amanhã"; os demais ficam no detalhe da tarefa.
+  const tomorrowShortcut = onPostpone ? postponeShortcuts(task, today)[0] : undefined;
   const tag = task.fatal ? "Prazo fatal" : TYPE_TAG[task.type];
   return (
-    <li className={`mini-item${late ? " late" : ""}`} style={{ animationDelay: `${Math.min(index, 8) * 30}ms` }}>
+    <li className={`mini-item${isLate ? " late" : ""}`}
+      style={{ animationDelay: `${Math.min(index, MAX_STAGGERED_ITEMS) * STAGGER_STEP_MS}ms` }}>
       <button
         type="button"
         className="mini-check"
@@ -44,7 +52,7 @@ export function TaskItem({
         <div>
           <strong>{task.title}</strong>
           <span className="mini-meta">
-            {late ? (
+            {isLate ? (
               <span className="late-text">
                 <ClockIcon />
                 {whenLabel(task, today)}
@@ -59,9 +67,14 @@ export function TaskItem({
         </div>
         <ChevronIcon />
       </Link>
-      {tomorrow && (
-        <button type="button" className="mini-postpone" aria-label={tomorrow.ariaLabel} onClick={() => onPostpone?.(task, tomorrow.kind)}>
-          {tomorrow.label}
+      {tomorrowShortcut && (
+        <button
+          type="button"
+          className="mini-postpone"
+          aria-label={tomorrowShortcut.ariaLabel}
+          onClick={() => onPostpone?.(task, tomorrowShortcut.kind)}
+        >
+          {tomorrowShortcut.label}
         </button>
       )}
     </li>

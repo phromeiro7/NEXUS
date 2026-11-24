@@ -25,6 +25,25 @@ import { inviteRoutes, type InviteRoutesDeps } from './routes/invites.js';
 import { settingsRoutes } from './routes/settings.js';
 import { tasksRoutes } from './routes/tasks.js';
 
+/** Cache do preflight CORS no navegador, em segundos. */
+const CORS_PREFLIGHT_MAX_AGE_SECONDS = 600;
+/** Tamanho máximo do corpo da requisição (64 KiB). */
+const MAX_BODY_BYTES = 64 * 1024;
+/**
+ * Rotas cuja mensagem de erro pode carregar texto do usuário, segredo ou dados de login:
+ * em erro inesperado, só o nome do erro é logado.
+ */
+const REDACTED_ERROR_PATH_PREFIXES = ['/assistant', '/internal', '/auth', '/telegram'];
+
+/** Convites sem administração configurada: toda operação responde 403. */
+function denyAllInvites(): InviteRoutesDeps['invites'] {
+  const deny = async (): Promise<never> => {
+    throw new ForbiddenError();
+  };
+  return { create: deny, list: deny, summary: deny, remove: deny };
+}
+
+/** Dependências da API HTTP: casos de uso já montados e as configurações opcionais de cada rota. */
 export type AppDeps = {
   verifyToken: AuthVerifier;
   tasks: ReturnType<typeof makeTaskUseCases>;
@@ -54,6 +73,7 @@ export type AppDeps = {
   invites?: InviteRoutesDeps['invites'];
 };
 
+/** Cria o app Hono com CORS, limite de corpo, tratamento de erros e todas as rotas. */
 export function createApp(deps: AppDeps) {
   const app = new Hono<{ Variables: { userId: string } }>();
 
@@ -68,33 +88,29 @@ export function createApp(deps: AppDeps) {
       // X-Poll-Secret: o navegador do login por QR prova que é dono do pedido. maxAge evita um preflight a cada consulta.
       allowHeaders: ['Authorization', 'Content-Type', 'X-Poll-Secret'],
       allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-      maxAge: 600,
+      maxAge: CORS_PREFLIGHT_MAX_AGE_SECONDS,
     }),
   );
 
   // Limite de corpo depois do CORS e antes de qualquer rota: roda antes da autenticação e da leitura do corpo.
   app.use(
     '*',
-    bodyLimit({ maxSize: 64 * 1024, onError: (c) => c.json({ error: 'corpo_muito_grande' }, 413) }),
+    bodyLimit({ maxSize: MAX_BODY_BYTES, onError: (c) => c.json({ error: 'corpo_muito_grande' }, 413) }),
   );
 
   app.notFound((c) => c.json({ error: 'nao_encontrado' }, 404));
 
-  app.onError((err, c) => {
-    const { status, body, headers } = errorResponse(err);
+  app.onError((error, c) => {
+    const { status, body, headers } = errorResponse(error);
     // Só o erro inesperado é logado: nunca headers, token ou config. O cliente recebe a resposta genérica.
     // Nas rotas internas a mensagem do erro pode citar segredo ou dados: só o nome também.
     // No assistente a mensagem do erro pode carregar texto do usuário: só o nome do erro é registrado.
     if (status === 500) {
-      if (
-        c.req.path.startsWith('/assistant') ||
-        c.req.path.startsWith('/internal') ||
-        c.req.path.startsWith('/auth') ||
-        c.req.path.startsWith('/telegram')
-      ) {
-        console.error('[api] erro não tratado', err instanceof Error ? err.name : 'desconhecido');
+      const mustRedactError = REDACTED_ERROR_PATH_PREFIXES.some((prefix) => c.req.path.startsWith(prefix));
+      if (mustRedactError) {
+        console.error('[api] erro não tratado', error instanceof Error ? error.name : 'desconhecido');
       } else {
-        console.error('[api] erro não tratado', err);
+        console.error('[api] erro não tratado', error);
       }
     }
     for (const [name, value] of Object.entries(headers ?? {})) c.header(name, value);
@@ -117,20 +133,7 @@ export function createApp(deps: AppDeps) {
     '/invites',
     inviteRoutes(
       {
-        invites: deps.invites ?? {
-          create: async () => {
-            throw new ForbiddenError();
-          },
-          list: async () => {
-            throw new ForbiddenError();
-          },
-          summary: async () => {
-            throw new ForbiddenError();
-          },
-          remove: async () => {
-            throw new ForbiddenError();
-          },
-        },
+        invites: deps.invites ?? denyAllInvites(),
       },
       auth,
     ),

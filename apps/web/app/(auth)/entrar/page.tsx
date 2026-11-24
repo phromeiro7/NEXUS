@@ -21,7 +21,7 @@ function InviteNote() {
 }
 
 /** Dentro do Telegram a entrada é automática; esta tela só serve de reserva, com e-mail e senha. */
-function EmailOnly({ onSignedIn }: { onSignedIn(): void }) {
+function EmailOnlyLogin({ onSignedIn }: { onSignedIn(): void }) {
   return (
     <AuthCard title="Entrar" lead="Sua rotina, conectada.">
       <InviteNote />
@@ -30,12 +30,14 @@ function EmailOnly({ onSignedIn }: { onSignedIn(): void }) {
   );
 }
 
-function QrEntrar({ onSignedIn }: { onSignedIn(): void }) {
+/** Fora do Telegram: entrada por QR code, com e-mail e senha como alternativa. */
+function QrLoginEntry({ onSignedIn }: { onSignedIn(): void }) {
   const { exchangeToken, apiBaseUrl } = useAuth();
   const state = useQrLogin({ enabled: true, apiBaseUrl, exchangeToken, onSignedIn });
   return <QrLoginScreen state={state} emailForm={<EmailLoginForm onSignedIn={onSignedIn} />} note={<InviteNote />} />;
 }
 
+/** Escolhe a forma de entrada (Telegram ou QR) e volta para `next` depois de entrar. */
 function EntrarContent() {
   const { telegram } = useAuth();
   // Só decide depois de montar: dentro do Telegram o initData só é lido num efeito do provedor, e criar um
@@ -44,12 +46,14 @@ function EntrarContent() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const router = useRouter();
-  const params = useSearchParams();
-  const onSignedIn = () => router.replace(safeNext(params.get("next")));
+  const searchParams = useSearchParams();
+  // `safeNext` só aceita caminhos internos: evita redirecionamento aberto para outro site.
+  const onSignedIn = () => router.replace(safeNext(searchParams.get("next")));
   if (!mounted) return <div className="mini nx-auth" aria-hidden="true" />;
-  return telegram.available ? <EmailOnly onSignedIn={onSignedIn} /> : <QrEntrar onSignedIn={onSignedIn} />;
+  return telegram.available ? <EmailOnlyLogin onSignedIn={onSignedIn} /> : <QrLoginEntry onSignedIn={onSignedIn} />;
 }
 
+/** Tela de entrada. Suspense é exigido pelo Next para usar `useSearchParams` em página estática. */
 export default function EntrarPage() {
   return (
     <Suspense fallback={null}>

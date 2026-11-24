@@ -16,21 +16,21 @@ type AuthResponse = {
 export type AuthClient = {
   auth: {
     getSession(): Promise<{ data: { session: AuthSession | null } }>;
-    onAuthStateChange(cb: (event: string, session: AuthSession | null) => void): {
+    onAuthStateChange(callback: (event: string, session: AuthSession | null) => void): {
       data: { subscription: { unsubscribe(): void } };
     };
-    signInWithPassword(c: { email: string; password: string }): Promise<AuthResponse>;
+    signInWithPassword(credentials: { email: string; password: string }): Promise<AuthResponse>;
     resetPasswordForEmail(
       email: string,
-      o?: { redirectTo?: string },
+      options?: { redirectTo?: string },
     ): Promise<{ error: AuthApiError | null }>;
     updateUser(attrs: {
       password?: string;
       data?: { display_name: string | null };
     }): Promise<{ error: AuthApiError | null }>;
     /** Troca o token de uso único da API (login pelo Telegram) por uma sessão. */
-    verifyOtp(p: { token_hash: string; type: "magiclink" }): Promise<AuthResponse>;
-    signOut(o?: { scope: "local" | "global" | "others" }): Promise<{ error: AuthApiError | null }>;
+    verifyOtp(params: { token_hash: string; type: "magiclink" }): Promise<AuthResponse>;
+    signOut(options?: { scope: "local" | "global" | "others" }): Promise<{ error: AuthApiError | null }>;
   };
 };
 
@@ -44,8 +44,12 @@ export function readSupabaseEnv(): SupabaseEnv {
   };
 }
 
+/** API usada em desenvolvimento quando `NEXT_PUBLIC_API_URL` não está definida. */
+const DEFAULT_API_URL = "http://localhost:3001";
+
+/** Endereço da API: a variável de ambiente, ou a API local de desenvolvimento. */
 export function readApiUrl(value: string | undefined = process.env.NEXT_PUBLIC_API_URL): string {
-  return value !== undefined && value !== "" ? value : "http://localhost:3001";
+  return value !== undefined && value !== "" ? value : DEFAULT_API_URL;
 }
 
 /** Valida as variáveis só ao criar o cliente (nunca na importação). */

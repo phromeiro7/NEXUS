@@ -22,6 +22,12 @@ import type {
   UpdateTaskInput,
 } from '@nexus/shared';
 
+const HTTP_NO_CONTENT = 204;
+const HTTP_UNAUTHORIZED = 401;
+/** Status usado quando a requisição nem chegou ao servidor (sem resposta HTTP). */
+const NETWORK_FAILURE_STATUS = 0;
+
+/** Erro de uma chamada à API: status HTTP, código do corpo (`{ error: "..." }`) e o corpo cru. */
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -40,44 +46,49 @@ export type ApiClientOptions = {
   fetch?: typeof fetch;
 };
 
-function codeOf(body: unknown): string {
+function errorCodeOf(body: unknown): string {
   if (typeof body === 'object' && body !== null && 'error' in body) {
-    const e = (body as { error: unknown }).error;
-    if (typeof e === 'string') return e;
+    const code = (body as { error: unknown }).error;
+    if (typeof code === 'string') return code;
   }
   return 'desconhecido';
 }
 
 /** Ordem fixa dos parâmetros para URLs estáveis. */
-function tasksQueryString(q: ListTasksQuery): string {
+function tasksQueryString(query: ListTasksQuery): string {
   const params = new URLSearchParams();
-  if (q.from !== undefined) params.set('from', q.from);
-  if (q.to !== undefined) params.set('to', q.to);
-  if (q.status !== undefined && q.status.length > 0) params.set('status', q.status.join(','));
-  if (q.withoutDate !== undefined) params.set('withoutDate', String(q.withoutDate));
-  const s = params.toString();
-  return s === '' ? '' : `?${s}`;
+  if (query.from !== undefined) params.set('from', query.from);
+  if (query.to !== undefined) params.set('to', query.to);
+  if (query.status !== undefined && query.status.length > 0) params.set('status', query.status.join(','));
+  if (query.withoutDate !== undefined) params.set('withoutDate', String(query.withoutDate));
+  const queryString = params.toString();
+  return queryString === '' ? '' : `?${queryString}`;
 }
 
 export type FinanceListQuery = { from?: IsoDate; to?: IsoDate; status?: FinanceStatus };
 
-function financeQueryString(q: FinanceListQuery): string {
+function financeQueryString(query: FinanceListQuery): string {
   const params = new URLSearchParams();
-  if (q.from !== undefined) params.set('from', q.from);
-  if (q.to !== undefined) params.set('to', q.to);
-  if (q.status !== undefined) params.set('status', q.status);
-  const s = params.toString();
-  return s === '' ? '' : `?${s}`;
+  if (query.from !== undefined) params.set('from', query.from);
+  if (query.to !== undefined) params.set('to', query.to);
+  if (query.status !== undefined) params.set('status', query.status);
+  const queryString = params.toString();
+  return queryString === '' ? '' : `?${queryString}`;
 }
 
-export function createApiClient(opts: ApiClientOptions) {
-  const doFetch = opts.fetch ?? ((...args: Parameters<typeof fetch>) => fetch(...args));
+/**
+ * Cliente tipado da API do Nexus. Toda chamada leva o token da sessão; sem token (ou com 401) avisa
+ * `onUnauthorized` para a tela levar a pessoa ao login. Falhas viram sempre `ApiError`.
+ */
+export function createApiClient(options: ApiClientOptions) {
+  // Sem `fetch` injetado, busca o global no momento de cada chamada (não na criação do cliente).
+  const doFetch = options.fetch ?? ((...args: Parameters<typeof fetch>) => fetch(...args));
 
   async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-    const token = await opts.getToken();
+    const token = await options.getToken();
     if (token === null) {
-      opts.onUnauthorized();
-      throw new ApiError(401, 'nao_autenticado', null);
+      options.onUnauthorized();
+      throw new ApiError(HTTP_UNAUTHORIZED, 'nao_autenticado', null);
     }
     const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
     const init: RequestInit = { method, headers };
@@ -86,25 +97,26 @@ export function createApiClient(opts: ApiClientOptions) {
       init.body = JSON.stringify(body);
     }
 
-    let res: Response;
+    let response: Response;
     try {
-      res = await doFetch(`${opts.baseUrl}${path}`, init);
+      response = await doFetch(`${options.baseUrl}${path}`, init);
     } catch (cause) {
-      throw new ApiError(0, 'rede', cause);
+      throw new ApiError(NETWORK_FAILURE_STATUS, 'rede', cause);
     }
 
-    if (res.status === 204) return undefined as T;
+    if (response.status === HTTP_NO_CONTENT) return undefined as T;
 
+    // Corpo que não é JSON (ex.: página de erro do proxy) vira null em vez de quebrar a chamada.
     let payload: unknown = null;
     try {
-      payload = await res.json();
+      payload = await response.json();
     } catch {
       payload = null;
     }
 
-    if (!res.ok) {
-      if (res.status === 401) opts.onUnauthorized();
-      throw new ApiError(res.status, codeOf(payload), payload);
+    if (!response.ok) {
+      if (response.status === HTTP_UNAUTHORIZED) options.onUnauthorized();
+      throw new ApiError(response.status, errorCodeOf(payload), payload);
     }
     return payload as T;
   }

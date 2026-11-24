@@ -3,8 +3,9 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ProfileRepository } from '../application/ports.js';
 import { definedOnly, toHourMinute } from './mappers.js';
 
-const COLUMNS = 'timezone, early_reminder_minutes, briefing_time, telegram_chat_id, channel_paused';
+const SETTINGS_COLUMNS = 'timezone, early_reminder_minutes, briefing_time, telegram_chat_id, channel_paused';
 
+/** Linha de `profiles` -> configurações do usuário (o chat em si nunca sai daqui, só se está vinculado). */
 function settingsFromRow(row: Record<string, unknown>): SettingsDto {
   return {
     timezone: row.timezone as string,
@@ -15,9 +16,10 @@ function settingsFromRow(row: Record<string, unknown>): SettingsDto {
   };
 }
 
+/** Configurações do usuário guardadas em `profiles` (uma linha por conta, `id` = id do usuário). */
 export function createSupabaseProfileRepository(client: SupabaseClient): ProfileRepository {
   const get: ProfileRepository['get'] = async (userId) => {
-    const { data, error } = await client.from('profiles').select(COLUMNS).eq('id', userId).maybeSingle();
+    const { data, error } = await client.from('profiles').select(SETTINGS_COLUMNS).eq('id', userId).maybeSingle();
     if (error) throw new Error(`Falha ao ler configurações: ${error.message}`);
     if (!data) throw new Error('Falha ao ler configurações: perfil não encontrado');
     return settingsFromRow(data);
@@ -27,17 +29,18 @@ export function createSupabaseProfileRepository(client: SupabaseClient): Profile
     get,
 
     async update(userId, patch) {
-      const values = definedOnly({
+      const changedColumns = definedOnly({
         timezone: patch.timezone,
         early_reminder_minutes: patch.earlyReminderMinutes,
         briefing_time: patch.briefingTime,
       });
-      if (Object.keys(values).length === 0) return get(userId);
+      // Nada para mudar: devolve o estado atual sem escrever.
+      if (Object.keys(changedColumns).length === 0) return get(userId);
       const { data, error } = await client
         .from('profiles')
-        .update(values)
+        .update(changedColumns)
         .eq('id', userId)
-        .select(COLUMNS)
+        .select(SETTINGS_COLUMNS)
         .maybeSingle();
       if (error) throw new Error(`Falha ao atualizar configurações: ${error.message}`);
       if (!data) throw new Error('Falha ao atualizar configurações: perfil não encontrado');

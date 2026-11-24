@@ -5,7 +5,7 @@ import { useFinance, useLocalImport } from "@/hooks/finance";
 /** Avisos do controle financeiro: falha ao carregar/salvar e a importação única dos dados deste aparelho. */
 export function FinanceNotice() {
   const finance = useFinance();
-  const local = useLocalImport();
+  const localImport = useLocalImport();
 
   return (
     <>
@@ -25,22 +25,22 @@ export function FinanceNotice() {
           </button>
         </div>
       )}
-      {local.count > 0 && (
+      {localImport.count > 0 && (
         <section className="mini-alert" aria-label="Lançamentos deste aparelho">
           <p style={{ margin: 0 }}>
-            {local.count === 1 ? "Há 1 lançamento" : `Há ${local.count} lançamentos`} salvo{local.count === 1 ? "" : "s"} só neste
+            {localImport.count === 1 ? "Há 1 lançamento" : `Há ${localImport.count} lançamentos`} salvo{localImport.count === 1 ? "" : "s"} só neste
             aparelho. Importe para vê-los em qualquer lugar.
           </p>
-          {local.failed && (
+          {localImport.failed && (
             <p role="alert" className="mini-fielderr" style={{ marginTop: 8 }}>
               Não deu para importar agora. Tente de novo: o que já foi não se repete.
             </p>
           )}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-            <button type="button" className="mini-btn primary" disabled={local.importing} onClick={() => void local.importar()}>
-              {local.importing ? "Importando…" : "Importar para a sua conta"}
+            <button type="button" className="mini-btn primary" disabled={localImport.importing} onClick={() => void localImport.importar()}>
+              {localImport.importing ? "Importando…" : "Importar para a sua conta"}
             </button>
-            <button type="button" className="mini-btn quiet" disabled={local.importing} onClick={local.descartar}>
+            <button type="button" className="mini-btn quiet" disabled={localImport.importing} onClick={localImport.descartar}>
               Descartar do aparelho
             </button>
           </div>

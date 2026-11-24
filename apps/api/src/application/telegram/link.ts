@@ -6,20 +6,21 @@ import type { Clock, LinkCodeRepository } from '../ports.js';
 /** Sem caracteres ambíguos (0/O, 1/I/L). 31 símbolos. */
 export const LINK_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 export const LINK_CODE_LENGTH = 8;
+/** Validade do código: curta, porque quem o tiver liga o próprio Telegram à conta. */
 export const LINK_CODE_TTL_MS = 10 * 60_000;
 /** Colisões de código: a nova tentativa usa SEMPRE um código novo (1 tentativa + até 3 repetições). */
 const MAX_COLLISION_RETRIES = 3;
 /** Maior múltiplo de 31 abaixo de 256: bytes >= 248 são descartados (sem viés de módulo). */
-const ACCEPT_BELOW = Math.floor(256 / LINK_CODE_ALPHABET.length) * LINK_CODE_ALPHABET.length;
+const ACCEPTED_BYTE_LIMIT = Math.floor(256 / LINK_CODE_ALPHABET.length) * LINK_CODE_ALPHABET.length;
 /** Proteção contra uma fonte de bytes quebrada que só devolve valores rejeitados. */
-const MAX_ROUNDS = 64;
+const MAX_RANDOM_ROUNDS = 64;
 
 /** Código de vínculo por amostragem com rejeição sobre bytes aleatórios criptográficos. */
-export function generateCode(randomBytes: (n: number) => Uint8Array, length: number = LINK_CODE_LENGTH): string {
+export function generateCode(randomBytes: (byteCount: number) => Uint8Array, length: number = LINK_CODE_LENGTH): string {
   let code = '';
-  for (let round = 0; round < MAX_ROUNDS && code.length < length; round++) {
+  for (let round = 0; round < MAX_RANDOM_ROUNDS && code.length < length; round++) {
     for (const byte of randomBytes(length - code.length)) {
-      if (byte < ACCEPT_BELOW) code += LINK_CODE_ALPHABET[byte % LINK_CODE_ALPHABET.length];
+      if (byte < ACCEPTED_BYTE_LIMIT) code += LINK_CODE_ALPHABET[byte % LINK_CODE_ALPHABET.length];
       if (code.length === length) break;
     }
   }
@@ -27,13 +28,14 @@ export function generateCode(randomBytes: (n: number) => Uint8Array, length: num
   return code;
 }
 
+/** Casos de uso do vínculo pelo painel: gerar o código de `/start` e desvincular o Telegram. */
 export function makeLinkUseCases(deps: {
   links: LinkCodeRepository;
   botUsername: string | undefined;
   clock: Clock;
-  randomBytes?: (n: number) => Uint8Array;
+  randomBytes?: (byteCount: number) => Uint8Array;
 }) {
-  const randomBytes = deps.randomBytes ?? ((n: number) => nodeRandomBytes(n));
+  const randomBytes = deps.randomBytes ?? ((byteCount: number) => nodeRandomBytes(byteCount));
 
   return {
     /** Gera um código de uso único (substitui os anteriores do usuário), válido por 10 minutos. */

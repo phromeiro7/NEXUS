@@ -2,7 +2,11 @@ import type { IsoDate, TaskDto, UpdateTaskInput } from "@nexus/shared";
 import { addDays, daysBetween, formatShort, weekRange } from "./dates";
 import { spokenTime } from "./mini-tasks";
 
+/** Atalhos de adiar: para amanhã, para a próxima segunda ou uma semana depois. */
 export type PostponeKind = "amanha" | "segunda" | "semana";
+
+const DAYS_PER_WEEK = 7;
+const HOURS_PER_DAY = 24;
 
 /** Só tarefa aberta se adia; concluída e cancelada não mostram o atalho. */
 export function canPostpone(task: TaskDto): boolean {
@@ -16,13 +20,14 @@ export function postponeBase(dueDate: IsoDate | null, today: IsoDate): IsoDate {
 
 /** Primeira segunda-feira depois de `date` (nunca a própria data). */
 export function nextMonday(date: IsoDate): IsoDate {
-  return addDays(weekRange(date).from, 7);
+  return addDays(weekRange(date).from, DAYS_PER_WEEK);
 }
 
+/** Nova data para o atalho escolhido, contada a partir de `postponeBase`. */
 export function postponeDate(kind: PostponeKind, dueDate: IsoDate | null, today: IsoDate): IsoDate {
   const base = postponeBase(dueDate, today);
   if (kind === "amanha") return addDays(base, 1);
-  if (kind === "semana") return addDays(base, 7);
+  if (kind === "semana") return addDays(base, DAYS_PER_WEEK);
   return nextMonday(base);
 }
 
@@ -36,21 +41,23 @@ export function restoreInput(task: TaskDto): UpdateTaskInput {
   return { dueDate: task.dueDate, dueTime: task.dueTime };
 }
 
-const WEEKDAY = new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC", weekday: "long" });
+/** Formatador reaproveitado; em UTC porque as datas abaixo são meia-noite UTC. */
+const WEEKDAY_FORMAT = new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC", weekday: "long" });
 
-function utc(date: IsoDate): Date {
-  const [y, m, d] = date.split("-").map(Number) as [number, number, number];
-  return new Date(Date.UTC(y, m - 1, d));
+function toUtcDate(date: IsoDate): Date {
+  const [year, month, day] = date.split("-").map(Number) as [number, number, number];
+  return new Date(Date.UTC(year, month - 1, day));
 }
 
 /** "hoje", "amanhã" ou "segunda-feira, 09/11": sempre com a data quando não é hoje nem amanhã. */
 export function dateWords(date: IsoDate, today: IsoDate): string {
-  const diff = daysBetween(today, date);
-  if (diff === 0) return "hoje";
-  if (diff === 1) return "amanhã";
-  return `${WEEKDAY.format(utc(date))}, ${formatShort(date)}`;
+  const daysFromToday = daysBetween(today, date);
+  if (daysFromToday === 0) return "hoje";
+  if (daysFromToday === 1) return "amanhã";
+  return `${WEEKDAY_FORMAT.format(toUtcDate(date))}, ${formatShort(date)}`;
 }
 
+/** Um botão de adiar: a data que ele aplica e os textos visível e para leitores de tela. */
 export type PostponeShortcut = { kind: PostponeKind; date: IsoDate; label: string; ariaLabel: string };
 
 /**
@@ -60,22 +67,21 @@ export type PostponeShortcut = { kind: PostponeKind; date: IsoDate; label: strin
 export function postponeShortcuts(task: TaskDto, today: IsoDate, withWeek = false): PostponeShortcut[] {
   if (!canPostpone(task)) return [];
   const kinds: PostponeKind[] = withWeek ? ["amanha", "segunda", "semana"] : ["amanha", "segunda"];
-  const out: PostponeShortcut[] = [];
+  const shortcuts: PostponeShortcut[] = [];
   for (const kind of kinds) {
     const date = postponeDate(kind, task.dueDate, today);
-    if (out.some((s) => s.date === date)) continue;
+    if (shortcuts.some((shortcut) => shortcut.date === date)) continue;
     const words = dateWords(date, today);
-    const label =
-      kind === "segunda"
-        ? "Próxima segunda"
-        : kind === "semana"
-          ? "Daqui a 1 semana"
-          : daysBetween(today, date) === 1
-            ? "Amanhã"
-            : `Dia ${formatShort(date)}`;
-    out.push({ kind, date, label, ariaLabel: `Adiar para ${words}: ${task.title}` });
+    shortcuts.push({ kind, date, label: shortcutLabel(kind, date, today), ariaLabel: `Adiar para ${words}: ${task.title}` });
   }
-  return out;
+  return shortcuts;
+}
+
+/** "Amanhã" só quando a data é mesmo amanhã: adiar uma tarefa futura cai no dia seguinte a ela. */
+function shortcutLabel(kind: PostponeKind, date: IsoDate, today: IsoDate): string {
+  if (kind === "segunda") return "Próxima segunda";
+  if (kind === "semana") return "Daqui a 1 semana";
+  return daysBetween(today, date) === 1 ? "Amanhã" : `Dia ${formatShort(date)}`;
 }
 
 /** Aviso depois de adiar: ação e data explícitas, sem bronca. Prazo fatal diz que é o prazo que mudou. */
@@ -86,26 +92,31 @@ export function postponeMessage(task: TaskDto, input: { dueDate?: IsoDate | null
   return task.fatal ? `Prazo fatal movido para ${when}: ${task.title}.` : `Adiada para ${when}: ${task.title}.`;
 }
 
+/** Uma opção do menu de adiar: chave estável, texto e o que enviar à API. */
 export type PostponeOption = { key: string; label: string; input: UpdateTaskInput & { dueDate: IsoDate } };
 
+/** Uma hora depois; passar da meia-noite leva a tarefa para o dia seguinte. */
 function plusOneHour(date: IsoDate, time: string): { dueDate: IsoDate; dueTime: string } {
-  const [h = 0, m = 0] = time.split(":").map(Number);
-  const next = h + 1;
-  const dueTime = `${String(next % 24).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-  return { dueDate: next >= 24 ? addDays(date, 1) : date, dueTime };
+  const [hour = 0, minutes = 0] = time.split(":").map(Number);
+  const nextHour = hour + 1;
+  const dueTime = `${String(nextHour % HOURS_PER_DAY).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+  return { dueDate: nextHour >= HOURS_PER_DAY ? addDays(date, 1) : date, dueTime };
 }
 
 /** Opções de adiar que fazem sentido para a tarefa; sempre com data e hora explícitas. */
 export function postponeOptions(task: TaskDto, today: IsoDate): PostponeOption[] {
-  const out: PostponeOption[] = [];
+  const options: PostponeOption[] = [];
+  // "Daqui a 1 hora" só para tarefa de hoje com horário.
   if (task.dueDate !== null && task.dueTime !== null && task.dueDate === today) {
-    out.push({ key: "hora", label: "Daqui a 1 hora", input: plusOneHour(task.dueDate, task.dueTime) });
+    options.push({ key: "hora", label: "Daqui a 1 hora", input: plusOneHour(task.dueDate, task.dueTime) });
   }
-  if (task.dueDate === null || task.dueDate < today) {
-    out.push({ key: "hoje", label: "Mover para hoje", input: { dueDate: today } });
+  const isUndatedOrOverdue = task.dueDate === null || task.dueDate < today;
+  if (isUndatedOrOverdue) {
+    options.push({ key: "hoje", label: "Mover para hoje", input: { dueDate: today } });
   }
-  for (const s of postponeShortcuts(task, today, true)) {
-    out.push({ key: s.kind, label: s.label, input: { dueDate: s.date, ...(task.dueTime !== null ? { dueTime: task.dueTime } : {}) } });
+  for (const shortcut of postponeShortcuts(task, today, true)) {
+    const keepTime = task.dueTime !== null ? { dueTime: task.dueTime } : {};
+    options.push({ key: shortcut.kind, label: shortcut.label, input: { dueDate: shortcut.date, ...keepTime } });
   }
-  return out;
+  return options;
 }

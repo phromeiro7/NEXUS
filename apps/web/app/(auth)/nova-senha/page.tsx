@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { AuthCard, AuthForm, Field } from "@/components/auth-form";
 import { useAuth } from "@/components/auth-provider";
 
-const MIN_PASSWORD = 8;
+const MIN_PASSWORD_LENGTH = 8;
 
 /**
  * Destino do link de recuperação. O supabase-js lê o token do fragmento da URL e cria a
@@ -21,33 +21,34 @@ export default function NovaSenhaPage() {
   // Erro de link na URL (link expirado/usado): só a presença importa; o conteúdo nunca é
   // exibido nem registrado. Lido após a montagem para não divergir da renderização no servidor.
   useEffect(() => {
-    const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-    setHashError(params.has("error") || params.has("error_code") || params.has("error_description"));
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    setHashError(hashParams.has("error") || hashParams.has("error_code") || hashParams.has("error_description"));
     setHashChecked(true);
   }, []);
   const router = useRouter();
   const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
+  const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
-  const busy = useRef(false);
+  // Trava síncrona contra envio duplo: o estado `submitting` só reflete na próxima renderização.
+  const submittingRef = useRef(false);
 
-  async function onSubmit() {
-    if (busy.current) return;
+  async function submitNewPassword() {
+    if (submittingRef.current) return;
     setError(null);
-    if (password.length < MIN_PASSWORD) {
-      setError(`A senha deve ter pelo menos ${MIN_PASSWORD} caracteres.`);
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setError(`A senha deve ter pelo menos ${MIN_PASSWORD_LENGTH} caracteres.`);
       return;
     }
-    if (password !== confirm) {
+    if (password !== passwordConfirmation) {
       setError("As senhas não conferem.");
       return;
     }
-    busy.current = true;
+    submittingRef.current = true;
     setSubmitting(true);
     const result = await updatePassword(password);
-    busy.current = false;
+    submittingRef.current = false;
     setSubmitting(false);
     if (result.error !== null) {
       setError(result.error);
@@ -101,7 +102,7 @@ export default function NovaSenhaPage() {
   return (
     <AuthCard title="Nova senha">
       <AuthForm
-        onSubmit={() => void onSubmit()}
+        onSubmit={() => void submitNewPassword()}
         error={error}
         submitting={submitting}
         submitLabel="Salvar nova senha"
@@ -119,11 +120,11 @@ export default function NovaSenhaPage() {
           id="confirm"
           label="Confirmar senha"
           type="password"
-          value={confirm}
-          onChange={setConfirm}
+          value={passwordConfirmation}
+          onChange={setPasswordConfirmation}
           autoComplete="new-password"
         />
-        <p className="nx-note">Mínimo de {MIN_PASSWORD} caracteres.</p>
+        <p className="nx-note">Mínimo de {MIN_PASSWORD_LENGTH} caracteres.</p>
       </AuthForm>
       {done && (
         <p role="status" className="nx-ok">

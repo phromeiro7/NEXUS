@@ -22,10 +22,13 @@ import {
 import { messageFor } from "@/lib/messages";
 import { useShortcuts } from "./shortcuts";
 
-const EXAMPLES = ["Pagar a conta de internet amanhã às 10h", "Reunião com a equipe sexta 9h30", "Gastei 45 no mercado"];
-const HELP_TEXT = "Tente: gastei 45 no mercado · recebi 800 de um serviço · reunião com a equipe sexta 9h30";
+const EXAMPLE_PHRASES = ["Pagar a conta de internet amanhã às 10h", "Reunião com a equipe sexta 9h30", "Gastei 45 no mercado"];
+/** Limite de caracteres da frase digitada na barra. */
+const CAPTURE_MAX_LENGTH = 500;
+const NOT_UNDERSTOOD_HINT = "Tente: gastei 45 no mercado · recebi 800 de um serviço · reunião com a equipe sexta 9h30";
 
-type Open = { proposal: CaptureProposalDto; today: IsoDate };
+/** Proposta aberta para confirmação, com o "hoje" da API (no fuso da conta) usado para interpretá-la. */
+type OpenProposal = { proposal: CaptureProposalDto; today: IsoDate };
 
 /**
  * Barra de captura do painel (Hoje e Finanças). A frase vai para a API, que a lê com as mesmas regras do bot;
@@ -38,72 +41,75 @@ export function CaptureBar() {
   const removeTask = useDeleteTask();
   const toast = useToast();
   const { registerCapture, helpOpen, toggleHelp } = useShortcuts();
-  const field = useRef<HTMLInputElement>(null);
-  const busy = useRef(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  // Trava síncrona: evita duas interpretações simultâneas (Enter repetido, clique em exemplo durante a espera).
+  const interpretingRef = useRef(false);
   const [text, setText] = useState("");
-  const [open, setOpen] = useState<Open | null>(null);
+  const [openProposal, setOpenProposal] = useState<OpenProposal | null>(null);
   const [editing, setEditing] = useState(false);
-  const [miss, setMiss] = useState(false);
+  const [notUnderstood, setNotUnderstood] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [understanding, setUnderstanding] = useState(false);
-  const [seq, setSeq] = useState(0);
-  const actions = useRef<HTMLDivElement>(null);
+  // Conta as propostas abertas: muda a cada nova, mesmo que o conteúdo seja igual, e dispara o foco abaixo.
+  const [proposalSequence, setProposalSequence] = useState(0);
+  const actionsRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => registerCapture(() => field.current?.focus()), [registerCapture]);
+  // O atalho "/" do painel foca este campo.
+  useEffect(() => registerCapture(() => inputRef.current?.focus()), [registerCapture]);
 
   // Quando uma proposta nova abre, o foco vai para a primeira ação possível (Confirmar; Editar se ainda falta o dia).
   useEffect(() => {
-    if (seq > 0) actions.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
-  }, [seq]);
+    if (proposalSequence > 0) actionsRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
+  }, [proposalSequence]);
 
   function reset() {
     setText("");
-    setOpen(null);
+    setOpenProposal(null);
     setEditing(false);
-    setMiss(false);
+    setNotUnderstood(false);
     setError(null);
   }
 
   async function interpret(value: string) {
-    if (busy.current || value.trim() === "") return;
-    busy.current = true;
+    if (interpretingRef.current || value.trim() === "") return;
+    interpretingRef.current = true;
     setUnderstanding(true);
     setError(null);
-    setMiss(false);
+    setNotUnderstood(false);
     setEditing(false);
     try {
       const result = await api.interpretCapture({ text: value.trim() });
       if (result.proposal === null) {
-        setOpen(null);
-        setMiss(true);
+        setOpenProposal(null);
+        setNotUnderstood(true);
       } else {
-        setOpen({ proposal: result.proposal, today: result.today });
-        setSeq((n) => n + 1);
+        setOpenProposal({ proposal: result.proposal, today: result.today });
+        setProposalSequence((sequence) => sequence + 1);
       }
-    } catch (err) {
-      setOpen(null);
-      setError(messageFor(err));
+    } catch (caughtError) {
+      setOpenProposal(null);
+      setError(messageFor(caughtError));
     } finally {
-      busy.current = false;
+      interpretingRef.current = false;
       setUnderstanding(false);
     }
   }
 
-  function submit(e: FormEvent) {
-    e.preventDefault();
-    if (empty) {
-      field.current?.focus();
+  function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    if (isEmpty) {
+      inputRef.current?.focus();
       return;
     }
     void interpret(text);
   }
 
-  async function confirm() {
-    if (open === null || saving) return;
-    const creation = toCreation(open.proposal, open.today);
+  async function confirmProposal() {
+    if (openProposal === null || saving) return;
+    const creation = toCreation(openProposal.proposal, openProposal.today);
     if (creation === null) return;
-    const summary = proposalSummary(open.proposal, open.today);
+    const summary = proposalSummary(openProposal.proposal, openProposal.today);
     setSaving(true);
     setError(null);
     try {
@@ -111,6 +117,7 @@ export function CaptureBar() {
         const task = await createTask.mutateAsync(creation.input);
         toast({ message: `Anotado: ${summary}.`, undo: () => void removeTask.mutateAsync(task.id) });
       } else {
+        // Lançamentos financeiros ficam no aparelho (useFinance); `add` devolve null se o valor for inválido.
         const created = finance.add(creation.input);
         if (created === null) {
           setError("Não foi possível anotar. Confira o valor e tente de novo.");
@@ -119,18 +126,18 @@ export function CaptureBar() {
         toast({ message: `Anotado: ${summary}.`, undo: () => finance.remove(created.id) });
       }
       reset();
-      field.current?.focus();
-    } catch (err) {
-      setError(messageFor(err));
+      inputRef.current?.focus();
+    } catch (caughtError) {
+      setError(messageFor(caughtError));
     } finally {
       setSaving(false);
     }
   }
 
-  const proposal = open?.proposal ?? null;
+  const proposal = openProposal?.proposal ?? null;
   const note = proposal === null ? null : proposalNote(proposal);
-  const empty = text.trim() === "";
-  const showExamples = empty && open === null && !miss && !understanding;
+  const isEmpty = text.trim() === "";
+  const showExamples = isEmpty && openProposal === null && !notUnderstood && !understanding;
 
   return (
     <div className="pn-head">
@@ -143,23 +150,23 @@ export function CaptureBar() {
             Atalhos <kbd className="pn-kbd">?</kbd>
           </button>
         </div>
-        <form onSubmit={submit} className="pn-capture" role="search" aria-label="Anotar">
+        <form onSubmit={handleSubmit} className="pn-capture" role="search" aria-label="Anotar">
           <div className="pn-capture-field">
             <span className="pn-capture-plus" aria-hidden="true">
               <PlusIcon />
             </span>
             <input
-              ref={field}
+              ref={inputRef}
               id="pn-capture"
               className="mini-field pn-capture-input"
               value={text}
-              maxLength={500}
+              maxLength={CAPTURE_MAX_LENGTH}
               autoComplete="off"
               placeholder="Escreva uma tarefa ou um gasto"
               aria-describedby="pn-capture-hint"
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") reset();
+              onChange={(event) => setText(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") reset();
               }}
             />
             <kbd className="pn-kbd" aria-hidden="true">
@@ -178,7 +185,7 @@ export function CaptureBar() {
       {showExamples && (
         <div className="pn-examples">
           <span className="pn-sub">Exemplos:</span>
-          {EXAMPLES.map((example) => (
+          {EXAMPLE_PHRASES.map((example) => (
             <button
               key={example}
               type="button"
@@ -216,14 +223,14 @@ export function CaptureBar() {
 
       <div role="status" aria-live="polite" className="pn-live">
         {understanding && <p className="pn-sub">Entendendo o que você escreveu…</p>}
-        {miss && (
+        {notUnderstood && (
           <p>
-            <strong>Não entendi.</strong> <span className="pn-sub">{HELP_TEXT}</span>
+            <strong>Não entendi.</strong> <span className="pn-sub">{NOT_UNDERSTOOD_HINT}</span>
           </p>
         )}
-        {open !== null && proposal !== null && (
+        {openProposal !== null && proposal !== null && (
           <p className="pn-proposal-text">
-            <strong>Anotei:</strong> {proposalSummary(proposal, open.today)}
+            <strong>Anotei:</strong> {proposalSummary(proposal, openProposal.today)}
           </p>
         )}
       </div>
@@ -233,31 +240,37 @@ export function CaptureBar() {
         </p>
       )}
 
-      {open !== null && proposal !== null && (
+      {openProposal !== null && proposal !== null && (
         <section role="group" aria-label="Proposta" className="pn-proposal">
           {note !== null && <p className="pn-sub">{note}</p>}
-          <div className="pn-dialog-actions" ref={actions}>
-            <button type="button" className="mini-btn primary pn-small-btn" disabled={!canConfirm(proposal) || saving} onClick={() => void confirm()}>
+          <div className="pn-dialog-actions" ref={actionsRef}>
+            <button type="button" className="mini-btn primary pn-small-btn" disabled={!canConfirm(proposal) || saving} onClick={() => void confirmProposal()}>
               {saving ? "Anotando…" : "Confirmar"}
             </button>
-            <button type="button" className="mini-btn pn-small-btn" aria-expanded={editing} onClick={() => setEditing((v) => !v)}>
+            <button type="button" className="mini-btn pn-small-btn" aria-expanded={editing} onClick={() => setEditing((isEditing) => !isEditing)}>
               Editar
             </button>
             <button type="button" className="mini-btn pn-small-btn" onClick={reset}>
               Descartar
             </button>
           </div>
-          {editing && <EditChips open={open} onChange={(next) => setOpen({ ...open, proposal: next })} />}
+          {editing && (
+            <EditChips
+              openProposal={openProposal}
+              onChange={(nextProposal) => setOpenProposal({ ...openProposal, proposal: nextProposal })}
+            />
+          )}
         </section>
       )}
     </div>
   );
 }
 
-function EditChips({ open, onChange }: { open: Open; onChange: (p: CaptureProposalDto) => void }) {
-  const { proposal, today } = open;
+/** Ajustes rápidos da proposta antes de confirmar: categoria (só lançamentos), dia e horário. */
+function EditChips({ openProposal, onChange }: { openProposal: OpenProposal; onChange: (proposal: CaptureProposalDto) => void }) {
+  const { proposal, today } = openProposal;
   const categories = categoryOptions(proposal);
-  const category = proposal.kind === "tarefa" ? null : proposal.category;
+  const selectedCategory = proposal.kind === "tarefa" ? null : proposal.category;
   const days = dayOptions(proposal, today);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -265,9 +278,9 @@ function EditChips({ open, onChange }: { open: Open; onChange: (p: CapturePropos
         <div role="group" aria-label="Categoria" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <strong style={{ fontSize: "0.9375rem" }}>Categoria</strong>
           <div className="mini-chips">
-            {categories.map((c) => (
-              <button key={c} type="button" className="mini-chip" aria-pressed={category === c} onClick={() => onChange(withCategory(proposal, c))}>
-                {c}
+            {categories.map((category) => (
+              <button key={category} type="button" className="mini-chip" aria-pressed={selectedCategory === category} onClick={() => onChange(withCategory(proposal, category))}>
+                {category}
               </button>
             ))}
           </div>
@@ -276,9 +289,9 @@ function EditChips({ open, onChange }: { open: Open; onChange: (p: CapturePropos
       <div role="group" aria-label={proposal.kind === "conta" ? "Vencimento" : "Dia"} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         <strong style={{ fontSize: "0.9375rem" }}>{proposal.kind === "conta" ? "Vencimento" : "Dia"}</strong>
         <div className="mini-chips">
-          {days.map((d) => (
-            <button key={d.label} type="button" className="mini-chip" aria-pressed={proposal.date === d.date} onClick={() => onChange(withDay(proposal, d.date))}>
-              {d.label}
+          {days.map((dayOption) => (
+            <button key={dayOption.label} type="button" className="mini-chip" aria-pressed={proposal.date === dayOption.date} onClick={() => onChange(withDay(proposal, dayOption.date))}>
+              {dayOption.label}
             </button>
           ))}
         </div>
@@ -287,9 +300,9 @@ function EditChips({ open, onChange }: { open: Open; onChange: (p: CapturePropos
         <div role="group" aria-label="Horário" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <strong style={{ fontSize: "0.9375rem" }}>Horário</strong>
           <div className="mini-chips">
-            {timeOptions().map((t) => (
-              <button key={t.label} type="button" className="mini-chip" aria-pressed={proposal.time === t.time} onClick={() => onChange(withTime(proposal, t.time))}>
-                {t.label}
+            {timeOptions().map((timeOption) => (
+              <button key={timeOption.label} type="button" className="mini-chip" aria-pressed={proposal.time === timeOption.time} onClick={() => onChange(withTime(proposal, timeOption.time))}>
+                {timeOption.label}
               </button>
             ))}
           </div>
