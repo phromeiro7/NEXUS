@@ -20,8 +20,9 @@ export function BillItem({
   const isLate = isOverdue(bill, today);
   const isIncoming = bill.tipo === "entrada";
   // Para entradas o rótulo de vencimento fala em "chegar" em vez de "vencer".
+  // "Venceu" é trocado antes de "Vence": na ordem inversa, "Venceu" viraria "Chegau".
   const dueText = isIncoming
-    ? dueLabel(bill, today).replace("Vence", "Chega").replace("Venceu", "Chegava")
+    ? dueLabel(bill, today).replace("Venceu", "Chegava").replace("Vence", "Chega")
     : dueLabel(bill, today);
   return (
     <li className={`mini-item${isLate ? " late" : ""}`}
