@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createFakes } from '../../test/fakes.js';
 import { ChatAlreadyLinkedError, ConflictError, ForbiddenError, NotFoundError } from './errors.js';
-import { inviteStatus, makeAcceptInvite, makeInviteUseCases } from './invites.js';
+import { computeInviteStatus, makeAcceptInvite, makeInviteUseCases } from './invites.js';
 
 const NOW = new Date('2026-11-04T12:00:00.000Z');
 const ADMIN_CHAT = 111;
@@ -163,13 +163,13 @@ describe('invite removal', () => {
   });
 });
 
-describe('inviteStatus', () => {
+describe('computeInviteStatus', () => {
   it('prioritises used, then revoked, then expired', () => {
     const base = { code: 'X', createdBy: 'a', createdAt: NOW, expiresAt: new Date(NOW.getTime() - 1), revokedAt: NOW, usedAt: NOW };
-    expect(inviteStatus(base, NOW)).toBe('usado');
-    expect(inviteStatus({ ...base, usedAt: null }, NOW)).toBe('revogado');
-    expect(inviteStatus({ ...base, usedAt: null, revokedAt: null }, NOW)).toBe('expirado');
-    expect(inviteStatus({ ...base, usedAt: null, revokedAt: null, expiresAt: new Date(NOW.getTime() + 1) }, NOW)).toBe('ativo');
+    expect(computeInviteStatus(base, NOW)).toBe('usado');
+    expect(computeInviteStatus({ ...base, usedAt: null }, NOW)).toBe('revogado');
+    expect(computeInviteStatus({ ...base, usedAt: null, revokedAt: null }, NOW)).toBe('expirado');
+    expect(computeInviteStatus({ ...base, usedAt: null, revokedAt: null, expiresAt: new Date(NOW.getTime() + 1) }, NOW)).toBe('ativo');
   });
 });
 

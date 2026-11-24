@@ -5,7 +5,7 @@ import { makeFinanceUseCases } from '../finance.js';
 import type { ProcessMessageInput } from '../assistant/process-message.js';
 import { makeTaskUseCases } from '../tasks.js';
 import { dayText, formatMoney, makeCaptureFlow, spokenTime } from './capture.js';
-import { makeHandleTelegramUpdate } from './webhook.js';
+import { makeTelegramWebhookHandler } from './webhook.js';
 
 // Segunda-feira 2026-10-26, 10:00 em São Paulo.
 const NOW = new Date('2026-10-26T13:00:00Z');
@@ -57,7 +57,7 @@ function setup(opts: { assistantEnabled?: boolean; miniAppUrl?: string | null } 
     reply: 'resposta do assistente',
     affectedTasks: [],
   }));
-  const handle = makeHandleTelegramUpdate({
+  const handle = makeTelegramWebhookHandler({
     links: fakes.links,
     events: fakes.inboundEvents,
     confirmations: fakes.confirmations,

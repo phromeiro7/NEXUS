@@ -1,7 +1,7 @@
 import type { SettingsDto } from '@nexus/shared';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ProfileRepository } from '../application/ports.js';
-import { definedOnly, toHourMinute } from './mappers.js';
+import { omitUndefined, toHourMinute } from './mappers.js';
 
 const SETTINGS_COLUMNS = 'timezone, early_reminder_minutes, briefing_time, telegram_chat_id, channel_paused';
 
@@ -29,7 +29,7 @@ export function createSupabaseProfileRepository(client: SupabaseClient): Profile
     get,
 
     async update(userId, patch) {
-      const changedColumns = definedOnly({
+      const changedColumns = omitUndefined({
         timezone: patch.timezone,
         early_reminder_minutes: patch.earlyReminderMinutes,
         briefing_time: patch.briefingTime,

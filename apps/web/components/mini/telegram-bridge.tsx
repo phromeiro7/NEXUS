@@ -2,6 +2,7 @@
 
 import Script from "next/script";
 import { useCallback, useEffect } from "react";
+import { OUTSIDE_TELEGRAM_PLATFORM } from "@/lib/telegram-init";
 
 /** Parte da API `window.Telegram.WebApp` que o Mini App usa. */
 type WebApp = {
@@ -28,21 +29,19 @@ declare global {
 
 /** Cor de fundo do app em cada tema; o cabeçalho e o fundo do Telegram usam a mesma para não haver emenda. */
 const BACKGROUND_COLOR = { light: "#f5f6f2", dark: "#0e1f28" } as const;
-/** Valor de `platform` quando o SDK carrega num navegador comum, fora do Telegram. */
-const OUTSIDE_TELEGRAM_PLATFORM = "unknown";
 
 /**
  * Carrega o SDK do Telegram quando o app abre dentro dele e informa só o esquema claro/escuro.
  * Fora do Telegram nada acontece e vale prefers-color-scheme.
  */
-export function TelegramBridge({ onScheme }: { onScheme: (scheme: "light" | "dark") => void }) {
+export function TelegramBridge({ onColorSchemeChange }: { onColorSchemeChange: (scheme: "light" | "dark") => void }) {
   /** Avisa o Telegram que o app está pronto, abre em tela cheia e acompanha o tema. Devolve a limpeza. */
   const attachToTelegram = useCallback(() => {
     const webApp = window.Telegram?.WebApp;
     // Fora do Telegram o SDK carrega mesmo assim (platform "unknown"): vale prefers-color-scheme.
     if (!webApp || webApp.platform === OUTSIDE_TELEGRAM_PLATFORM) return () => {};
     const applyColorScheme = () => {
-      onScheme(webApp.colorScheme);
+      onColorSchemeChange(webApp.colorScheme);
       webApp.setHeaderColor?.(BACKGROUND_COLOR[webApp.colorScheme]);
       webApp.setBackgroundColor?.(BACKGROUND_COLOR[webApp.colorScheme]);
     };
@@ -51,7 +50,7 @@ export function TelegramBridge({ onScheme }: { onScheme: (scheme: "light" | "dar
     applyColorScheme();
     webApp.onEvent?.("themeChanged", applyColorScheme);
     return () => webApp.offEvent?.("themeChanged", applyColorScheme);
-  }, [onScheme]);
+  }, [onColorSchemeChange]);
 
   // Cobre o caso de o SDK já estar carregado (navegação no cliente); o onReady do Script cobre a primeira carga.
   useEffect(() => attachToTelegram(), [attachToTelegram]);

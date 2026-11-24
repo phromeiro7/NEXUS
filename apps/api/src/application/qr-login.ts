@@ -1,6 +1,6 @@
 import { createHash, randomBytes as nodeRandomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { QR_LOGIN_START_PREFIX, type QrLoginCreateResultDto, type QrLoginStatusDto } from '@nexus/shared';
-import { browserLabel } from '../domain/browser-label.js';
+import { describeBrowser } from '../domain/browser-label.js';
 import { NotFoundError, TelegramAuthError } from './errors.js';
 import type { Clock, ProfileRepository, QrLoginRepository, SessionIssuer } from './ports.js';
 import type { RateLimiter } from './telegram/rate-limit.js';
@@ -80,8 +80,8 @@ export function makeQrLogin(deps: QrLoginDeps) {
       await deps.requests.create({
         id,
         nonceHash: sha256Hex(nonce),
-        pollHash: sha256Hex(pollSecret),
-        clientLabel: browserLabel(input.userAgent),
+        pollSecretHash: sha256Hex(pollSecret),
+        clientLabel: describeBrowser(input.userAgent),
         createdAt: now,
         expiresAt,
       });
@@ -108,11 +108,11 @@ export function makeQrLogin(deps: QrLoginDeps) {
 
       const now = deps.clock.now();
       const record = await deps.requests.get(input.id);
-      const pollHash = sha256Hex(input.pollSecret);
+      const pollSecretHash = sha256Hex(input.pollSecret);
       // Comparação em tempo constante: não vaza, pelo tempo de resposta, quanto do segredo acertou.
       if (
         record === null ||
-        !timingSafeEqual(Buffer.from(record.pollHash, 'hex'), Buffer.from(pollHash, 'hex'))
+        !timingSafeEqual(Buffer.from(record.pollSecretHash, 'hex'), Buffer.from(pollSecretHash, 'hex'))
       ) {
         throw new NotFoundError('login');
       }
@@ -122,7 +122,7 @@ export function makeQrLogin(deps: QrLoginDeps) {
       if (record.status !== 'aprovado') return { status: record.status, expiresAt };
 
       // Aprovado: só uma consulta ganha o usuário. Quem perde já não pode receber o token.
-      const userId = await deps.requests.consume(record.id, pollHash, now);
+      const userId = await deps.requests.consume(record.id, pollSecretHash, now);
       if (userId === null) throw new TelegramAuthError('ja_utilizado');
       let session: { tokenHash: string } | null;
       try {

@@ -1,6 +1,6 @@
 import type { IsoDate } from '@nexus/shared';
 import { describe, expect, it } from 'vitest';
-import { buildReminders, HoraInvalidaError, resolveDefaultReminderTime } from './reminders.js';
+import { buildReminders, InvalidLocalTimeError, resolveDefaultReminderTime } from './reminders.js';
 import type { LocalToUtcResult } from './timezone.js';
 
 const d = (s: string): IsoDate => s as IsoDate;
@@ -90,7 +90,7 @@ describe('buildReminders with time', () => {
     expect(kinds).toEqual(['antecipado', 'no_horario']);
   });
 
-  it('throws HoraInvalidaError hora_inexistente for a nonexistent local time', () => {
+  it('throws InvalidLocalTimeError hora_inexistente for a nonexistent local time', () => {
     const run = () =>
       buildReminders({
         ...base,
@@ -99,11 +99,11 @@ describe('buildReminders with time', () => {
         timeZone: 'America/New_York',
         now: new Date('2026-01-01T00:00:00Z'),
       });
-    expect(run).toThrow(HoraInvalidaError);
+    expect(run).toThrow(InvalidLocalTimeError);
     expect(run).toThrow(expect.objectContaining({ reason: 'hora_inexistente' }));
   });
 
-  it('throws HoraInvalidaError hora_ambigua for an ambiguous local time', () => {
+  it('throws InvalidLocalTimeError hora_ambigua for an ambiguous local time', () => {
     expect(() =>
       buildReminders({
         ...base,
@@ -138,9 +138,9 @@ describe('resolveDefaultReminderTime', () => {
     expect(out.toISOString()).toBe('2026-10-30T12:00:00.000Z');
   });
 
-  it('throws HoraInvalidaError when 09:00 also fails', () => {
+  it('throws InvalidLocalTimeError when 09:00 also fails', () => {
     expect(() => resolveDefaultReminderTime(d('2026-10-30'), SP, () => gap)).toThrow(
-      HoraInvalidaError,
+      InvalidLocalTimeError,
     );
   });
 });

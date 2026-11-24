@@ -1,5 +1,5 @@
 import type { SettingsDto, SkippedReminderTaskDto, UpdateSettingsInput, UpdateSettingsResultDto } from '@nexus/shared';
-import { HoraInvalidaError } from '../domain/reminders.js';
+import { InvalidLocalTimeError } from '../domain/reminders.js';
 import type { ProfileRepository, TaskRepository } from './ports.js';
 import type { makeSyncReminders } from './sync-reminders.js';
 
@@ -32,7 +32,7 @@ export function makeSettingsUseCases(deps: {
           await deps.syncReminders(userId, task, settings);
           remindersRebuilt += 1;
         } catch (error) {
-          if (!(error instanceof HoraInvalidaError)) throw error;
+          if (!(error instanceof InvalidLocalTimeError)) throw error;
           // A tarefa mantém os lembretes anteriores; o painel avisa o usuário a partir de `skipped`.
           skipped.push({ id: task.id, title: task.title, reason: error.reason });
         }

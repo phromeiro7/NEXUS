@@ -1,10 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { NewTask, TaskPatch, TaskRepository } from '../application/ports.js';
-import { INVALID_TEXT_REPRESENTATION, TASK_COLUMNS, definedOnly, isUuid, taskFromRow } from './mappers.js';
+import { INVALID_TEXT_REPRESENTATION, TASK_COLUMNS, omitUndefined, isUuid, taskFromRow } from './mappers.js';
 
 /** Campos da tarefa -> colunas de `tasks`, sem os ausentes (`undefined` não sobrescreve). */
 function columnsOf(patch: TaskPatch) {
-  return definedOnly({
+  return omitUndefined({
     title: patch.title,
     type: patch.type,
     status: patch.status,

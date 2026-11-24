@@ -7,6 +7,13 @@ export type TaskStatus = z.infer<typeof taskStatusSchema>;
 export const taskTypeSchema = z.enum(['prazo', 'tarefa', 'audiencia']);
 export type TaskType = z.infer<typeof taskTypeSchema>;
 
+/** Rótulo de cada tipo de tarefa nas mensagens (briefing, lembretes, assistente). */
+export const TASK_TYPE_LABEL: Record<TaskType, string> = {
+  prazo: 'Prazo',
+  tarefa: 'Tarefa',
+  audiencia: 'Audiência',
+};
+
 /** Situação da tarefa em relação a hoje, usada para agrupar nas telas. */
 export type TaskClassification = 'atrasada' | 'hoje' | 'futura' | 'sem_data' | 'encerrada';
 

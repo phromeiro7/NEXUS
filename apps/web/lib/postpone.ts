@@ -1,11 +1,10 @@
 import type { IsoDate, TaskDto, UpdateTaskInput } from "@nexus/shared";
-import { addDays, daysBetween, formatShort, weekRange } from "./dates";
+import { addDays, DAYS_PER_WEEK, daysBetween, formatShort, weekRange } from "./dates";
 import { spokenTime } from "./mini-tasks";
 
 /** Atalhos de adiar: para amanhã, para a próxima segunda ou uma semana depois. */
 export type PostponeKind = "amanha" | "segunda" | "semana";
 
-const DAYS_PER_WEEK = 7;
 const HOURS_PER_DAY = 24;
 
 /** Só tarefa aberta se adia; concluída e cancelada não mostram o atalho. */

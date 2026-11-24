@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type CSSProperties } from "react";
+import { useState } from "react";
 import type { IsoDate } from "@nexus/shared";
 import { EntryFormFields } from "@/components/mini/entry-form";
 import { FinanceNotice } from "@/components/mini/finance-notice";
@@ -9,13 +9,11 @@ import { useToast } from "@/components/mini/toast";
 import { useFinance } from "@/hooks/finance";
 import { useToday } from "@/hooks/use-today";
 import { formatShort } from "@/lib/dates";
-import { formatBRL, formatBRLShort, hasMonthEntries, monthOf, monthTitle, monthTotals, shiftMonth, type Lancamento, type YearMonth } from "@/lib/finance";
-import { monthRows, nextSort, rowActionLabel, situationLabel, sortRows, tableTotal, type Sort, type SortKey, type TableFilter } from "@/lib/finance-table";
+import { formatBRL, formatBRLShort, hasMonthEntries, monthOf, monthTitle, monthTotals, netOf, shiftMonth, type Lancamento, type YearMonth } from "@/lib/finance";
+import { monthRows, nextSort, rowActionLabel, situationLabel, sortRows, type Sort, type SortKey, type TableFilter } from "@/lib/finance-table";
 import { CaptureBar } from "./capture-bar";
 import { Dialog } from "./dialog";
-
-/** Esconde o elemento na tela mantendo-o para leitores de tela (rótulos de busca, legendas de tabela). */
-const VISUALLY_HIDDEN_STYLE: CSSProperties = { position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap" };
+import { VISUALLY_HIDDEN_STYLE } from "./visually-hidden";
 
 const FILTERS: Array<{ key: TableFilter; label: string }> = [
   { key: "tudo", label: "Tudo" },
@@ -53,7 +51,7 @@ function describeMonthBalance(balanceCents: number, hasEntries: boolean): string
 }
 
 /** Cabeçalho de coluna ordenável: anuncia a direção em `aria-sort` e mostra a seta. */
-function SortHeader({ label, k: sortKey, sort, onSort, className }: { label: string; k: SortKey; sort: Sort; onSort: (sortKey: SortKey) => void; className?: string }) {
+function SortHeader({ label, sortKey, sort, onSort, className }: { label: string; sortKey: SortKey; sort: Sort; onSort: (sortKey: SortKey) => void; className?: string }) {
   const isActive = sort.key === sortKey;
   const isAscending = sort.dir === "asc";
   return (
@@ -156,11 +154,11 @@ function FinanceContent({ today }: { today: IsoDate }) {
             <caption style={VISUALLY_HIDDEN_STYLE}>Lançamentos do mês</caption>
             <thead>
               <tr>
-                <SortHeader label="Data" k="data" sort={sort} onSort={changeSort} />
-                <SortHeader label="Descrição" k="descricao" sort={sort} onSort={changeSort} />
+                <SortHeader label="Data" sortKey="data" sort={sort} onSort={changeSort} />
+                <SortHeader label="Descrição" sortKey="descricao" sort={sort} onSort={changeSort} />
                 <th scope="col">Categoria</th>
                 <th scope="col">Situação</th>
-                <SortHeader label="Valor" k="valor" sort={sort} onSort={changeSort} className="num" />
+                <SortHeader label="Valor" sortKey="valor" sort={sort} onSort={changeSort} className="num" />
                 <th scope="col">
                   <span style={VISUALLY_HIDDEN_STYLE}>Ações</span>
                 </th>
@@ -200,7 +198,7 @@ function FinanceContent({ today }: { today: IsoDate }) {
               <tfoot>
                 <tr>
                   <td colSpan={4}>Total do que está na tabela</td>
-                  <td className="num">{formatBRL(tableTotal(rows))}</td>
+                  <td className="num">{formatBRL(netOf(rows))}</td>
                   <td />
                 </tr>
               </tfoot>

@@ -12,7 +12,7 @@ import {
   TelegramAuthError,
   TelegramNotConfiguredError,
 } from './application/errors.js';
-import { HoraInvalidaError } from './domain/reminders.js';
+import { InvalidLocalTimeError } from './domain/reminders.js';
 import { InvalidTransitionError } from './domain/task-status.js';
 
 /** Espera sugerida quando o erro de limite não informa quanto tempo falta. */
@@ -34,7 +34,7 @@ export type ErrorResponse = {
 };
 
 /** Mapeia erros conhecidos para a resposta HTTP. Nunca expõe mensagens internas nem texto do usuário. */
-export function errorResponse(error: unknown): ErrorResponse {
+export function toErrorResponse(error: unknown): ErrorResponse {
   if (error instanceof ValidationError) return { status: 400, body: { error: 'entrada_invalida', issues: error.issues } };
   if (error instanceof InvalidInputError) return { status: 400, body: { error: 'entrada_invalida', code: error.code } };
   if (error instanceof MessageTooLongError) {
@@ -52,7 +52,7 @@ export function errorResponse(error: unknown): ErrorResponse {
   if (error instanceof InvalidTransitionError) {
     return { status: 409, body: { error: 'transicao_invalida', from: error.from, to: error.to } };
   }
-  if (error instanceof HoraInvalidaError) return { status: 422, body: { error: 'hora_invalida', reason: error.reason } };
+  if (error instanceof InvalidLocalTimeError) return { status: 422, body: { error: 'hora_invalida', reason: error.reason } };
   if (error instanceof RateLimitedError) {
     return {
       status: 429,

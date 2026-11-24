@@ -8,6 +8,7 @@ import { ApiError } from "@/lib/api";
 import type { Lancamento, LancamentoInput } from "@/lib/finance";
 import { byCreation, toCreateInput, toLancamento } from "@/lib/finance-map";
 import { clearLocalLancamentos, readLocalLancamentos } from "@/lib/finance-local";
+import { HTTP_CONFLICT, HTTP_NOT_FOUND } from "@/lib/http";
 
 /** Todos os lançamentos do usuário numa consulta só: as telas filtram por mês, dia e tipo. */
 const FINANCE_QUERY_KEY = ["finance"] as const;
@@ -17,9 +18,6 @@ const FINANCE_MUTATION_KEY = ["finance", "mutation"] as const;
 const SAVE_ERROR_KEY = ["finance-save-error"] as const;
 /** Referência estável para a lista vazia: evita recalcular memos enquanto não há dados. */
 const NO_ENTRIES: readonly Lancamento[] = [];
-
-const HTTP_CONFLICT = 409;
-const HTTP_NOT_FOUND = 404;
 
 export type FinanceApi = {
   lancamentos: readonly Lancamento[];

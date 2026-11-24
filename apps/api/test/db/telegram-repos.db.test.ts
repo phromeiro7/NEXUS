@@ -375,7 +375,7 @@ describe('LinkCodeRepository', () => {
 describe('ConfirmationRepository', () => {
   const msg = () => Math.floor(Math.random() * 1_000_000_000);
 
-  it('record is idempotent (primary key) and tasksFor returns the alive ids', async () => {
+  it('record is idempotent (primary key) and findConfirmedTasks returns the alive ids', async () => {
     const a = await mkUser();
     const t1 = await mkTask(a.id);
     const t2 = await mkTask(a.id);
@@ -389,7 +389,7 @@ describe('ConfirmationRepository', () => {
       [chat, m],
     );
     expect(rows[0].n).toBe(2);
-    expect(await confirmations.tasksFor(a.id, chat, m)).toEqual({ alive: [t1, t2].sort(), deletedCount: 0 });
+    expect(await confirmations.findConfirmedTasks(a.id, chat, m)).toEqual({ aliveTaskIds: [t1, t2].sort(), deletedCount: 0 });
     await confirmations.record(chat, m, []);
   });
 
@@ -411,10 +411,10 @@ describe('ConfirmationRepository', () => {
     const chat = newChatId();
     const m = msg();
     await confirmations.record(chat, m, [ta, tb]);
-    expect(await confirmations.tasksFor(a.id, chat, m)).toEqual({ alive: [ta], deletedCount: 0 });
-    expect(await confirmations.tasksFor(b.id, chat, m)).toEqual({ alive: [tb], deletedCount: 0 });
+    expect(await confirmations.findConfirmedTasks(a.id, chat, m)).toEqual({ aliveTaskIds: [ta], deletedCount: 0 });
+    expect(await confirmations.findConfirmedTasks(b.id, chat, m)).toEqual({ aliveTaskIds: [tb], deletedCount: 0 });
     const c = await mkUser();
-    expect(await confirmations.tasksFor(c.id, chat, m)).toEqual({ alive: [], deletedCount: 0 });
+    expect(await confirmations.findConfirmedTasks(c.id, chat, m)).toEqual({ aliveTaskIds: [], deletedCount: 0 });
   });
 
   it('counts soft-deleted tasks separately', async () => {
@@ -425,7 +425,7 @@ describe('ConfirmationRepository', () => {
     const chat = newChatId();
     const m = msg();
     await confirmations.record(chat, m, [alive, gone1, gone2]);
-    expect(await confirmations.tasksFor(a.id, chat, m)).toEqual({ alive: [alive], deletedCount: 2 });
+    expect(await confirmations.findConfirmedTasks(a.id, chat, m)).toEqual({ aliveTaskIds: [alive], deletedCount: 2 });
   });
 
   it('is empty for an unknown message or another chat', async () => {
@@ -434,14 +434,14 @@ describe('ConfirmationRepository', () => {
     const chat = newChatId();
     const m = msg();
     await confirmations.record(chat, m, [t]);
-    expect(await confirmations.tasksFor(a.id, chat, m + 1)).toEqual({ alive: [], deletedCount: 0 });
-    expect(await confirmations.tasksFor(a.id, chat + 1, m)).toEqual({ alive: [], deletedCount: 0 });
+    expect(await confirmations.findConfirmedTasks(a.id, chat, m + 1)).toEqual({ aliveTaskIds: [], deletedCount: 0 });
+    expect(await confirmations.findConfirmedTasks(a.id, chat + 1, m)).toEqual({ aliveTaskIds: [], deletedCount: 0 });
   });
 
   it('propagates database failures', async () => {
     const broken = createSupabaseConfirmationRepository(brokenClient());
     await expect(broken.record(1, 1, [randomUUID()])).rejects.toThrow();
-    await expect(broken.tasksFor('x', 1, 1)).rejects.toThrow();
+    await expect(broken.findConfirmedTasks('x', 1, 1)).rejects.toThrow();
   });
 });
 

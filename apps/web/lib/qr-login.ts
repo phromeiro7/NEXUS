@@ -1,4 +1,5 @@
 import { QR_LOGIN_POLL_HEADER, qrLoginCreateResultSchema, qrLoginStatusSchema, type QrLoginStatus } from "@nexus/shared";
+import { HTTP_NOT_FOUND, HTTP_TOO_MANY_REQUESTS } from "./http";
 
 /** Falhas que a tela sabe explicar. Nunca carregam o segredo nem o token. */
 export type QrLoginFailure = "rede" | "muitas_tentativas" | "login_desabilitado" | "ja_utilizado" | "nao_encontrado" | "generico";
@@ -6,16 +7,13 @@ export type QrLoginFailure = "rede" | "muitas_tentativas" | "login_desabilitado"
 export type QrLoginRequest = { id: string; pollSecret: string; deepLink: string };
 
 /** Resultado de criar o pedido de login: o pedido ou o motivo da falha. */
-export type CreateResult = { ok: true; request: QrLoginRequest } | { ok: false; code: QrLoginFailure; retryAfterSeconds?: number };
+export type QrLoginCreateResult = { ok: true; request: QrLoginRequest } | { ok: false; code: QrLoginFailure; retryAfterSeconds?: number };
 /** Resultado de uma consulta ao pedido: o estado atual ou o motivo da falha. */
-export type PollResult =
+export type QrLoginPollResult =
   | { ok: true; status: QrLoginStatus; tokenHash?: string }
   | { ok: false; code: QrLoginFailure; retryAfterSeconds?: number };
 
 type QrLoginRequestOptions = { apiBaseUrl: string; fetch?: typeof fetch; signal?: AbortSignal };
-
-const HTTP_TOO_MANY_REQUESTS = 429;
-const HTTP_NOT_FOUND = 404;
 
 /** Traduz uma resposta de erro (status + corpo) para um motivo que a tela sabe explicar. */
 function failureFrom(response: Response, body: unknown): { code: QrLoginFailure; retryAfterSeconds?: number } {
@@ -32,7 +30,7 @@ function failureFrom(response: Response, body: unknown): { code: QrLoginFailure;
 }
 
 /** Pede um novo pedido de login. Sem Bearer: ainda não há conta. O `pollSecret` volta só aqui. */
-export async function createQrLogin(options: QrLoginRequestOptions): Promise<CreateResult> {
+export async function createQrLogin(options: QrLoginRequestOptions): Promise<QrLoginCreateResult> {
   const doFetch = options.fetch ?? fetch;
   try {
     const response = await doFetch(`${options.apiBaseUrl}/auth/qr`, {
@@ -52,7 +50,7 @@ export async function createQrLogin(options: QrLoginRequestOptions): Promise<Cre
 }
 
 /** Consulta o pedido. O segredo vai no cabeçalho, nunca na URL (a URL aparece em registros). */
-export async function pollQrLogin(options: QrLoginRequestOptions & { id: string; pollSecret: string }): Promise<PollResult> {
+export async function pollQrLogin(options: QrLoginRequestOptions & { id: string; pollSecret: string }): Promise<QrLoginPollResult> {
   const doFetch = options.fetch ?? fetch;
   try {
     const response = await doFetch(`${options.apiBaseUrl}/auth/qr/${encodeURIComponent(options.id)}`, {

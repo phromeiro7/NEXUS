@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { createFakes } from '../../../test/fakes.js';
 import { makeQrLogin, QR_LOGIN_TTL_MS } from '../qr-login.js';
-import { createFailedStartLimiter } from './failed-start-limiter.js';
+import { makeFailedStartLimiter } from './failed-start-limiter.js';
 import { makeRateLimiter } from './rate-limit.js';
-import { makeHandleTelegramUpdate } from './webhook.js';
+import { makeTelegramWebhookHandler } from './webhook.js';
 
 const NOW = new Date('2026-11-04T15:00:00.000Z');
 const OWNER = 'user-1';
@@ -32,7 +32,7 @@ function setup(opts: { withQr?: boolean } = {}) {
     clock: fakes.clock,
   });
   const logs: string[] = [];
-  const handle = makeHandleTelegramUpdate({
+  const handle = makeTelegramWebhookHandler({
     links: fakes.links,
     events: fakes.inboundEvents,
     confirmations: fakes.confirmations,
@@ -43,7 +43,7 @@ function setup(opts: { withQr?: boolean } = {}) {
     clock: fakes.clock,
     logger: { info: () => undefined, error: (event) => void logs.push(event) },
     botUsername: 'nexus_bot',
-    failedStartLimiter: createFailedStartLimiter({ max: 5, windowMs: 10 * 60_000 }),
+    failedStartLimiter: makeFailedStartLimiter({ max: 5, windowMs: 10 * 60_000 }),
     ...(opts.withQr === false ? {} : { qrLogin: qr }),
   });
   let updateId = 1;

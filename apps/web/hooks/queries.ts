@@ -67,9 +67,9 @@ export function useCreateTask() {
   });
 }
 
-export type UpdateTaskVars = { id: string; input: UpdateTaskInput };
+export type UpdateTaskVariables = { id: string; input: UpdateTaskInput };
 type UpdateTaskOptions<TContext> = Omit<
-  UseMutationOptions<TaskDto, Error, UpdateTaskVars, TContext>,
+  UseMutationOptions<TaskDto, Error, UpdateTaskVariables, TContext>,
   "mutationFn"
 >;
 
@@ -81,7 +81,7 @@ type UpdateTaskOptions<TContext> = Omit<
 export function useUpdateTask<TContext = unknown>(options: UpdateTaskOptions<TContext> = {}) {
   const api = useApi();
   const invalidate = useInvalidateTasks();
-  return useMutation<TaskDto, Error, UpdateTaskVars, TContext>({
+  return useMutation<TaskDto, Error, UpdateTaskVariables, TContext>({
     ...options,
     mutationFn: ({ id, input }) => api.updateTask(id, input),
     onSettled: async (data, error, variables, context, mutationContext) => {

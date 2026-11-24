@@ -16,7 +16,7 @@ const ACCEPTED_BYTE_LIMIT = Math.floor(256 / LINK_CODE_ALPHABET.length) * LINK_C
 const MAX_RANDOM_ROUNDS = 64;
 
 /** Código de vínculo por amostragem com rejeição sobre bytes aleatórios criptográficos. */
-export function generateCode(randomBytes: (byteCount: number) => Uint8Array, length: number = LINK_CODE_LENGTH): string {
+export function generateLinkCode(randomBytes: (byteCount: number) => Uint8Array, length: number = LINK_CODE_LENGTH): string {
   let code = '';
   for (let round = 0; round < MAX_RANDOM_ROUNDS && code.length < length; round++) {
     for (const byte of randomBytes(length - code.length)) {
@@ -44,7 +44,7 @@ export function makeLinkUseCases(deps: {
       if (botUsername === undefined || botUsername === '') throw new TelegramNotConfiguredError();
       const expiresAt = new Date(deps.clock.now().getTime() + LINK_CODE_TTL_MS);
       for (let attempt = 0; ; attempt++) {
-        const code = generateCode(randomBytes);
+        const code = generateLinkCode(randomBytes);
         try {
           await deps.links.create(userId, code, expiresAt);
           return {

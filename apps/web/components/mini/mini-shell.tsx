@@ -14,7 +14,7 @@ export function MiniShell({ children }: { children: ReactNode }) {
   const [scheme, setScheme] = useState<"light" | "dark" | undefined>(undefined);
   return (
     <div className="mini" data-scheme={scheme}>
-      <TelegramBridge onScheme={setScheme} />
+      <TelegramBridge onColorSchemeChange={setScheme} />
       <ToastProvider>
         <div className="mini-wrap">
           <MiniHeader />

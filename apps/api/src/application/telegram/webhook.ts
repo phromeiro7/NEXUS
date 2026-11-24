@@ -22,8 +22,8 @@ import type {
 } from '../ports.js';
 import { inviteShareUrl, type AcceptInviteResult, type makeInviteUseCases } from '../invites.js';
 import type { QrLoginUseCases } from '../qr-login.js';
-import { CAPTURE_HELP, type CaptureFlow } from './capture.js';
-import { createFailedStartLimiter, type FailedStartLimiter } from './failed-start-limiter.js';
+import { CAPTURE_NOT_UNDERSTOOD_MESSAGE, type CaptureFlow } from './capture.js';
+import { makeFailedStartLimiter, type FailedStartLimiter } from './failed-start-limiter.js';
 import { formatAssistantReply } from './reply-format.js';
 
 /** Só os campos usados; o resto do `Update` é ignorado. Formato inesperado = ignora. */
@@ -171,10 +171,10 @@ export type HandleTelegramUpdateDeps = {
  * Logs: só nomes de evento, códigos e nomes de erro. Nunca texto de mensagem, títulos, o código de
  * vínculo, segredos nem o chat id.
  */
-export function makeHandleTelegramUpdate(deps: HandleTelegramUpdateDeps) {
+export function makeTelegramWebhookHandler(deps: HandleTelegramUpdateDeps) {
   const { links, events, confirmations, processMessage, telegram, clock, logger } = deps;
   const failedStartLimiter: FailedStartLimiter =
-    deps.failedStartLimiter ?? createFailedStartLimiter({ max: MAX_FAILED_STARTS, windowMs: FAILED_START_WINDOW_MS });
+    deps.failedStartLimiter ?? makeFailedStartLimiter({ max: MAX_FAILED_STARTS, windowMs: FAILED_START_WINDOW_MS });
 
   // Falhas de infraestrutura antes do registro do evento viram UpdateNotRegisteredError (a rota responde 500,
   // e o Telegram reenvia o update). ForeignEventError passa direto: é adulteração, não falha transitória.
@@ -587,9 +587,9 @@ export function makeHandleTelegramUpdate(deps: HandleTelegramUpdateDeps) {
     // Resposta (reply) a uma confirmação do assistente: mira as tarefas daquela mensagem, se ainda existirem.
     let targetTaskIds: string[] | undefined;
     if (message.reply_to_message !== undefined) {
-      const repliedTasks = await confirmations.tasksFor(userId, chatId, message.reply_to_message.message_id);
-      if (repliedTasks.alive.length > 0) {
-        targetTaskIds = repliedTasks.alive;
+      const repliedTasks = await confirmations.findConfirmedTasks(userId, chatId, message.reply_to_message.message_id);
+      if (repliedTasks.aliveTaskIds.length > 0) {
+        targetTaskIds = repliedTasks.aliveTaskIds;
       } else if (repliedTasks.deletedCount > 0) {
         if (!(await isFirstDelivery())) return;
         await sendPlainText(chatId, REPLY_MESSAGES.taskGone);
@@ -614,7 +614,7 @@ export function makeHandleTelegramUpdate(deps: HandleTelegramUpdateDeps) {
       }
       if (deps.assistantEnabled !== true) {
         if (!(await isFirstDelivery())) return;
-        await sendPlainText(chatId, CAPTURE_HELP);
+        await sendPlainText(chatId, CAPTURE_NOT_UNDERSTOOD_MESSAGE);
         return;
       }
     }

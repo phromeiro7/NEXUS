@@ -1,11 +1,5 @@
-import type { IsoDate, TaskType } from '@nexus/shared';
+import { type IsoDate, TASK_TYPE_LABEL, type TaskType } from '@nexus/shared';
 import type { ReminderKind } from './reminders.js';
-
-const TASK_TYPE_LABEL: Record<TaskType, string> = {
-  prazo: 'Prazo',
-  tarefa: 'Tarefa',
-  audiencia: 'Audiência',
-};
 
 const MS_PER_MINUTE = 60_000;
 const MS_PER_SECOND = 1000;

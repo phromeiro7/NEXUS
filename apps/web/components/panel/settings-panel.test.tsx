@@ -11,7 +11,7 @@ const holder = vi.hoisted(() => ({
   api: { getSettings: vi.fn(), updateSettings: vi.fn(), createLinkCode: vi.fn(), unlinkTelegram: vi.fn() },
 }));
 vi.mock("@/components/auth-provider", () => ({
-  DISPLAY_NAME_MAX: 40,
+  DISPLAY_NAME_MAX_LENGTH: 40,
   useApi: () => holder.api,
   useAuth: () => ({ displayName: "Ana", saveDisplayName: holder.saveDisplayName, signOut: holder.signOut }),
 }));

@@ -57,7 +57,7 @@ describe('qr login: criar o pedido', () => {
     const created = await qr.create({ ip: '1.1.1.1', userAgent: CHROME_MAC });
     const row = fakes.qrLogins.rows()[0]!;
     expect(row.nonceHash).toBe(createHash('sha256').update(nonceOf(created.deepLink)).digest('hex'));
-    expect(row.pollHash).toBe(createHash('sha256').update(created.pollSecret).digest('hex'));
+    expect(row.pollSecretHash).toBe(createHash('sha256').update(created.pollSecret).digest('hex'));
     const dump = JSON.stringify(row);
     expect(dump).not.toContain(nonceOf(created.deepLink));
     expect(dump).not.toContain(created.pollSecret);

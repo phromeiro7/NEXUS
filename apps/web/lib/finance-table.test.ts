@@ -1,7 +1,7 @@
 import type { IsoDate } from "@nexus/shared";
 import { describe, expect, it } from "vitest";
-import type { Lancamento } from "./finance";
-import { monthRows, nextSort, rowActionLabel, situationLabel, sortRows, tableTotal } from "./finance-table";
+import { netOf, type Lancamento } from "./finance";
+import { monthRows, nextSort, rowActionLabel, situationLabel, sortRows } from "./finance-table";
 
 let n = 0;
 function l(over: Partial<Lancamento> = {}): Lancamento {
@@ -76,10 +76,10 @@ describe("nextSort", () => {
   });
 });
 
-describe("tableTotal", () => {
+describe("netOf (total da tabela)", () => {
   it("entradas somam e saídas subtraem, só do que está na tabela", () => {
-    expect(tableTotal([mercado, freela])).toBe(150000 - 8640);
-    expect(tableTotal([])).toBe(0);
+    expect(netOf([mercado, freela])).toBe(150000 - 8640);
+    expect(netOf([])).toBe(0);
   });
 });
 

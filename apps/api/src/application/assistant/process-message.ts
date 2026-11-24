@@ -55,7 +55,7 @@ export type ProcessMessageDeps = {
   /** Tarefas vivas do usuário entre `ids` (as de outro usuário ou apagadas não voltam). */
   tasksByIds?: (userId: string, ids: string[]) => Promise<TaskDto[]>;
   logger?: AssistantLogger;
-  limits?: { maxChars?: number; perHour?: number; maxSteps?: number; budgetMs?: number; contextMessages?: number };
+  limits?: { maxChars?: number; maxMessagesPerHour?: number; maxSteps?: number; budgetMs?: number; contextMessages?: number };
 };
 
 export type ProcessMessageInput = {
@@ -140,7 +140,7 @@ function extractReplyText(step: ModelStep): string {
 export function makeProcessMessage(deps: ProcessMessageDeps) {
   const limits = {
     maxChars: deps.limits?.maxChars ?? DEFAULT_MAX_CHARS,
-    perHour: deps.limits?.perHour ?? DEFAULT_MAX_MESSAGES_PER_HOUR,
+    maxMessagesPerHour: deps.limits?.maxMessagesPerHour ?? DEFAULT_MAX_MESSAGES_PER_HOUR,
     maxSteps: deps.limits?.maxSteps ?? DEFAULT_MAX_MODEL_STEPS,
     budgetMs: deps.limits?.budgetMs ?? DEFAULT_BUDGET_MS,
     contextMessages: deps.limits?.contextMessages ?? DEFAULT_CONTEXT_MESSAGES,
@@ -235,12 +235,12 @@ export function makeProcessMessage(deps: ProcessMessageDeps) {
       throw new EventInProgressError();
     }
 
-    const toolContext: ToolContext = { source: input.source, affected: new Map(), knownIds: new Set() };
+    const toolContext: ToolContext = { source: input.source, affectedTasks: new Map(), knownIds: new Set() };
     let modelCallStarted = false;
     try {
       // Limite por hora: conta os eventos do usuário registrados na última hora.
       const eventsInLastHour = await deps.events.countSince(userId, new Date(startedAt - HOUR_MS));
-      if (eventsInLastHour >= limits.perHour) throw new RateLimitedError(RETRY_AFTER_SECONDS);
+      if (eventsInLastHour >= limits.maxMessagesPerHour) throw new RateLimitedError(RETRY_AFTER_SECONDS);
 
       const messages = toModelMessages(await deps.chat.recent(userId, channel, limits.contextMessages, now));
       const targetTasks = await loadTargetTasks(input);
@@ -255,7 +255,7 @@ export function makeProcessMessage(deps: ProcessMessageDeps) {
       logInfo('assistant.start', { channel, historyMessages: messages.length - 1, targets: targetTasks.length });
 
       const finalReplyText = await runToolLoop({ userId, source: input.source, messages, toolContext, startedAt });
-      const reply: AssistantReplyDto = { reply: finalReplyText, affectedTasks: [...toolContext.affected.values()] };
+      const reply: AssistantReplyDto = { reply: finalReplyText, affectedTasks: [...toolContext.affectedTasks.values()] };
 
       await finish(reply);
       logInfo('assistant.done', { affected: reply.affectedTasks.length, ms: deps.clock.now().getTime() - startedAt });
@@ -265,14 +265,14 @@ export function makeProcessMessage(deps: ProcessMessageDeps) {
       const reason = error instanceof AssistantUnavailableError ? error.reason : 'servico';
       logError('assistant.failed', {
         begun: modelCallStarted,
-        affected: toolContext.affected.size,
+        affected: toolContext.affectedTasks.size,
         errorName: errorNameOf(originalError),
         reason: modelCallStarted ? reason : null,
         ms: deps.clock.now().getTime() - startedAt,
       });
-      if (toolContext.affected.size > 0) {
+      if (toolContext.affectedTasks.size > 0) {
         // Já houve escrita: o evento termina com uma resposta verdadeira (reenviar a reproduz, sem recriar nada).
-        const affectedTasks = [...toolContext.affected.values()];
+        const affectedTasks = [...toolContext.affectedTasks.values()];
         const reply = { reply: partialReplyText(reason, affectedTasks), affectedTasks };
         await finish(reply);
         return reply;

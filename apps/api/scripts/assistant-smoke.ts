@@ -193,7 +193,7 @@ export function buildProcessMessage(model: AssistantModel) {
     profiles: fakes.profiles,
     clock: fakes.clock,
     // O relógio é fixo: as até 40 chamadas ocorrem na mesma "hora"; o limite de 30/h não pode atrapalhar.
-    limits: { perHour: SMOKE_MODEL_CALLS_PER_HOUR },
+    limits: { maxMessagesPerHour: SMOKE_MODEL_CALLS_PER_HOUR },
   });
   const seed = async () => {
     const commonFields = { type: 'tarefa' as const, status: 'pendente' as const, fatal: false };

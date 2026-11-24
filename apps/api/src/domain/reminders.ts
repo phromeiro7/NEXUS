@@ -3,9 +3,10 @@ import { addDays } from './calendar.js';
 import { type LocalToUtcResult, localToUtc } from './timezone.js';
 
 /** Lançado quando a hora local de um lembrete não existe ou é ambígua no fuso (horário de verão). */
-export class HoraInvalidaError extends Error {
+export class InvalidLocalTimeError extends Error {
   constructor(readonly reason: 'hora_inexistente' | 'hora_ambigua') {
     super(`Hora local inválida: ${reason}`);
+    // Nome antigo mantido: `error.name` sai nos logs (run-reminders, eventos de erro) e deve continuar estável.
     this.name = 'HoraInvalidaError';
   }
 }
@@ -25,7 +26,7 @@ const FATAL_ADVANCE_NOTICE_DAYS = 3;
 /**
  * Instante do lembrete escolhido pelo sistema para uma data: 08:00 local; se esse
  * horário não existir ou for ambíguo (horário de verão), 09:00. Se 09:00 também
- * falhar, lança `HoraInvalidaError`. `convert` existe para testar o fallback.
+ * falhar, lança `InvalidLocalTimeError`. `convert` existe para testar o fallback.
  */
 export function resolveDefaultReminderTime(
   date: IsoDate,
@@ -36,7 +37,7 @@ export function resolveDefaultReminderTime(
   if (defaultAttempt.ok) return defaultAttempt.utc;
   const fallbackAttempt = convert(date, FALLBACK_TIME, timeZone);
   if (fallbackAttempt.ok) return fallbackAttempt.utc;
-  throw new HoraInvalidaError(fallbackAttempt.reason);
+  throw new InvalidLocalTimeError(fallbackAttempt.reason);
 }
 
 /**
@@ -71,7 +72,7 @@ export function buildReminders(input: {
   } else {
     // A hora escolhida pelo usuário nunca tem fallback: inexistente/ambígua é erro.
     const dueInstant = localToUtc(dueDate, dueTime, timeZone);
-    if (!dueInstant.ok) throw new HoraInvalidaError(dueInstant.reason);
+    if (!dueInstant.ok) throw new InvalidLocalTimeError(dueInstant.reason);
     // earlyMinutes 0 (ou negativo) não gera antecipado distinto: duplicaria `no_horario`.
     if (earlyMinutes !== null && earlyMinutes > 0) {
       drafts.push({

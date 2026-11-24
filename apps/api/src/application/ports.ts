@@ -330,7 +330,7 @@ export interface ConfirmationRepository {
   /** Idempotente (chave primária). */
   record(chatId: number, messageId: number, taskIds: string[]): Promise<void>;
   /** Tarefas da confirmação que são do usuário: vivas e a contagem das apagadas. Nunca vê tarefas de outro usuário. */
-  tasksFor(userId: string, chatId: number, messageId: number): Promise<{ alive: string[]; deletedCount: number }>;
+  findConfirmedTasks(userId: string, chatId: number, messageId: number): Promise<{ aliveTaskIds: string[]; deletedCount: number }>;
 }
 
 /** Limpezas e recuperações periódicas feitas pelo agendador; cada uma devolve quantas linhas tocou. */
@@ -387,7 +387,7 @@ export interface InviteRepository {
   /** Devolve um código reservado e não usado (a criação da conta falhou). */
   release(code: string): Promise<void>;
   /** Telegram (chat privado) vinculado à conta, ou `null`. */
-  telegramIdOf(userId: string): Promise<number | null>;
+  telegramUserIdOf(userId: string): Promise<number | null>;
 }
 
 /** Cria a conta de quem aceitou um convite e a liga ao Telegram. Sem e-mail real, sem senha. */
@@ -407,7 +407,7 @@ export type QrLoginRecord = {
   id: string;
   status: 'aguardando' | 'confirmar' | 'aprovado' | 'negado' | 'recusado' | 'consumido';
   /** SHA-256 (hex) do segredo de consulta do navegador. */
-  pollHash: string;
+  pollSecretHash: string;
   createdAt: Date;
   expiresAt: Date;
 };
@@ -417,7 +417,7 @@ export interface QrLoginRepository {
   create(input: {
     id: string;
     nonceHash: string;
-    pollHash: string;
+    pollSecretHash: string;
     clientLabel: string;
     createdAt: Date;
     expiresAt: Date;
@@ -436,7 +436,7 @@ export interface QrLoginRepository {
   /** A pessoa respondeu ao bot. Só o chat que abriu o pedido, para a conta perguntada, com o pedido em `confirmar`. */
   decide(id: string, chatId: number, userId: string, approve: boolean, now: Date): Promise<'aprovado' | 'negado' | null>;
   /** O navegador dono do segredo recolhe a aprovação: atômico, devolve o usuário uma única vez (`consumido`). */
-  consume(id: string, pollHash: string, now: Date): Promise<string | null>;
+  consume(id: string, pollSecretHash: string, now: Date): Promise<string | null>;
   /** Devolve um pedido consumido a `aprovado` (a emissão da sessão falhou). */
   release(id: string): Promise<void>;
   /** Apaga os vencidos há mais de dez minutos; devolve quantos. */

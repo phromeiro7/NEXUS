@@ -5,13 +5,10 @@ import type { IsoDate, TaskDto } from "@nexus/shared";
 import { timeOnlyLabel, whenLabel } from "@/lib/mini-tasks";
 import { postponeShortcuts, type PostponeKind } from "@/lib/postpone";
 import { CheckIcon, ChevronIcon, ClockIcon } from "./icons";
+import { MAX_STAGGERED_ITEMS, STAGGER_STEP_MS } from "./stagger";
 
 /** Etiqueta exibida ao lado da data para os tipos de tarefa que merecem destaque. */
 const TYPE_TAG: Record<string, string> = { prazo: "Prazo", audiencia: "Audiência" };
-
-/** Animação de entrada escalonada: cada linha atrasa um pouco mais, até um teto para listas longas. */
-const STAGGER_STEP_MS = 30;
-const MAX_STAGGERED_ITEMS = 8;
 
 /** Linha de tarefa das listas do Mini App: concluir, abrir o detalhe e (opcional) adiar para amanhã. */
 export function TaskItem({

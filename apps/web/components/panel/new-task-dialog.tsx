@@ -1,14 +1,11 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { createTaskInputSchema } from "@nexus/shared";
+import { createTaskInputSchema, TASK_TITLE_MAX } from "@nexus/shared";
 import { useToast } from "@/components/mini/toast";
 import { useCreateTask, useDeleteTask } from "@/hooks/queries";
 import { messageFor } from "@/lib/messages";
 import { Dialog } from "./dialog";
-
-/** Mesmo limite de título do schema compartilhado (createTaskInputSchema). */
-const TASK_TITLE_MAX_LENGTH = 200;
 
 /** Nova tarefa com título, dia e horário opcionais. Sem dia, a tarefa fica sem data (nada é assumido). */
 export function NewTaskDialog({ onClose }: { onClose: () => void }) {
@@ -34,7 +31,7 @@ export function NewTaskDialog({ onClose }: { onClose: () => void }) {
       dueTime: time === "" ? null : time,
     });
     if (!parsed.success) {
-      setError(`Escreva o que precisa ser feito (até ${TASK_TITLE_MAX_LENGTH} caracteres) e confira o dia e o horário.`);
+      setError(`Escreva o que precisa ser feito (até ${TASK_TITLE_MAX} caracteres) e confira o dia e o horário.`);
       return;
     }
     setError(null);
@@ -52,7 +49,7 @@ export function NewTaskDialog({ onClose }: { onClose: () => void }) {
       <form onSubmit={handleSubmit} noValidate className="mini-stack" aria-label="Nova tarefa">
         <label className="mini-label">
           O que precisa ser feito
-          <input data-autofocus className="mini-field" value={title} maxLength={TASK_TITLE_MAX_LENGTH} onChange={(event) => setTitle(event.target.value)} />
+          <input data-autofocus className="mini-field" value={title} maxLength={TASK_TITLE_MAX} onChange={(event) => setTitle(event.target.value)} />
         </label>
         <div className="pn-two">
           <label className="mini-label">

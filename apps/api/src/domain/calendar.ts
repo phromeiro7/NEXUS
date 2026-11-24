@@ -16,7 +16,7 @@ export function addDays(date: IsoDate, days: number): IsoDate {
 }
 
 /** Dia da semana (0 = domingo ... 6 = sábado), em UTC. */
-export function weekday(date: IsoDate): number {
+export function weekdayOf(date: IsoDate): number {
   const [year, month, day] = splitIsoDate(date);
   return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useRef, useState, type FocusEvent, type FormEvent } from "react";
-import { createTaskInputSchema, type IsoDate } from "@nexus/shared";
+import { createTaskInputSchema, TASK_TITLE_MAX, type IsoDate } from "@nexus/shared";
 import { useCreateTask, useDeleteTask } from "@/hooks/queries";
 import { addDays } from "@/lib/dates";
 import { messageFor } from "@/lib/messages";
@@ -12,8 +12,6 @@ import { useToast } from "./toast";
 /** Atalho de dia escolhido na captura; `null` = sem data. */
 type QuickDay = "hoje" | "amanha" | "outro" | null;
 
-/** Mesmo limite do schema de criação de tarefa (o erro de validação cita "até 200 caracteres"). */
-const TITLE_MAX_LENGTH = 200;
 /** Espera antes de recolher no blur, para o toque num atalho (sem foco no Safari) chegar primeiro. */
 const COLLAPSE_DELAY_MS = 250;
 
@@ -103,7 +101,7 @@ export function Capture({ today }: { today: IsoDate }) {
       ...(time !== "" ? { dueTime: time } : {}),
     });
     if (!parsed.success) {
-      setError("Confira o texto (até 200 caracteres), o dia e o horário.");
+      setError(`Confira o texto (até ${TASK_TITLE_MAX} caracteres), o dia e o horário.`);
       return;
     }
     submitting.current = true;
@@ -155,7 +153,7 @@ export function Capture({ today }: { today: IsoDate }) {
             value={title}
             onChange={(event) => setTitle(event.target.value)}
             placeholder="Ex.: buscar encomenda"
-            maxLength={TITLE_MAX_LENGTH}
+            maxLength={TASK_TITLE_MAX}
             enterKeyHint="done"
             autoComplete="off"
           />

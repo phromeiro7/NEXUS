@@ -419,7 +419,7 @@ export function createFakes(seed: { now?: Date } = {}) {
       const row = inviteRows.find((r) => r.code === code && r.usedAt === null);
       if (row) row.claimed = false;
     },
-    async telegramIdOf(userId) {
+    async telegramUserIdOf(userId) {
       return chatOf.get(userId) ?? null;
     },
     rows: () => inviteRows,
@@ -443,7 +443,7 @@ export function createFakes(seed: { now?: Date } = {}) {
       qrRows.push({
         id: input.id,
         status: 'aguardando',
-        pollHash: input.pollHash,
+        pollSecretHash: input.pollSecretHash,
         nonceHash: input.nonceHash,
         clientLabel: input.clientLabel,
         chatId: null,
@@ -454,7 +454,7 @@ export function createFakes(seed: { now?: Date } = {}) {
     },
     async get(id) {
       const row = qrRows.find((r) => r.id === id);
-      return row ? { id: row.id, status: row.status, pollHash: row.pollHash, createdAt: row.createdAt, expiresAt: row.expiresAt } : null;
+      return row ? { id: row.id, status: row.status, pollSecretHash: row.pollSecretHash, createdAt: row.createdAt, expiresAt: row.expiresAt } : null;
     },
     async open(nonceHash, chatId, userId, at) {
       const row = qrRows.find((r) => r.nonceHash === nonceHash && r.status === 'aguardando' && r.expiresAt > at);
@@ -472,8 +472,8 @@ export function createFakes(seed: { now?: Date } = {}) {
       row.status = approve ? 'aprovado' : 'negado';
       return row.status;
     },
-    async consume(id, pollHash, at) {
-      const row = qrRows.find((r) => r.id === id && r.pollHash === pollHash && r.status === 'aprovado' && r.expiresAt > at);
+    async consume(id, pollSecretHash, at) {
+      const row = qrRows.find((r) => r.id === id && r.pollSecretHash === pollSecretHash && r.status === 'aprovado' && r.expiresAt > at);
       if (!row) return null;
       row.status = 'consumido';
       return row.userId;
@@ -734,17 +734,17 @@ export function createFakes(seed: { now?: Date } = {}) {
         if (!exists) confirmationRows.push({ chatId, messageId, taskId });
       }
     },
-    async tasksFor(userId, chatId, messageId) {
-      const alive: string[] = [];
+    async findConfirmedTasks(userId, chatId, messageId) {
+      const aliveTaskIds: string[] = [];
       let deletedCount = 0;
       for (const c of confirmationRows) {
         if (c.chatId !== chatId || c.messageId !== messageId) continue;
         const t = taskRows.find((r) => r.dto.id === c.taskId && r.userId === userId);
         if (!t) continue;
-        if (t.deletedAt === null) alive.push(t.dto.id);
+        if (t.deletedAt === null) aliveTaskIds.push(t.dto.id);
         else deletedCount += 1;
       }
-      return { alive: alive.sort(), deletedCount };
+      return { aliveTaskIds: aliveTaskIds.sort(), deletedCount };
     },
   };
 

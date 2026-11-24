@@ -8,6 +8,8 @@ const HANDLED_KEY = "nexus.tg.handled";
 const OPT_OUT_KEY = "nexus.tg.optout";
 /** Parâmetro do fragmento da URL em que o Telegram entrega o initData. */
 const INIT_DATA_HASH_PARAM = "tgWebAppData";
+/** Valor de `platform` quando o SDK do Telegram carrega num navegador comum, fora do Telegram. */
+export const OUTSIDE_TELEGRAM_PLATFORM = "unknown";
 
 /** sessionStorage, ou null no servidor ou quando o navegador o bloqueia. */
 function sessionStorageOrNull(): Storage | null {

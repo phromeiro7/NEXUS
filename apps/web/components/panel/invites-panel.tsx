@@ -1,14 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type CSSProperties } from "react";
+import { useState } from "react";
 import type { InviteDto } from "@nexus/shared";
 import { copyLink, deleteWarning, shareInvite, statusLabel, summaryText, validityDays } from "@/components/mini/invites-card";
 import { isForbidden, useCreateInvite, useInvites, useDeleteInvite } from "@/hooks/use-invites";
 import { messageFor } from "@/lib/messages";
-
-/** Esconde o elemento na tela mantendo-o para leitores de tela (rótulos de busca, legendas de tabela). */
-const VISUALLY_HIDDEN_STYLE: CSSProperties = { position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap" };
+import { VISUALLY_HIDDEN_STYLE } from "./visually-hidden";
 
 /** Limite do nome do convidado (só para controle de quem gera o convite). */
 const INVITE_LABEL_MAX_LENGTH = 60;

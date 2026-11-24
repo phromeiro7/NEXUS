@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
-import { updateTaskInputSchema, type IsoDate } from "@nexus/shared";
+import { TASK_TITLE_MAX, updateTaskInputSchema, type IsoDate } from "@nexus/shared";
 import { useDeleteTask, useTask, useUpdateTask } from "@/hooks/queries";
 import { usePostpone } from "@/hooks/use-postpone";
 import { useToday } from "@/hooks/use-today";
 import { ApiError } from "@/lib/api";
+import { HTTP_NOT_FOUND } from "@/lib/http";
 import { messageFor } from "@/lib/messages";
 import { reminderState, whenLabel } from "@/lib/mini-tasks";
 import { postponeOptions, type PostponeOption } from "@/lib/postpone";
@@ -15,9 +16,6 @@ import { BackIcon, CheckIcon } from "./icons";
 import { useToast } from "./toast";
 
 const TYPE_LABEL = { prazo: "Prazo", tarefa: "Tarefa", audiencia: "Audiência" } as const;
-/** Mesmo limite de título do schema de tarefa (citado na mensagem de validação). */
-const TITLE_MAX_LENGTH = 200;
-
 type TaskDetailMode = "view" | "postpone" | "edit" | "cancel";
 
 /** Tela de detalhe de uma tarefa no Mini App (/mini/tarefa/[id]): concluir, adiar, editar e cancelar. */
@@ -31,7 +29,7 @@ export function TaskDetail({ id }: { id: string }) {
   );
 
   if (taskQuery.isError) {
-    const notFound = taskQuery.error instanceof ApiError && taskQuery.error.status === 404;
+    const notFound = taskQuery.error instanceof ApiError && taskQuery.error.status === HTTP_NOT_FOUND;
     return (
       <main>
         {backLink}
@@ -121,7 +119,7 @@ function LoadedTaskDetail({
       dueTime: time === "" ? null : time,
     });
     if (!parsed.success) {
-      setError("Confira o título (até 200 caracteres), o dia e o horário.");
+      setError(`Confira o título (até ${TASK_TITLE_MAX} caracteres), o dia e o horário.`);
       return;
     }
     await applyUpdate(parsed.data);
@@ -217,7 +215,7 @@ function LoadedTaskDetail({
         <form className="mini-card mini-sheet" onSubmit={saveEdit} noValidate aria-label="Editar tarefa">
           <label className="mini-label">
             Título
-            <input className="mini-field" value={title} maxLength={TITLE_MAX_LENGTH} onChange={(event) => setTitle(event.target.value)} />
+            <input className="mini-field" value={title} maxLength={TASK_TITLE_MAX} onChange={(event) => setTitle(event.target.value)} />
           </label>
           <div className="mini-stack">
             <label className="mini-label">

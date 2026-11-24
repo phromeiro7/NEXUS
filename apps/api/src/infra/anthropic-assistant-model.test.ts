@@ -4,7 +4,7 @@ import { ASSISTANT_TOOLS } from '../application/assistant/tools.js';
 import { buildSystemBlocks } from '../application/assistant/prompt.js';
 import { AssistantUnavailableError } from '../application/errors.js';
 import type { ModelMessage } from '../application/ports.js';
-import { createAnthropicAssistantModel, createSdkClient } from './anthropic-assistant-model.js';
+import { createAnthropicAssistantModel, createAnthropicSdkClient } from './anthropic-assistant-model.js';
 
 const API_KEY = 'sk-ant-chave-secreta-de-teste';
 const USER_TEXT = 'texto-secreto-do-usuario-xyz';
@@ -435,7 +435,7 @@ describe('SDK client logging', () => {
     const prev = process.env.ANTHROPIC_LOG;
     process.env.ANTHROPIC_LOG = 'debug';
     try {
-      expect(createSdkClient(API_KEY).logLevel).toBe('off');
+      expect(createAnthropicSdkClient(API_KEY).logLevel).toBe('off');
     } finally {
       if (prev === undefined) delete process.env.ANTHROPIC_LOG;
       else process.env.ANTHROPIC_LOG = prev;

@@ -3,7 +3,8 @@ import { isoDateSchema, type IsoDate } from './primitives.js';
 import { taskStatusSchema, taskTypeSchema, type TaskStatus, type TaskType } from './task.js';
 import { timeOfDaySchema } from './time-of-day.js';
 
-const TASK_TITLE_MAX = 200;
+/** Tamanho máximo do título de tarefa; a API valida e as telas limitam o campo com o mesmo valor. */
+export const TASK_TITLE_MAX = 200;
 
 const titleSchema = z.string().trim().min(1).max(TASK_TITLE_MAX);
 

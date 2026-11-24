@@ -6,7 +6,7 @@ import { makeToolExecutor } from './application/assistant/tools.js';
 import { AssistantUnavailableError, NotFoundError } from './application/errors.js';
 import { makeLinkUseCases } from './application/telegram/link.js';
 import { makeCaptureFlow } from './application/telegram/capture.js';
-import { makeHandleTelegramUpdate } from './application/telegram/webhook.js';
+import { makeTelegramWebhookHandler } from './application/telegram/webhook.js';
 import { createSupabaseCaptureRepository } from './infra/supabase-capture-repository.js';
 import { createSupabaseConfirmationRepository } from './infra/supabase-confirmation-repository.js';
 import { createSupabaseLinkRepository } from './infra/supabase-link-repository.js';
@@ -185,7 +185,7 @@ export function buildApp(
   const telegramLink = makeLinkUseCases({ links, botUsername: config.telegramBotUsername, clock });
   const handleTelegramUpdate =
     telegram !== undefined && config.telegramWebhookSecret !== undefined
-      ? makeHandleTelegramUpdate({
+      ? makeTelegramWebhookHandler({
           links,
           events: inboundEvents,
           confirmations: createSupabaseConfirmationRepository(supabase),
